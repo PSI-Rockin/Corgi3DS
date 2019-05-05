@@ -45,6 +45,7 @@ class Emulator
         void run();
 
         void load_roms(uint8_t* boot9, uint8_t* boot11, uint8_t* otp);
+        bool mount_nand(std::string file_name);
 
         uint8_t arm9_read8(uint32_t addr);
         uint16_t arm9_read16(uint32_t addr);

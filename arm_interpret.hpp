@@ -19,6 +19,8 @@ namespace ARM_Interpreter
     void arm_store_byte(ARM_CPU& cpu, uint32_t instr);
     void arm_load_word(ARM_CPU& cpu, uint32_t instr);
     void arm_store_word(ARM_CPU& cpu, uint32_t instr);
+    void arm_load_halfword(ARM_CPU& cpu, uint32_t instr);
+    void arm_store_halfword(ARM_CPU& cpu, uint32_t instr);
     void arm_load_block(ARM_CPU& cpu, uint32_t instr);
     void arm_store_block(ARM_CPU& cpu, uint32_t instr);
     void arm_cop_transfer(ARM_CPU& cpu, uint32_t instr);

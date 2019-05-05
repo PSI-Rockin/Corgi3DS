@@ -25,7 +25,7 @@ uint32_t GPU::read_vram32(uint32_t addr)
 
 void GPU::write_vram32(uint32_t addr, uint32_t value)
 {
-    printf("[GPU] Write32 VRAM $%08X: $%08X\n", addr, value);
+    //printf("[GPU] Write32 VRAM $%08X: $%08X\n", addr, value);
     *(uint32_t*)&vram[addr % 0x00600000] = bswp32(value);
 }
 

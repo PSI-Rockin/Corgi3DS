@@ -34,8 +34,6 @@ void PSR_Flags::set(uint32_t value)
     thumb = value & (1 << 5);
 
     mode = (PSR_MODE)(value & 0x1F);
-
-    printf("Irq disable: %d\n", irq_disable);
 }
 
 ARM_CPU::ARM_CPU(Emulator* e, int id, CP15* cp15) : e(e), id(id), cp15(cp15)
@@ -109,6 +107,22 @@ void ARM_CPU::run()
 
 void ARM_CPU::jp(uint32_t addr, bool change_thumb_state)
 {
+    /*if (addr == 0xFFFF56C8)
+        can_disassemble = true;
+    if (addr == 0xFFFF8340)
+        can_disassemble = false;
+    if (addr == 0xFFFF57EA)
+        printf("R0: $%08X\n", gpr[0]);*/
+    if (addr == 0xFFFF8D50)
+    {
+        printf("[ARM9] Hit find_nand_partition!\n");
+        can_disassemble = true;
+    }
+    if (addr == 0xFFFF83A4)
+    {
+        printf("[ARM9] Firmware boot failed\n");
+        can_disassemble = false;
+    }
     gpr[15] = addr;
 
     if (change_thumb_state)
@@ -128,7 +142,7 @@ void ARM_CPU::jp(uint32_t addr, bool change_thumb_state)
 
 void ARM_CPU::int_check()
 {
-    printf("[ARM%d] Interrupt check\n", id);
+    //printf("[ARM%d] Interrupt check\n", id);
     unhalt();
     if (!CPSR.irq_disable)
     {
@@ -375,7 +389,6 @@ void ARM_CPU::write8(uint32_t addr, uint8_t value)
 
 void ARM_CPU::write16(uint32_t addr, uint16_t value)
 {
-    printf("Write16 $%08X: $%04X\n", addr, value);
     if (cp15)
     {
         if (addr < cp15->itcm_size)
@@ -397,7 +410,6 @@ void ARM_CPU::write16(uint32_t addr, uint16_t value)
 
 void ARM_CPU::write32(uint32_t addr, uint32_t value)
 {
-    //printf("Write32 $%08X: $%08X\n", addr, value);
     if (cp15)
     {
         if (addr < cp15->itcm_size)

@@ -56,6 +56,12 @@ void interpret_arm(ARM_CPU &cpu, uint32_t instr)
         case ARM_STORE_WORD:
             arm_store_word(cpu, instr);
             break;
+        case ARM_LOAD_HALFWORD:
+            arm_load_halfword(cpu, instr);
+            break;
+        case ARM_STORE_HALFWORD:
+            arm_store_halfword(cpu, instr);
+            break;
         case ARM_LOAD_BLOCK:
             arm_load_block(cpu, instr);
             break;
@@ -620,6 +626,95 @@ void arm_store_word(ARM_CPU &cpu, uint32_t instr)
 
         cpu.set_register(base, address);
     }
+}
+
+void arm_load_halfword(ARM_CPU &cpu, uint32_t instr)
+{
+    bool is_preindexing = (instr & (1 << 24)) != 0;
+    bool is_adding_offset = (instr & (1 << 23)) != 0;
+    bool is_writing_back = (instr & (1 << 21)) != 0;
+    uint32_t base = (instr >> 16) & 0xF;
+    uint32_t destination = (instr >> 12) & 0xF;
+
+    bool is_imm_offset = (instr & (1 << 22)) != 0;
+    uint32_t offset = 0;
+
+    offset = instr & 0xF;
+    if (is_imm_offset)
+        offset |= (instr >> 4) & 0xF0;
+    else
+        offset = cpu.get_register(offset);
+
+    uint32_t address = cpu.get_register(base);
+
+    if (is_preindexing)
+    {
+        if (is_adding_offset)
+            address += offset;
+        else
+            address -= offset;
+
+        if (is_writing_back && base != destination)
+            cpu.set_register(base, address);
+
+        cpu.set_register(destination, cpu.read16(address));
+    }
+    else
+    {
+        cpu.set_register(destination, cpu.read16(address));
+        if (is_adding_offset)
+            address += offset;
+        else
+            address -= offset;
+
+        if (base != destination)
+            cpu.set_register(base, address);
+    }
+
+    //cpu.add_n16_data(address, 1);
+}
+
+void arm_store_halfword(ARM_CPU &cpu, uint32_t instr)
+{
+    bool is_preindexing = (instr & (1 << 24)) != 0;
+    bool is_adding_offset = (instr & (1 << 23)) != 0;
+    bool is_writing_back = (instr & (1 << 21)) != 0;
+    uint32_t base = (instr >> 16) & 0xF;
+    uint32_t source = (instr >> 12) & 0xF;
+
+    bool is_imm_offset = (instr & (1 << 22)) != 0;
+    uint32_t offset = 0;
+
+    offset = instr & 0xF;
+    if (is_imm_offset)
+        offset |= (instr >> 4) & 0xF0;
+    else
+        offset = cpu.get_register(offset);
+
+    uint32_t address = cpu.get_register(base);
+    uint16_t halfword = cpu.get_register(source) & 0xFFFF;
+
+    if (is_preindexing)
+    {
+        if (is_adding_offset)
+            address += offset;
+        else
+            address -= offset;
+        cpu.write16(address, halfword);
+        if (is_writing_back)
+            cpu.set_register(base, address);
+    }
+    else
+    {
+        cpu.write16(address, halfword);
+        if (is_adding_offset)
+            address += offset;
+        else
+            address -= offset;
+
+        cpu.set_register(base, address);
+    }
+    //cpu.add_n16_data(address, 1);
 }
 
 void arm_load_block(ARM_CPU &cpu, uint32_t instr)

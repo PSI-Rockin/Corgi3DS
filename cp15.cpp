@@ -1,7 +1,8 @@
 #include <cstdio>
+#include "arm.hpp"
 #include "cp15.hpp"
 
-CP15::CP15(int id) : id(id)
+CP15::CP15(int id, ARM_CPU* cpu) : id(id), cpu(cpu)
 {
 
 }
@@ -24,10 +25,10 @@ void CP15::reset(bool has_tcm)
 
 uint32_t CP15::mrc(int operation_mode, int CP_reg, int coprocessor_info, int coprocessor_operand)
 {
-    uint16_t op = (CP_reg << 8) | (coprocessor_info << 4) | coprocessor_operand;
+    uint16_t op = (CP_reg << 8) | (coprocessor_operand << 4) | coprocessor_info;
     switch (op)
     {
-        case 0x005:
+        case 0x050:
             return id;
         default:
             printf("[CP15] Unrecognized MRC op $%04X\n", op);
@@ -37,9 +38,12 @@ uint32_t CP15::mrc(int operation_mode, int CP_reg, int coprocessor_info, int cop
 
 void CP15::mcr(int operation_mode, int CP_reg, int coprocessor_info, int coprocessor_operand, uint32_t value)
 {
-    uint16_t op = (CP_reg << 8) | (coprocessor_info << 4) | coprocessor_operand;
+    uint16_t op = (CP_reg << 8) | (coprocessor_operand << 4) | coprocessor_info;
     switch (op)
     {
+        case 0x704:
+            cpu->halt();
+            break;
         default:
             printf("[CP15] Unrecognized MCR op $%04X\n", op);
     }

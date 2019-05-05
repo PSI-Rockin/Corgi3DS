@@ -6,9 +6,10 @@
 Emulator::Emulator() :
     arm9(this, 9, &arm9_cp15),
     arm11(this, 11, &sys_cp15),
-    arm9_cp15(0),
-    sys_cp15(0),
-    app_cp15(1),
+    arm9_cp15(0, &arm9),
+    sys_cp15(0, &arm11),
+    app_cp15(1, &arm11),
+    emmc(&int9),
     int9(&arm9),
     mpcore_pmr(&arm11),
     pxi(&mpcore_pmr, &int9),
@@ -40,6 +41,7 @@ void Emulator::reset()
     gpu.reset();
 
     aes.reset();
+    emmc.reset();
 
     sysprot9 = 0;
     sysprot11 = 0;
@@ -52,11 +54,6 @@ void Emulator::run()
         arm9.run();
         arm11.run();
         timers.run();
-        if (arm9.get_PC() - 4 == 0xFFFF8298)
-        {
-            printf("[ARM9] OTP verification failed\n");
-            exit(1);
-        }
     }
 }
 
@@ -65,6 +62,11 @@ void Emulator::load_roms(uint8_t *boot9, uint8_t *boot11, uint8_t *otp)
     memcpy(this->boot9, boot9, 1024 * 64);
     memcpy(this->boot11, boot11, 1024 * 64);
     memcpy(this->otp, otp, 256);
+}
+
+bool Emulator::mount_nand(std::string file_name)
+{
+    return emmc.mount_nand(file_name);
 }
 
 uint8_t Emulator::arm9_read8(uint32_t addr)
@@ -142,6 +144,9 @@ uint32_t Emulator::arm9_read32(uint32_t addr)
 
     if (addr >= 0x10002000 && addr < 0x10003000)
         return dma9.read32(addr);
+
+    if (addr >= 0x10006000 && addr < 0x10007000)
+        return emmc.read32(addr);
 
     if (addr >= 0x10009000 && addr < 0x1000A000)
         return aes.read32(addr);

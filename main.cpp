@@ -7,9 +7,9 @@ using namespace std;
 
 int main(int argc, char** argv)
 {
-    if (argc < 4)
+    if (argc < 5)
     {
-        printf("Args: [boot9] [boot11] [OTP]\n");
+        printf("Args: [boot9] [boot11] [OTP] [NAND]\n");
         return 1;
     }
 
@@ -48,12 +48,16 @@ int main(int argc, char** argv)
 
     otp.close();
 
-    printf("Successfully read all ROMs!\n");
-
     QApplication a(argc, argv);
     EmuWindow* emuwindow = new EmuWindow();
 
     Emulator e;
+    if (!e.mount_nand(argv[4]))
+    {
+        printf("Failed to open %s\n", argv[4]);
+        return 1;
+    }
+    printf("All files loaded successfully!\n");
     e.load_roms(boot9_rom, boot11_rom, otp_rom);
     e.reset();
     while (emuwindow->is_running())

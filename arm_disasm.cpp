@@ -175,6 +175,9 @@ string disasm_arm(ARM_CPU& cpu, uint32_t instr)
         case ARM_LOAD_BYTE:
         case ARM_STORE_BYTE:
             return arm_load_store(cpu, instr);
+        case ARM_LOAD_HALFWORD:
+        case ARM_STORE_HALFWORD:
+            return arm_load_store_halfword(cpu, instr);
         case ARM_LOAD_BLOCK:
         case ARM_STORE_BLOCK:
             return arm_load_store_block(instr);
@@ -575,6 +578,58 @@ string arm_load_store(ARM_CPU& cpu, uint32_t instr)
         output << "!";
     if (!pre_indexing)
         output << offset_str.str();
+    return output.str();
+}
+
+string arm_load_store_halfword(ARM_CPU &cpu, uint32_t instr)
+{
+    stringstream output;
+    bool is_preindexing = (instr & (1 << 24)) != 0;
+    bool is_adding_offset = (instr & (1 << 23)) != 0;
+    bool is_imm_offset = (instr & (1 << 22)) != 0;
+    bool is_writing_back = (instr & (1 << 21)) != 0;
+    bool is_loading = (instr & (1 << 20)) != 0;
+    uint32_t base = (instr >> 16) & 0xF;
+    uint32_t reg = (instr >> 12) & 0xF;
+
+    if (is_loading)
+        output << "ldr";
+    else
+        output << "str";
+
+    output << cond_name(instr >> 28);
+
+    output << "h " << ARM_CPU::get_reg_name(reg) << ", [" << ARM_CPU::get_reg_name(base);
+
+    int offset = ((instr >> 4) & 0xF0) | (instr & 0xF);
+    stringstream offset_stream;
+    string sub_str = "";
+    if (!is_adding_offset)
+        sub_str = "-";
+    if (is_imm_offset)
+    {
+        if (offset)
+            offset_stream << sub_str << "#" << std::hex << offset;
+    }
+    else
+        offset_stream << sub_str << ARM_CPU::get_reg_name(offset & 0xF);
+
+    string offset_str = offset_stream.str();
+    if (is_preindexing)
+    {
+        if (offset_str.length())
+            output << ", " << offset_str;
+        output << "]";
+        if (is_writing_back)
+            output << "!";
+    }
+    else
+    {
+        output << "]";
+        if (offset_str.length())
+            output << ", " << offset_str;
+    }
+
     return output.str();
 }
 

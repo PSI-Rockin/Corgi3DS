@@ -2,16 +2,19 @@
 #define CP15_HPP
 #include <cstdint>
 
+class ARM_CPU;
+
 class CP15
 {
     private:
+        ARM_CPU* cpu;
         int id;
     public:
         uint8_t ITCM[1024 * 32], DTCM[1024 * 16];
 
         uint32_t itcm_size;
         uint32_t dtcm_base, dtcm_size;
-        CP15(int id);
+        CP15(int id, ARM_CPU* cpu);
 
         void reset(bool has_tcm);
 

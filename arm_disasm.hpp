@@ -93,6 +93,7 @@ namespace ARM_Disasm
     std::string arm_mrs(uint32_t instr);
     std::string arm_msr(uint32_t instr);
     std::string arm_load_store(ARM_CPU& cpu, uint32_t instr);
+    std::string arm_load_store_halfword(ARM_CPU& cpu, uint32_t instr);
     std::string arm_load_store_block(uint32_t instr);
     std::string arm_cop_transfer(uint32_t instr);
 
