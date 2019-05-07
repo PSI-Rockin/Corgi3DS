@@ -62,6 +62,7 @@ class AES
         void crypt_check();
         void input_vector(uint8_t* vector, int index, uint32_t value, int max_words);
 
+        void crypt_ctr();
         void decrypt_cbc();
         void encrypt_cbc();
     public:

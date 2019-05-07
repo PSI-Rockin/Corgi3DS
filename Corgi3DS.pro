@@ -54,3 +54,7 @@ HEADERS += \
     emmc.hpp \
     interrupt9.hpp \
     emuwindow.hpp
+
+INCLUDEPATH += /usr/local/include
+
+LIBS += -L/usr/local/lib -lgmpxx -lgmp

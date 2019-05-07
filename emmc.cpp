@@ -276,7 +276,7 @@ void EMMC::send_cmd(int command)
             nand.read((char*)&nand_block, transfer_size);
 
             transfer_buffer = (uint8_t*)nand_block;
-            set_istat(ISTAT_RXRDY);
+            data_ready();
             command_end();
             break;
         case 55:
@@ -306,8 +306,7 @@ void EMMC::send_acmd(int command)
         case 13:
             response[0] = get_sdr1_reply();
             sd_data32.rd32rdy_irq_pending = true;
-            //if (sd_data32.rd32rdy_irq_enable)
-                set_istat(ISTAT_RXRDY);
+            set_istat(ISTAT_RXRDY);
 
             transfer_buffer = (uint8_t*)regsd_status;
             transfer_pos = 0;
@@ -340,6 +339,7 @@ void EMMC::send_acmd(int command)
             transfer_size = sizeof(regscr);
             transfer_pos = 0;
             command_end();
+            data_ready();
             break;
         default:
             printf("[EMMC] Unrecognized ACMD%d\n", command);
@@ -364,13 +364,19 @@ uint32_t EMMC::get_sdr1_reply()
     reg |= state << 9;
     if (!transfer_size)
         reg |= 1 << 8; //ready for data
-    printf("R1: $%08X State: %d\n", reg, state);
+    printf("R1: $%08X State: %d\n", reg, reg >> 9);
     return reg;
 }
 
 void EMMC::command_end()
 {
-    set_istat(1);
+    set_istat(ISTAT_CMDEND);
+}
+
+void EMMC::data_ready()
+{
+    sd_data32.rd32rdy_irq_pending = true;
+    set_istat(ISTAT_RXRDY);
 }
 
 void EMMC::set_istat(uint32_t field)
@@ -391,7 +397,10 @@ uint16_t EMMC::read_fifo()
         transfer_size -= 2;
 
         if (!transfer_size)
+        {
+            //data_ready();
             transfer_end();
+        }
         return value;
     }
     return 0;
@@ -408,6 +417,7 @@ uint32_t EMMC::read_fifo32()
 
         if (!transfer_size)
         {
+            data_ready();
             transfer_pos = 0;
             if (block_transfer)
             {
@@ -432,6 +442,7 @@ void EMMC::transfer_end()
 {
     transfer_buffer = nullptr;
     block_transfer = false;
+    printf("[EMMC] Transfer end\n");
     switch (state)
     {
         case MMC_Data:

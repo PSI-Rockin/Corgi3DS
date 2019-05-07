@@ -16,13 +16,13 @@ struct SD_DATA32_IRQ
 
 enum MMC_State
 {
-    MMC_Idle = 1 << 0,
-    MMC_Ready = 1 << 1,
-    MMC_Identify = 1 << 2,
-    MMC_Standby = 1 << 3,
-    MMC_Transfer = 1 << 4,
-    MMC_Data = 1 << 5,
-    MMC_Receive = 1 << 6
+    MMC_Idle = 0,
+    MMC_Ready,
+    MMC_Identify,
+    MMC_Standby,
+    MMC_Transfer,
+    MMC_Data,
+    MMC_Receive
 };
 
 class EMMC
@@ -76,6 +76,7 @@ class EMMC
         uint32_t get_sdr1_reply();
         void command_end();
         void transfer_end();
+        void data_ready();
         void set_istat(uint32_t field);
     public:
         EMMC(Interrupt9* int9);

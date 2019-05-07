@@ -77,6 +77,9 @@ uint8_t Emulator::arm9_read8(uint32_t addr)
     if (addr >= 0x1000A040 && addr < 0x1000A080)
         return sha.read_hash(addr);
 
+    if (addr >= 0x1000B000 && addr < 0x1000C000)
+        return rsa.read8(addr);
+
     if (addr >= 0x10160000 && addr < 0x10161000)
     {
         printf("[SPI2] Unrecognized read8 $%08X\n", addr);
@@ -198,6 +201,11 @@ void Emulator::arm9_write8(uint32_t addr, uint8_t value)
     if (addr >= 0x10160000 && addr < 0x10170000)
     {
         printf("[SPI2] Unrecognized write8 $%08X: $%02X\n", addr, value);
+        return;
+    }
+    if (addr >= 0x1000B000 && addr < 0x1000C000)
+    {
+        rsa.write8(addr, value);
         return;
     }
     switch (addr)

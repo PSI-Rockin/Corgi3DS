@@ -107,20 +107,15 @@ void ARM_CPU::run()
 
 void ARM_CPU::jp(uint32_t addr, bool change_thumb_state)
 {
-    /*if (addr == 0xFFFF56C8)
-        can_disassemble = true;
-    if (addr == 0xFFFF8340)
-        can_disassemble = false;
-    if (addr == 0xFFFF57EA)
-        printf("R0: $%08X\n", gpr[0]);*/
     if (addr == 0xFFFF8D50)
     {
         printf("[ARM9] Hit find_nand_partition!\n");
-        can_disassemble = true;
+        //can_disassemble = true;
     }
     if (addr == 0xFFFF83A4)
     {
         printf("[ARM9] Firmware boot failed\n");
+        exit(1);
         can_disassemble = false;
     }
     gpr[15] = addr;
@@ -354,6 +349,9 @@ uint16_t ARM_CPU::read16(uint32_t addr)
 
 uint32_t ARM_CPU::read32(uint32_t addr)
 {
+    uint32_t ptr = *(uint32_t*)&cp15->DTCM[0x9C + 0x24];
+    if (addr == ptr + 0x34)
+        printf("[ARM9] Read EMMC error\n");
     if (cp15)
     {
         if (addr < cp15->itcm_size)
@@ -410,6 +408,9 @@ void ARM_CPU::write16(uint32_t addr, uint16_t value)
 
 void ARM_CPU::write32(uint32_t addr, uint32_t value)
 {
+    uint32_t ptr = *(uint32_t*)&cp15->DTCM[0x9C + 0x24];
+    if (addr == ptr + 0x34)
+        printf("[ARM9] Write EMMC error: $%08X\n", value);
     if (cp15)
     {
         if (addr < cp15->itcm_size)

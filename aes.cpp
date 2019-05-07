@@ -134,6 +134,10 @@ void AES::crypt_check()
     {
         switch (AES_CNT.mode)
         {
+            case 0x2:
+            case 0x3:
+                crypt_ctr();
+                break;
             case 0x4:
                 decrypt_cbc();
                 break;
@@ -181,6 +185,34 @@ void AES::write_input_fifo(uint32_t value)
     }
 
     crypt_check();
+}
+
+void AES::crypt_ctr()
+{
+    printf("[AES] Crypt CTR\n");
+
+    for (int i = 0; i < 4; i++)
+    {
+        *(uint32_t*)&crypt_results[i * 4] = input_fifo.front();
+        input_fifo.pop();
+    }
+
+    printf("Input: ");
+    for (int i = 0; i < 16; i++)
+        printf("%02X ", crypt_results[i]);
+    printf("\n");
+
+    printf("Key: ");
+    for (int i = 0; i < 16; i++)
+        printf("%02X ", cur_key->normal[i]);
+    printf("\n");
+
+    printf("IV: ");
+    for (int i = 0; i < 16; i++)
+        printf("%02X ", AES_CTR[i]);
+    printf("\n");
+
+    AES_CTR_xcrypt_buffer(&lib_aes_ctx, (uint8_t*)crypt_results, 16);
 }
 
 void AES::decrypt_cbc()
