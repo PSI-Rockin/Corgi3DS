@@ -3,7 +3,7 @@
 #include "arm.hpp"
 #include "arm_disasm.hpp"
 #include "arm_interpret.hpp"
-#include "rotr.hpp"
+#include "../common/common.hpp"
 
 namespace ARM_Interpreter
 {

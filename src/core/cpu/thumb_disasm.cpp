@@ -116,7 +116,7 @@ string disasm_thumb(ARM_CPU& cpu, uint16_t instr)
     switch (decode_thumb(instr))
     {
         case THUMB_MOV_SHIFT:
-            return thumb_move_shift(cpu, instr);
+            return thumb_move_shift(instr);
         case THUMB_ADD_REG:
         case THUMB_SUB_REG:
             return thumb_op_reg(instr);
@@ -152,7 +152,7 @@ string disasm_thumb(ARM_CPU& cpu, uint16_t instr)
             return thumb_load_addr(cpu, instr);
         case THUMB_SP_REL_LOAD:
         case THUMB_SP_REL_STORE:
-            return thumb_sp_rel_load_store(cpu, instr);
+            return thumb_sp_rel_load_store(instr);
         case THUMB_OFFSET_SP:
             return thumb_offset_sp(instr);
         case THUMB_SXTH:
@@ -174,7 +174,7 @@ string disasm_thumb(ARM_CPU& cpu, uint16_t instr)
     }
 }
 
-string thumb_move_shift(ARM_CPU &cpu, uint16_t instr)
+string thumb_move_shift(uint16_t instr)
 {
     stringstream output;
     int opcode = (instr >> 11) & 0x3;
@@ -503,7 +503,7 @@ string thumb_load_addr(ARM_CPU &cpu, uint16_t instr)
     return output.str();
 }
 
-string thumb_sp_rel_load_store(ARM_CPU &cpu, uint16_t instr)
+string thumb_sp_rel_load_store(uint16_t instr)
 {
     stringstream output;
     uint32_t source_dest = (instr >> 8) & 0x7;

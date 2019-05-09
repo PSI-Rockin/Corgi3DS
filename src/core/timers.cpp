@@ -1,5 +1,5 @@
 #include <cstdio>
-#include "interrupt9.hpp"
+#include "arm9/interrupt9.hpp"
 #include "timers.hpp"
 
 Timers::Timers(Interrupt9* int9) : int9(int9)

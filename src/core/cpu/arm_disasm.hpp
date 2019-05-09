@@ -105,14 +105,14 @@ namespace ARM_Disasm
     std::string arm_mrs(uint32_t instr);
     std::string arm_msr(uint32_t instr);
     std::string arm_load_store(ARM_CPU& cpu, uint32_t instr);
-    std::string arm_load_store_halfword(ARM_CPU& cpu, uint32_t instr);
-    std::string arm_load_signed(ARM_CPU& cpu, uint32_t instr);
-    std::string arm_load_store_doubleword(ARM_CPU& cpu, uint32_t instr);
+    std::string arm_load_store_halfword(uint32_t instr);
+    std::string arm_load_signed(uint32_t instr);
+    std::string arm_load_store_doubleword(uint32_t instr);
     std::string arm_load_store_block(uint32_t instr);
     std::string arm_cop_transfer(uint32_t instr);
 
     std::string disasm_thumb(ARM_CPU& cpu, uint16_t instr);
-    std::string thumb_move_shift(ARM_CPU& cpu, uint16_t instr);
+    std::string thumb_move_shift(uint16_t instr);
     std::string thumb_op_imm(uint16_t instr);
     std::string thumb_op_reg(uint16_t instr);
     std::string thumb_alu(uint16_t instr);
@@ -125,7 +125,7 @@ namespace ARM_Disasm
     std::string thumb_push_pop(uint16_t instr);
     std::string thumb_pc_rel_load(ARM_CPU& cpu, uint16_t instr);
     std::string thumb_load_addr(ARM_CPU& cpu, uint16_t instr);
-    std::string thumb_sp_rel_load_store(ARM_CPU& cpu, uint16_t instr);
+    std::string thumb_sp_rel_load_store(uint16_t instr);
     std::string thumb_offset_sp(uint16_t instr);
     std::string thumb_extend_op(uint16_t instr);
     std::string thumb_branch(ARM_CPU& cpu, uint16_t instr);

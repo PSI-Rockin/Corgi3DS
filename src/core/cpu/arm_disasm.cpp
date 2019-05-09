@@ -1,7 +1,7 @@
 #include <sstream>
 #include "arm_disasm.hpp"
 #include "arm.hpp"
-#include "rotr.hpp"
+#include "../common/common.hpp"
 
 using namespace std;
 
@@ -208,13 +208,13 @@ string disasm_arm(ARM_CPU& cpu, uint32_t instr)
             return arm_load_store(cpu, instr);
         case ARM_LOAD_HALFWORD:
         case ARM_STORE_HALFWORD:
-            return arm_load_store_halfword(cpu, instr);
+            return arm_load_store_halfword(instr);
         case ARM_LOAD_SIGNED_BYTE:
         case ARM_LOAD_SIGNED_HALFWORD:
-            return arm_load_signed(cpu, instr);
+            return arm_load_signed(instr);
         case ARM_LOAD_DOUBLEWORD:
         case ARM_STORE_DOUBLEWORD:
-            return arm_load_store_doubleword(cpu, instr);
+            return arm_load_store_doubleword(instr);
         case ARM_LOAD_BLOCK:
         case ARM_STORE_BLOCK:
             return arm_load_store_block(instr);
@@ -792,7 +792,7 @@ string arm_load_store(ARM_CPU& cpu, uint32_t instr)
     return output.str();
 }
 
-string arm_load_store_halfword(ARM_CPU &cpu, uint32_t instr)
+string arm_load_store_halfword(uint32_t instr)
 {
     stringstream output;
     bool is_preindexing = (instr & (1 << 24)) != 0;
@@ -844,7 +844,7 @@ string arm_load_store_halfword(ARM_CPU &cpu, uint32_t instr)
     return output.str();
 }
 
-string arm_load_signed(ARM_CPU &cpu, uint32_t instr)
+string arm_load_signed(uint32_t instr)
 {
     stringstream output;
     bool is_preindexing = (instr & (1 << 24)) != 0;
@@ -890,13 +890,12 @@ string arm_load_signed(ARM_CPU &cpu, uint32_t instr)
     return output.str();
 }
 
-string arm_load_store_doubleword(ARM_CPU &cpu, uint32_t instr)
+string arm_load_store_doubleword(uint32_t instr)
 {
     stringstream output;
     bool pre_indexing = instr & (1 << 24);
     bool add_offset = instr & (1 << 23);
     bool is_imm_offset = instr & (1 << 22);
-    bool write_back = instr & (1 << 21);
 
     uint32_t base = (instr >> 16) & 0xF;
     uint32_t reg = (instr >> 12) & 0xF;

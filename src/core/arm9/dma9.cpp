@@ -2,7 +2,7 @@
 #include <cstdlib>
 #include <cstring>
 #include "dma9.hpp"
-#include "emulator.hpp"
+#include "../emulator.hpp"
 
 DMA9::DMA9(Emulator* e) : e(e)
 {

@@ -1,17 +1,21 @@
 #ifndef EMULATOR_HPP
 #define EMULATOR_HPP
 #include <cstdint>
-#include "aes.hpp"
-#include "arm.hpp"
-#include "cp15.hpp"
-#include "dma9.hpp"
-#include "emmc.hpp"
-#include "gpu.hpp"
-#include "interrupt9.hpp"
-#include "mpcore_pmr.hpp"
+#include "arm9/aes.hpp"
+#include "arm9/dma9.hpp"
+#include "arm9/emmc.hpp"
+#include "arm9/interrupt9.hpp"
+#include "arm9/rsa.hpp"
+#include "arm9/sha.hpp"
+
+#include "arm11/gpu.hpp"
+#include "arm11/mpcore_pmr.hpp"
+
+#include "cpu/arm.hpp"
+#include "cpu/cp15.hpp"
+
+#include "i2c.hpp"
 #include "pxi.hpp"
-#include "rsa.hpp"
-#include "sha.hpp"
 #include "timers.hpp"
 
 class Emulator
@@ -26,12 +30,13 @@ class Emulator
         uint8_t* axi_RAM;
         uint8_t* fcram;
 
-        CP15 arm9_cp15, sys_cp15, app_cp15;
-        AES aes;
         ARM_CPU arm9, arm11;
+        CP15 arm9_cp15, app_cp15, sys_cp15;
+        AES aes;
         DMA9 dma9;
         EMMC emmc;
         GPU gpu;
+        I2C i2c;
         Interrupt9 int9;
         MPCore_PMR mpcore_pmr;
         PXI pxi;

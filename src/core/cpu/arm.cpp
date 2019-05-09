@@ -2,7 +2,7 @@
 #include "arm.hpp"
 #include "arm_disasm.hpp"
 #include "arm_interpret.hpp"
-#include "emulator.hpp"
+#include "../emulator.hpp"
 
 uint32_t PSR_Flags::get()
 {
@@ -127,11 +127,8 @@ void ARM_CPU::print_state()
 
 void ARM_CPU::jp(uint32_t addr, bool change_thumb_state)
 {
-    //if (addr == 0x080406AC)
+    //if (addr == 0x8015F48)
         //can_disassemble = true;
-
-    //if (addr == 0x804c108 || addr == 0x8007FDC)
-        //print_state();
     gpr[15] = addr;
 
     if (change_thumb_state)
@@ -372,7 +369,6 @@ uint16_t ARM_CPU::read16(uint32_t addr)
 
 uint32_t ARM_CPU::read32(uint32_t addr)
 {
-    uint32_t ptr = *(uint32_t*)&cp15->DTCM[0x9C + 0x24];
     if (cp15)
     {
         if (addr < cp15->itcm_size)
@@ -534,7 +530,7 @@ void ARM_CPU::adc(uint32_t destination, uint32_t source, uint32_t operand, bool 
 
 void ARM_CPU::sbc(uint32_t destination, uint32_t source, uint32_t operand, bool set_condition_codes)
 {
-    int borrow = (CPSR.carry) ? 0 : 1;
+    unsigned int borrow = (CPSR.carry) ? 0 : 1;
     sub(destination, source, operand + borrow, set_condition_codes);
     if (set_condition_codes)
     {

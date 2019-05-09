@@ -5,10 +5,10 @@
 
 Emulator::Emulator() :
     arm9(this, 9, &arm9_cp15),
-    arm11(this, 11, &sys_cp15),
+    arm11(this, 11, &app_cp15),
     arm9_cp15(0, &arm9),
-    sys_cp15(0, &arm11),
-    app_cp15(1, &arm11),
+    app_cp15(0, &arm11),
+    sys_cp15(1, &arm11),
     dma9(this),
     emmc(&int9),
     int9(&arm9),
@@ -45,6 +45,7 @@ void Emulator::reset()
     HID_PAD = 0xFFF;
 
     gpu.reset();
+    i2c.reset();
 
     aes.reset();
     emmc.reset();
@@ -55,6 +56,7 @@ void Emulator::reset()
 
 void Emulator::run()
 {
+    i2c.update_time();
     for (int i = 0; i < 200000; i++)
     {
         arm9.run();
@@ -104,16 +106,10 @@ uint8_t Emulator::arm9_read8(uint32_t addr)
         return rsa.read8(addr);
 
     if (addr >= 0x10144000 && addr < 0x10145000)
-    {
-        printf("[A9 I2C] Unrecognized read8 $%08X\n", addr);
-        return 0;
-    }
+        return i2c.read8(addr);
 
     if (addr >= 0x10148000 && addr < 0x10149000)
-    {
-        printf("[A9 I2C] Unrecognized read8 $%08X\n", addr);
-        return 0;
-    }
+        return i2c.read8(addr);
 
     if (addr >= 0x10160000 && addr < 0x10161000)
     {
@@ -122,10 +118,7 @@ uint8_t Emulator::arm9_read8(uint32_t addr)
     }
 
     if (addr >= 0x10161000 && addr < 0x10162000)
-    {
-        printf("[A9 I2C] Unrecognized read8 $%08X\n", addr);
-        return 0;
-    }
+        return i2c.read8(addr);
 
     if (addr >= 0x18000000 && addr < 0x18600000)
         return gpu.read_vram<uint8_t>(addr);
@@ -281,7 +274,7 @@ void Emulator::arm9_write8(uint32_t addr, uint8_t value)
     }
     if (addr >= 0x10144000 && addr < 0x10145000)
     {
-        printf("[A9 I2C] Unrecognized write8 $%08X: $%02X\n", addr, value);
+        i2c.write8(addr, value);
         return;
     }
     if (addr >= 0x10160000 && addr < 0x10170000)
@@ -298,8 +291,8 @@ void Emulator::arm9_write8(uint32_t addr, uint8_t value)
     {
         uint32_t sync = pxi.read_sync9();
         int shift = (addr & 0x3) * 8;
-        int mask = ~(0xFF * shift);
-        sync &= ~mask;
+        int mask = ~(0xFF << shift);
+        sync &= mask;
         pxi.write_sync9(sync | (value << shift));
         return;
     }
@@ -423,6 +416,11 @@ void Emulator::arm9_write32(uint32_t addr, uint32_t value)
         dma9.write32_ndma(addr, value);
         return;
     }
+    if (addr >= 0x10006000 && addr < 0x10007000)
+    {
+        emmc.write32(addr, value);
+        return;
+    }
     if (addr >= 0x10009000 && addr < 0x1000A000)
     {
         aes.write32(addr, value);
@@ -450,7 +448,8 @@ void Emulator::arm9_write32(uint32_t addr, uint32_t value)
         return;
     }
 
-    //No clue??? boot9strap's hacked firmware writes here
+    //B9S writes here to cause a data abort during boot9 exec, which allows it to dump the boot ROMs.
+    //Data aborts not implemented yet, so just ignore
     if (addr >= 0xC0000000 && addr < 0xC0000200)
     {
         return;
@@ -485,20 +484,14 @@ uint8_t Emulator::arm11_read8(uint32_t addr)
     if (addr >= 0x1FF80000 && addr < 0x20000000)
         return axi_RAM[addr & 0x7FFFF];
     if (addr >= 0x10144000 && addr < 0x10145000)
-    {
-        printf("[I2C] Unrecognized read8 $%08X\n", addr);
-        return 0;
-    }
+        return i2c.read8(addr);
     if (addr >= 0x10147000 && addr < 0x10148000)
     {
         printf("[GPIO] Unrecognized read8 $%08X\n", addr);
         return 0;
     }
     if (addr >= 0x10161000 && addr < 0x10162000)
-    {
-        printf("[I2C] Unrecognized read8 $%08X\n", addr);
-        return 0;
-    }
+        return i2c.read8(addr);
     if (addr >= 0x17E00000 && addr < 0x17E02000)
         return mpcore_pmr.read8(addr);
     switch (addr)
@@ -594,12 +587,12 @@ void Emulator::arm11_write8(uint32_t addr, uint8_t value)
 
     if (addr >= 0x10144000 && addr < 0x10145000)
     {
-        printf("[I2C] Unrecognized write8 $%08X: $%02X\n", addr, value);
+        i2c.write8(addr, value);
         return;
     }
     if (addr >= 0x10161000 && addr < 0x10162000)
     {
-        printf("[I2C] Unrecognized write8 $%08X: $%02X\n", addr, value);
+        i2c.write8(addr, value);
         return;
     }
 

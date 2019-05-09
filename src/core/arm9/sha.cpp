@@ -1,8 +1,7 @@
 #include <cstdio>
 #include <cstdlib>
-#include "bswp.hpp"
+#include "../common/common.hpp"
 #include "sha.hpp"
-#include "rotr.hpp"
 
 const static uint32_t k_1[4] =
 {
@@ -148,7 +147,6 @@ void SHA::write_fifo(uint32_t value)
         std::queue<uint32_t> empty;
         read_fifo.swap(empty);
     }
-    printf("[SHA] Write FIFO: $%08X (%d)\n", value, in_fifo.size());
     in_fifo.push(value);
     read_fifo.push(value);
     message_len++;
@@ -181,7 +179,6 @@ void SHA::do_sha256(bool final_round)
 {
     if (final_round)
     {
-        printf("[SHA] SHA-256 final round: %d\n", message_len);
         int round_size = in_fifo.size();
         for (int i = 0; i < round_size; i++)
         {
@@ -241,7 +238,6 @@ void SHA::do_sha1(bool final_round)
 {
     if (final_round)
     {
-        printf("[SHA] SHA-1 final round: %d\n", message_len);
         int round_size = in_fifo.size();
         for (int i = 0; i < round_size; i++)
         {

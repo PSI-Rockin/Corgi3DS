@@ -7,6 +7,7 @@
 #define ISTAT_CMDEND 0x1
 #define ISTAT_DATAEND 0x4
 #define ISTAT_RXRDY 0x01000000
+#define ISTAT_TXRQ 0x02000000
 
 EMMC::EMMC(Interrupt9* int9) : int9(int9)
 {
@@ -45,6 +46,7 @@ void EMMC::reset()
 
     sd_data32.rd32rdy_irq_pending = false;
     sd_data32.tx32rq_irq_pending = false;
+    sd_write_protected = false;
 
     memset(regsd_status, 0, 64);
     memset(regscr, 0, 8);
@@ -54,13 +56,13 @@ void EMMC::reset()
 
 bool EMMC::mount_nand(std::string file_name)
 {
-    nand.open(file_name, std::ios::binary);
+    nand.open(file_name, std::ios::binary | std::ios::in | std::ios::out);
     return nand.is_open();
 }
 
 bool EMMC::mount_sd(std::string file_name)
 {
-    sd.open(file_name, std::ios::binary);
+    sd.open(file_name, std::ios::binary | std::ios::in | std::ios::out);
     return sd.is_open();
 }
 
@@ -93,6 +95,8 @@ uint16_t EMMC::read16(uint32_t addr)
         case 0x1000601C:
             reg = (istat & 0xFFFF);
             reg |= 1 << 5;
+            if (!nand_selected())
+                reg |= (!sd_write_protected) << 7;
             printf("[EMMC] Read ISTAT_L: $%04X\n", reg);
             break;
         case 0x1000601E:
@@ -227,6 +231,18 @@ void EMMC::write16(uint32_t addr, uint16_t value)
     }
 }
 
+void EMMC::write32(uint32_t addr, uint32_t value)
+{
+    switch (addr)
+    {
+        case 0x1000610C:
+            write_fifo32(value);
+            return;
+        default:
+            printf("[EMMC] Unrecognized write32 $%08X: $%08X\n", addr, value);
+    }
+}
+
 void EMMC::send_cmd(int command)
 {
     printf("[EMMC] CMD%d\n", command);
@@ -298,8 +314,6 @@ void EMMC::send_cmd(int command)
                 cur_transfer_drive = &nand;
             else
                 cur_transfer_drive = &sd;
-            //if (argument == 0x3AF00000)
-                //exit(1);
             transfer_start_addr = argument;
             state = MMC_Transfer;
             response[0] = get_r1_reply();
@@ -308,19 +322,42 @@ void EMMC::send_cmd(int command)
             transfer_blocks = data_blocks;
             transfer_size = data_block_len;
             block_transfer = true;
-            printf("[EMMC] Transfer multiple blocks (start: $%08X blocks: $%08X)\n", argument, data_blocks);
+            printf("[EMMC] Read multiple blocks (start: $%08X blocks: $%08X)\n", argument, data_blocks);
             printf("Reading from %s\n", (nand_selected()) ? "NAND" : "SD");
 
             if (cur_transfer_drive->eof())
-            {
                 cur_transfer_drive->clear();
-            }
 
             cur_transfer_drive->seekg(transfer_start_addr, std::ios::beg);
             cur_transfer_drive->read((char*)&nand_block, transfer_size);
 
             transfer_buffer = (uint8_t*)nand_block;
             data_ready();
+            command_end();
+            break;
+        case 25:
+            if (nand_selected())
+                cur_transfer_drive = &nand;
+            else
+                cur_transfer_drive = &sd;
+            transfer_start_addr = argument;
+            state = MMC_Transfer;
+            response[0] = get_r1_reply();
+            state = MMC_Receive;
+
+            transfer_pos = 0;
+            transfer_blocks = data_blocks;
+            transfer_size = data_block_len;
+            block_transfer = true;
+            printf("[EMMC] Write multiple blocks (start: $%08X blocks: $%08X)\n", argument, data_blocks);
+
+            if (cur_transfer_drive->eof())
+                cur_transfer_drive->clear();
+
+            cur_transfer_drive->seekp(transfer_start_addr, std::ios::beg);
+            transfer_buffer = (uint8_t*)nand_block;
+
+            write_ready();
             command_end();
             break;
         case 55:
@@ -416,8 +453,16 @@ void EMMC::command_end()
 
 void EMMC::data_ready()
 {
+    sd_data32.tx32rq_irq_pending = false;
     sd_data32.rd32rdy_irq_pending = true;
     set_istat(ISTAT_RXRDY);
+}
+
+void EMMC::write_ready()
+{
+    sd_data32.rd32rdy_irq_pending = false;
+    //sd_data32.tx32rq_irq_pending = true;
+    set_istat(ISTAT_TXRQ);
 }
 
 void EMMC::set_istat(uint32_t field)
@@ -480,6 +525,40 @@ uint32_t EMMC::read_fifo32()
     return 0;
 }
 
+void EMMC::write_fifo32(uint32_t value)
+{
+    if (transfer_size)
+    {
+        *(uint32_t*)&transfer_buffer[transfer_pos] = value;
+        printf("[EMMC] Write FIFO32: $%08X\n", value);
+        transfer_pos += 4;
+        transfer_size -= 4;
+
+        if (!transfer_size)
+        {
+            write_ready();
+            transfer_pos = 0;
+            cur_transfer_drive->write((char*)transfer_buffer, data_block_len);
+            if (block_transfer)
+            {
+                transfer_blocks--;
+                if (!transfer_blocks)
+                {
+                    transfer_end();
+                    cur_transfer_drive->flush();
+                }
+                else
+                    transfer_size = data_block_len;
+            }
+            else
+            {
+                transfer_end();
+                cur_transfer_drive->flush();
+            }
+        }
+    }
+}
+
 void EMMC::transfer_end()
 {
     transfer_buffer = nullptr;
@@ -494,6 +573,9 @@ void EMMC::transfer_end()
             state = MMC_Transfer;
             break;
         case MMC_Transfer:
+            state = MMC_Standby;
+            break;
+        default:
             state = MMC_Standby;
             break;
     }

@@ -25,6 +25,8 @@ void CP15::reset(bool has_tcm)
 
 uint32_t CP15::mrc(int operation_mode, int CP_reg, int coprocessor_info, int coprocessor_operand)
 {
+    //Don't know if operation mode is used for anything. Let's just keep it around for now
+    (void)operation_mode;
     uint16_t op = (CP_reg << 8) | (coprocessor_operand << 4) | coprocessor_info;
     switch (op)
     {
@@ -38,6 +40,8 @@ uint32_t CP15::mrc(int operation_mode, int CP_reg, int coprocessor_info, int cop
 
 void CP15::mcr(int operation_mode, int CP_reg, int coprocessor_info, int coprocessor_operand, uint32_t value)
 {
+    (void)operation_mode;
+    (void)value;
     uint16_t op = (CP_reg << 8) | (coprocessor_operand << 4) | coprocessor_info;
     switch (op)
     {

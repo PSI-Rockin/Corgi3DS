@@ -1,8 +1,8 @@
 #include <cstdio>
-#include "arm.hpp"
+#include "../cpu/arm.hpp"
 #include "mpcore_pmr.hpp"
 
-MPCore_PMR::MPCore_PMR(ARM_CPU* syscore) : syscore(syscore)
+MPCore_PMR::MPCore_PMR(ARM_CPU* appcore) : appcore(appcore)
 {
 
 }
@@ -19,7 +19,7 @@ void MPCore_PMR::assert_hw_irq(int id)
     int bit = id & 0x1F;
 
     hw_int_pending[index] |= 1 << bit;
-    set_int_signal(syscore);
+    set_int_signal(appcore);
 }
 
 uint8_t MPCore_PMR::read8(uint32_t addr)
@@ -61,13 +61,13 @@ void MPCore_PMR::write32(uint32_t addr, uint32_t value)
     if (addr >= 0x17E01100 && addr < 0x17E01120)
     {
         hw_int_mask[(addr / 4) & 0x7] = value;
-        set_int_signal(syscore);
+        set_int_signal(appcore);
         return;
     }
     if (addr >= 0x17E01200 && addr < 0x17E01220)
     {
         hw_int_pending[(addr / 4) & 0x7] &= ~value;
-        set_int_signal(syscore);
+        set_int_signal(appcore);
         return;
     }
     switch (addr)
@@ -79,7 +79,7 @@ void MPCore_PMR::write32(uint32_t addr, uint32_t value)
             int bit = value & 0x1F;
             hw_int_pending[index] &= ~(1 << bit);
             if (value == irq_cause)
-                set_int_signal(syscore);
+                set_int_signal(appcore);
         }
             return;
     }

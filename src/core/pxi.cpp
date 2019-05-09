@@ -1,6 +1,6 @@
 #include <cstdio>
-#include "mpcore_pmr.hpp"
-#include "interrupt9.hpp"
+#include "arm11/mpcore_pmr.hpp"
+#include "arm9/interrupt9.hpp"
 #include "pxi.hpp"
 
 PXI::PXI(MPCore_PMR* mpcore, Interrupt9* int9) : mpcore(mpcore), int9(int9)

@@ -2,7 +2,7 @@
 #include <cstring>
 #include <cstdlib>
 #include "gpu.hpp"
-#include "bswp.hpp"
+#include "../common/common.hpp"
 
 GPU::GPU()
 {
@@ -31,6 +31,8 @@ void GPU::reset()
 
     memset(&framebuffers, 0, sizeof(framebuffers));
     memset(memfill, 0, sizeof(memfill));
+    memset(top_screen, 0, 240 * 400 * 4);
+    memset(bottom_screen, 0, 240 * 320 * 4);
 }
 
 void GPU::render_frame()
@@ -124,7 +126,7 @@ void GPU::write32(uint32_t addr, uint32_t value)
                 if (value & 0x1)
                 {
                     //TODO: Is the end region inclusive or exclusive? This code assumes exclusive
-                    for (int i = memfill[index].start; i < memfill[index].end; i++)
+                    for (uint32_t i = memfill[index].start; i < memfill[index].end; i++)
                     {
                         switch (memfill[index].fill_width)
                         {

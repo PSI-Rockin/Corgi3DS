@@ -29,12 +29,13 @@ enum MMC_State
 class EMMC
 {
     private:
-        std::ifstream nand, sd;
-        std::ifstream* cur_transfer_drive;
+        std::fstream nand, sd;
+        std::fstream* cur_transfer_drive;
         Interrupt9* int9;
         bool app_command;
         uint16_t port_select;
         uint32_t istat, imask;
+        bool sd_write_protected;
 
         SD_DATA32_IRQ sd_data32;
 
@@ -73,6 +74,7 @@ class EMMC
 
         uint16_t read_fifo();
         uint32_t read_fifo32();
+        void write_fifo32(uint32_t value);
 
         bool nand_selected();
         uint32_t get_csr();
@@ -81,6 +83,7 @@ class EMMC
         void command_end();
         void transfer_end();
         void data_ready();
+        void write_ready();
         void set_istat(uint32_t field);
     public:
         EMMC(Interrupt9* int9);
@@ -94,6 +97,7 @@ class EMMC
         uint16_t read16(uint32_t addr);
         uint32_t read32(uint32_t addr);
         void write16(uint32_t addr, uint16_t value);
+        void write32(uint32_t addr, uint32_t value);
 };
 
 bool inline EMMC::nand_selected()

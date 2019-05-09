@@ -1,6 +1,6 @@
 #include <fstream>
 #include <QApplication>
-#include "emulator.hpp"
+#include "../core/emulator.hpp"
 #include "emuwindow.hpp"
 
 using namespace std;

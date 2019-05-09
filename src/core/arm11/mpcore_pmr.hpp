@@ -7,13 +7,13 @@ class ARM_CPU;
 class MPCore_PMR
 {
     private:
-        ARM_CPU* syscore, *appcore;
+        ARM_CPU* appcore;
         uint32_t irq_cause;
         uint32_t hw_int_mask[8], hw_int_pending[8];
 
         void set_int_signal(ARM_CPU* core);
     public:
-        MPCore_PMR(ARM_CPU* syscore);
+        MPCore_PMR(ARM_CPU* appcore);
 
         void reset();
         void assert_hw_irq(int id);

@@ -2,8 +2,7 @@
 #include <cstring>
 #include <cstdlib>
 #include "aes.hpp"
-#include "bswp.hpp"
-#include "rotr.hpp"
+#include "../common/common.hpp"
 
 const static uint8_t key_const[] = {0x1F, 0xF9, 0xE9, 0xAA, 0xC5, 0xFE, 0x04, 0x08, 0x02, 0x45,
                                      0x91, 0xDC, 0x5D, 0x52, 0x76, 0x8A};

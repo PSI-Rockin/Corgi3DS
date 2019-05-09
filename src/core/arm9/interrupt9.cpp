@@ -1,5 +1,5 @@
 #include <cstdio>
-#include "arm.hpp"
+#include "../cpu/arm.hpp"
 #include "interrupt9.hpp"
 
 Interrupt9::Interrupt9(ARM_CPU* arm9) : arm9(arm9)

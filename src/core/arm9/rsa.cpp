@@ -2,7 +2,7 @@
 #include <cstring>
 #include <cstdlib>
 #include <sstream>
-#include "bswp.hpp"
+#include "../common/common.hpp"
 #include "rsa.hpp"
 
 RSA::RSA()

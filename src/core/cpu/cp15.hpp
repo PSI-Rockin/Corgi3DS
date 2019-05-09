@@ -7,8 +7,8 @@ class ARM_CPU;
 class CP15
 {
     private:
-        ARM_CPU* cpu;
         int id;
+        ARM_CPU* cpu;
     public:
         uint8_t ITCM[1024 * 32], DTCM[1024 * 16];
 
