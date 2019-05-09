@@ -16,3 +16,5 @@ Keyboard control:
 * A -> Y
 * Q -> L
 * W -> R
+
+Uses https://github.com/kokke/tiny-AES-c, a public domain AES library.
