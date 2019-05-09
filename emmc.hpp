@@ -45,6 +45,7 @@ class EMMC
 
         uint32_t ocr_reg;
         uint32_t regcsd[4];
+        uint8_t nand_csd[16];
         uint32_t nand_cid[4], sd_cid[4];
 
         uint8_t regsd_status[64];

@@ -926,7 +926,7 @@ void arm_load_doubleword(ARM_CPU &cpu, uint32_t instr)
         cpu.set_register(dest + 1, cpu.read32(address + 4));
 
         if (write_back)
-            cpu.set_register(base, address + 4);
+            cpu.set_register(base, address);
     }
     else
     {
@@ -966,21 +966,25 @@ void arm_store_doubleword(ARM_CPU &cpu, uint32_t instr)
         if (add_offset)
             address += offset;
         else
-        {
             address -= offset;
-            //exit(1);
-        }
 
         cpu.write32(address, cpu.get_register(source));
         cpu.write32(address + 4, cpu.get_register(source + 1));
 
         if (write_back)
-            cpu.set_register(base, address + 4);
+            cpu.set_register(base, address);
     }
     else
     {
-        printf("STRD postindexing not supported");
-        exit(1);
+        cpu.write32(address, cpu.get_register(source));
+        cpu.write32(address + 4, cpu.get_register(source + 1));
+
+        if (add_offset)
+            address += offset;
+        else
+            address -= offset;
+
+        cpu.set_register(base, address);
     }
 }
 

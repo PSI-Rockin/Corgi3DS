@@ -80,6 +80,8 @@ int main(int argc, char** argv)
     while (emuwindow->is_running())
     {
         a.processEvents();
+        uint16_t pad = emuwindow->get_pad_state();
+        e.set_pad(pad);
         e.run();
         emuwindow->draw(e.get_top_buffer(), e.get_bottom_buffer());
     }

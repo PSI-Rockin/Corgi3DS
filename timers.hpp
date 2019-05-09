@@ -23,6 +23,8 @@ class Timers
         uint16_t get_control(int index);
         void set_counter(int index, uint16_t value);
         void set_control(int index, uint16_t value);
+
+        void handle_overflow(int index);
     public:
         Timers(Interrupt9* int9);
 

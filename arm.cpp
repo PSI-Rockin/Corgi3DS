@@ -100,7 +100,10 @@ void ARM_CPU::run()
         uint32_t instr = read32(gpr[15] - 4);
         gpr[15] += 4;
         if (can_disassemble)
+        {
             printf("[$%08X] $%08X  %s\n", gpr[15] - 8, instr, ARM_Disasm::disasm_arm(*this, instr).c_str());
+            //print_state();
+        }
         ARM_Interpreter::interpret_arm(*this, instr);
     }
 
@@ -124,6 +127,11 @@ void ARM_CPU::print_state()
 
 void ARM_CPU::jp(uint32_t addr, bool change_thumb_state)
 {
+    //if (addr == 0x080406AC)
+        //can_disassemble = true;
+
+    //if (addr == 0x804c108 || addr == 0x8007FDC)
+        //print_state();
     gpr[15] = addr;
 
     if (change_thumb_state)
@@ -421,6 +429,8 @@ void ARM_CPU::write16(uint32_t addr, uint16_t value)
 
 void ARM_CPU::write32(uint32_t addr, uint32_t value)
 {
+    if (addr == 0x08077438 + 4)
+        printf("blorp $%08X\n", value);
     if (cp15)
     {
         if (addr < cp15->itcm_size)

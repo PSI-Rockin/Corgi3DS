@@ -25,6 +25,9 @@ EMMC::~EMMC()
 {
     if (nand.is_open())
         nand.close();
+
+    if (sd.is_open())
+        sd.close();
 }
 
 void EMMC::reset()
@@ -291,10 +294,12 @@ void EMMC::send_cmd(int command)
             command_end();
             break;
         case 18:
-            if (port_select)
+            if (nand_selected())
                 cur_transfer_drive = &nand;
             else
                 cur_transfer_drive = &sd;
+            //if (argument == 0x3AF00000)
+                //exit(1);
             transfer_start_addr = argument;
             state = MMC_Transfer;
             response[0] = get_r1_reply();
@@ -304,8 +309,14 @@ void EMMC::send_cmd(int command)
             transfer_size = data_block_len;
             block_transfer = true;
             printf("[EMMC] Transfer multiple blocks (start: $%08X blocks: $%08X)\n", argument, data_blocks);
+            printf("Reading from %s\n", (nand_selected()) ? "NAND" : "SD");
 
-            cur_transfer_drive->seekg(transfer_start_addr);
+            if (cur_transfer_drive->eof())
+            {
+                cur_transfer_drive->clear();
+            }
+
+            cur_transfer_drive->seekg(transfer_start_addr, std::ios::beg);
             cur_transfer_drive->read((char*)&nand_block, transfer_size);
 
             transfer_buffer = (uint8_t*)nand_block;
@@ -421,7 +432,6 @@ uint16_t EMMC::read_fifo()
 {
     if (transfer_size)
     {
-        printf("[EMMC] Read FIFO\n");
         uint16_t value = *(uint16_t*)&transfer_buffer[transfer_pos];
         printf("[EMMC] Read FIFO16: $%04X\n", value);
         transfer_pos += 2;
@@ -442,7 +452,7 @@ uint32_t EMMC::read_fifo32()
     if (transfer_size)
     {
         uint32_t value = *(uint32_t*)&transfer_buffer[transfer_pos];
-        printf("[EMMC] Read FIFO32: $%08X\n", value);
+        printf("[EMMC] Read FIFO32: $%08X ($%08X)\n", value, transfer_pos);
         transfer_pos += 4;
         transfer_size -= 4;
 

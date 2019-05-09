@@ -42,6 +42,8 @@ void Emulator::reset()
     app_cp15.reset(false);
     mpcore_pmr.reset();
 
+    HID_PAD = 0xFFF;
+
     gpu.reset();
 
     aes.reset();
@@ -188,7 +190,7 @@ uint16_t Emulator::arm9_read16(uint32_t addr)
         case 0x10008004:
             return pxi.read_cnt9();
         case 0x10146000:
-            return 0x3FF; //bits on = keys not pressed
+            return HID_PAD; //bits on = keys not pressed
     }
 
     printf("[ARM9] Invalid read16 $%08X\n", addr);
@@ -202,6 +204,9 @@ uint32_t Emulator::arm9_read32(uint32_t addr)
 
     if (addr >= 0x08000000 && addr < 0x08100000)
         return *(uint32_t*)&arm9_RAM[addr & 0xFFFFF];
+
+    if (addr >= 0x18000000 && addr < 0x18600000)
+        return gpu.read_vram<uint32_t>(addr);
 
     if (addr >= 0x20000000 && addr < 0x28000000)
         return *(uint32_t*)&fcram[addr & 0x07FFFFFF];
@@ -245,7 +250,7 @@ uint32_t Emulator::arm9_read32(uint32_t addr)
         case 0x10140FFC:
             return 0x1; //bit 1 = New3DS (we're only emulating Old3DS for now)
         case 0x10146000:
-            return 0x3FF;
+            return HID_PAD;
     }
 
     printf("[ARM9] Invalid read32 $%08X\n", addr);
@@ -527,7 +532,7 @@ uint16_t Emulator::arm11_read16(uint32_t addr)
         case 0x10140FFC:
             return 0x1; //Clock multiplier; bit 2 off = 2x
         case 0x10146000:
-            return 0x3FF;
+            return HID_PAD;
         case 0x10163004:
             return pxi.read_cnt11();
     }
@@ -709,4 +714,10 @@ uint8_t* Emulator::get_top_buffer()
 uint8_t* Emulator::get_bottom_buffer()
 {
     return gpu.get_bottom_buffer();
+}
+
+void Emulator::set_pad(uint16_t pad)
+{
+    HID_PAD = ~pad;
+    HID_PAD &= 0xFFF;
 }

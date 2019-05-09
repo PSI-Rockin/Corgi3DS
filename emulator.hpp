@@ -39,6 +39,8 @@ class Emulator
         SHA sha;
         Timers timers;
 
+        uint16_t HID_PAD;
+
         uint8_t sysprot9, sysprot11;
     public:
         Emulator();
@@ -67,6 +69,7 @@ class Emulator
 
         uint8_t* get_top_buffer();
         uint8_t* get_bottom_buffer();
+        void set_pad(uint16_t pad);
 };
 
 #endif // EMULATOR_HPP
