@@ -18,6 +18,8 @@ struct I2C_Device
     bool reg_selected;
 };
 
+class Emulator;
+
 class I2C
 {
     private:
@@ -36,6 +38,7 @@ class I2C
         void write_device(int id, uint8_t device, uint8_t value);
 
         uint8_t read_mcu(uint8_t reg_id);
+        void write_mcu(uint8_t reg_id, uint8_t value);
     public:
         I2C();
 

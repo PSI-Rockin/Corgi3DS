@@ -61,8 +61,8 @@ void GPU::render_fb_pixel(uint8_t *screen, int fb_index, int x, int y)
     switch (screen_fb->color_format)
     {
         case 0:
-            color = bswp32(*(uint32_t*)&vram[start + index]);
-            *(uint32_t*)&screen[index] = color;
+            color = bswp32(*(uint32_t*)&vram[start + (index * 4)]);
+            *(uint32_t*)&screen[index * 4] = color;
             break;
         case 1:
             color = 0xFF000000;

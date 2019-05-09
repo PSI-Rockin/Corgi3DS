@@ -160,6 +160,9 @@ void I2C::write_device(int id, uint8_t device, uint8_t value)
     uint16_t dev = device | (id << 8);
     switch (dev)
     {
+        case 0x14A:
+            write_mcu(devices[id][device].cur_reg, value);
+            break;
         default:
             printf("[I2C%d] Unrecognized write device $%02X ($%02X)\n", id, device, value);
     }
@@ -177,8 +180,34 @@ uint8_t I2C::read_mcu(uint8_t reg_id)
     {
         case 0x0B:
             return 0xFF; //battery percent
+        case 0x0F:
+            return 0x2; //bit 1 = shell state
         default:
             printf("[I2C_MCU] Unrecognized read register $%02X\n", reg_id);
     }
     return 0;
+}
+
+void I2C::write_mcu(uint8_t reg_id, uint8_t value)
+{
+    switch (reg_id)
+    {
+        case 0x20:
+            //Poweroff
+            if (value & 0x1)
+            {
+                printf("[I2C_MCU] Powering off!\n");
+                exit(1);
+            }
+
+            //Reboot
+            if (value & 0x4)
+            {
+                printf("[I2C_MCU] Reboot\n");
+                exit(1);
+            }
+            break;
+        default:
+            printf("[I2C_MCU] Unrecognized write register $%02X\n", reg_id);
+    }
 }

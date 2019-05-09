@@ -148,6 +148,8 @@ uint8_t Emulator::arm9_read8(uint32_t addr)
             return 0; //0=retail, 1=dev
         case 0x10010014:
             return 0;
+        case 0x10141200:
+            return 1;
     }
 
     printf("[ARM9] Invalid read8 $%08X\n", addr);
@@ -238,6 +240,8 @@ uint32_t Emulator::arm9_read32(uint32_t addr)
             return pxi.read_sync9();
         case 0x1000800C:
             return pxi.read_msg9();
+        case 0x10010000:
+            return 0; //Indicates if it's a cold boot
         case 0x101401C0:
             return 0; //SPI control
         case 0x10140FFC:

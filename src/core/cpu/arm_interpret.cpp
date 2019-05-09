@@ -26,12 +26,6 @@ void interpret_arm(ARM_CPU &cpu, uint32_t instr)
         }
     }
 
-    if (cond == 0xF && (instr & 0xFE000000) == 0xFA000000)
-    {
-        arm_blx(cpu, instr);
-        return;
-    }
-
     if (!cpu.meets_condition(cond))
         return;
 
