@@ -22,17 +22,18 @@ void Interrupt9::write_ie(uint32_t value)
 {
     printf("[Int9] IE: $%08X\n", value);
     IE = value;
+    arm9->set_int_signal(IE & IF);
 }
 
 void Interrupt9::write_if(uint32_t value)
 {
     printf("[Int9] IF: $%08X\n", value);
     IF &= ~value;
+    arm9->set_int_signal(IE & IF);
 }
 
 void Interrupt9::assert_irq(int id)
 {
     IF |= 1 << id;
-    if (IE & IF)
-        arm9->int_check();
+    arm9->set_int_signal(IE & IF);
 }

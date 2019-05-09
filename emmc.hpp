@@ -22,13 +22,15 @@ enum MMC_State
     MMC_Standby,
     MMC_Transfer,
     MMC_Data,
-    MMC_Receive
+    MMC_Receive,
+    MMC_Program
 };
 
 class EMMC
 {
     private:
-        std::ifstream nand;
+        std::ifstream nand, sd;
+        std::ifstream* cur_transfer_drive;
         Interrupt9* int9;
         bool app_command;
         uint16_t port_select;
@@ -43,6 +45,7 @@ class EMMC
 
         uint32_t ocr_reg;
         uint32_t regcsd[4];
+        uint32_t nand_cid[4], sd_cid[4];
 
         uint8_t regsd_status[64];
         uint8_t nand_block[1024];
@@ -83,6 +86,8 @@ class EMMC
         ~EMMC();
 
         bool mount_nand(std::string file_name);
+        bool mount_sd(std::string file_name);
+        void load_cid(uint8_t* cid);
         void reset();
 
         uint16_t read16(uint32_t addr);

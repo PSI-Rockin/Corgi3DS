@@ -51,6 +51,7 @@ class ARM_CPU
         uint32_t gpr[16];
         bool halted;
         bool can_disassemble;
+        bool int_pending;
 
         CP15* cp15;
 
@@ -66,6 +67,8 @@ class ARM_CPU
 
         void reset();
         void run();
+        void print_state();
+        int get_id();
 
         uint32_t get_PC();
         PSR_Flags* get_CPSR();
@@ -81,6 +84,7 @@ class ARM_CPU
         void set_register(int id, uint32_t value);
 
         void int_check();
+        void set_int_signal(bool pending);
         void halt();
         void unhalt();
 
@@ -109,8 +113,11 @@ class ARM_CPU
         void mul(uint32_t destination, uint32_t source, uint32_t operand, bool set_condition_codes);
         void bic(uint32_t destination, uint32_t source, uint32_t operand, bool alter_flags);
         void mvn(uint32_t destination, uint32_t operand, bool alter_flags);
-        void mrs(uint32_t instruction);
-        void msr(uint32_t instruction);
+        void mrs(uint32_t instr);
+        void msr(uint32_t instr);
+        void cps(uint32_t instr);
+        void srs(uint32_t instr);
+        void rfe(uint32_t instr);
 
         uint32_t mrc(int coprocessor_id, int operation_mode, int CP_reg,
                      int coprocessor_info, int coprocessor_operand);
@@ -125,6 +132,11 @@ class ARM_CPU
         uint32_t rrx(uint32_t value, bool alter_flags);
         uint32_t rotr32(uint32_t n, unsigned int c, bool alter_flags);
 };
+
+inline int ARM_CPU::get_id()
+{
+    return id;
+}
 
 inline uint32_t ARM_CPU::get_register(int id)
 {

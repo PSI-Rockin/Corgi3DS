@@ -20,8 +20,11 @@ class Emulator
         //ROMs
         uint8_t boot9[1024 * 64], boot11[1024 * 64], otp[256];
 
+        uint8_t twl_consoleid[8];
+
         uint8_t* arm9_RAM;
         uint8_t* axi_RAM;
+        uint8_t* fcram;
 
         CP15 arm9_cp15, sys_cp15, app_cp15;
         AES aes;
@@ -44,8 +47,9 @@ class Emulator
         void reset();
         void run();
 
-        void load_roms(uint8_t* boot9, uint8_t* boot11, uint8_t* otp);
+        void load_roms(uint8_t* boot9, uint8_t* boot11, uint8_t* otp, uint8_t* cid);
         bool mount_nand(std::string file_name);
+        bool mount_sd(std::string file_name);
 
         uint8_t arm9_read8(uint32_t addr);
         uint16_t arm9_read16(uint32_t addr);
@@ -61,7 +65,8 @@ class Emulator
         void arm11_write16(uint32_t addr, uint16_t value);
         void arm11_write32(uint32_t addr, uint32_t value);
 
-        uint8_t* get_buffer();
+        uint8_t* get_top_buffer();
+        uint8_t* get_bottom_buffer();
 };
 
 #endif // EMULATOR_HPP

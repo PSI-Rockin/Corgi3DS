@@ -34,7 +34,7 @@ class AES
         uint8_t KEYSEL;
         uint8_t KEYCNT;
 
-        uint16_t block_count;
+        uint16_t block_count, mac_count;
 
         AES_KeySlot keys[0x40];
         AES_KeySlot* cur_key;
@@ -65,6 +65,7 @@ class AES
         void crypt_ctr();
         void decrypt_cbc();
         void encrypt_cbc();
+        void decrypt_ecb();
     public:
         AES();
 

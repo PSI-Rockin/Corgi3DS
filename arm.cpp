@@ -103,21 +103,27 @@ void ARM_CPU::run()
             printf("[$%08X] $%08X  %s\n", gpr[15] - 8, instr, ARM_Disasm::disasm_arm(*this, instr).c_str());
         ARM_Interpreter::interpret_arm(*this, instr);
     }
+
+    if (int_pending)
+        int_check();
+}
+
+void ARM_CPU::print_state()
+{
+    printf("--PRINTING STATE--\n");
+    for (int i = 0; i < 16; i++)
+    {
+        printf("%s:$%08X", get_reg_name(i).c_str(), gpr[i]);
+        if (i % 4 == 3)
+            printf("\n");
+        else
+            printf("\t");
+    }
+    printf("CPSR:$%08X\n", CPSR.get());
 }
 
 void ARM_CPU::jp(uint32_t addr, bool change_thumb_state)
 {
-    if (addr == 0xFFFF8D50)
-    {
-        printf("[ARM9] Hit find_nand_partition!\n");
-        //can_disassemble = true;
-    }
-    if (addr == 0xFFFF83A4)
-    {
-        printf("[ARM9] Firmware boot failed\n");
-        exit(1);
-        can_disassemble = false;
-    }
     gpr[15] = addr;
 
     if (change_thumb_state)
@@ -138,8 +144,7 @@ void ARM_CPU::jp(uint32_t addr, bool change_thumb_state)
 void ARM_CPU::int_check()
 {
     //printf("[ARM%d] Interrupt check\n", id);
-    unhalt();
-    if (!CPSR.irq_disable)
+    if (!CPSR.irq_disable && int_pending)
     {
         printf("Interrupt!\n");
         uint32_t value = CPSR.get();
@@ -156,6 +161,14 @@ void ARM_CPU::int_check()
         else
             jp(0x18, true);
     }
+}
+
+void ARM_CPU::set_int_signal(bool pending)
+{
+    int_pending = pending;
+    if (int_pending)
+        unhalt();
+    int_check();
 }
 
 void ARM_CPU::halt()
@@ -219,7 +232,8 @@ void ARM_CPU::update_reg_mode(PSR_MODE mode)
                 std::swap(gpr[14], LR_und);
                 break;
             default:
-                throw "Unrecognized PSR mode";
+                printf("[ARM] Unrecognized PSR mode %d\n", CPSR.mode);
+                exit(1);
         }
 
         switch (mode)
@@ -249,7 +263,8 @@ void ARM_CPU::update_reg_mode(PSR_MODE mode)
                 std::swap(gpr[14], LR_und);
                 break;
             default:
-                throw "Unrecognized PSR mode";
+                printf("[ARM] Unrecognized PSR mode %d\n", CPSR.mode);
+                exit(1);
         }
     }
 }
@@ -311,8 +326,8 @@ bool ARM_CPU::meets_condition(int cond)
             //AL - always
             return true;
         case 0xF:
-            //Not supposed to happen - ignore if it does
-            return false;
+            //Some instructions have the 0xF condition required, so let them pass
+            return true;
         default:
             printf("[ARM_CPU] Unrecognized condition %d\n", cond);
             exit(1);
@@ -350,8 +365,6 @@ uint16_t ARM_CPU::read16(uint32_t addr)
 uint32_t ARM_CPU::read32(uint32_t addr)
 {
     uint32_t ptr = *(uint32_t*)&cp15->DTCM[0x9C + 0x24];
-    if (addr == ptr + 0x34)
-        printf("[ARM9] Read EMMC error\n");
     if (cp15)
     {
         if (addr < cp15->itcm_size)
@@ -408,9 +421,6 @@ void ARM_CPU::write16(uint32_t addr, uint16_t value)
 
 void ARM_CPU::write32(uint32_t addr, uint32_t value)
 {
-    uint32_t ptr = *(uint32_t*)&cp15->DTCM[0x9C + 0x24];
-    if (addr == ptr + 0x34)
-        printf("[ARM9] Write EMMC error: $%08X\n", value);
     if (cp15)
     {
         if (addr < cp15->itcm_size)
@@ -596,10 +606,10 @@ void ARM_CPU::mvn(uint32_t destination, uint32_t operand, bool alter_flags)
         set_zero_neg_flags(~operand);
 }
 
-void ARM_CPU::mrs(uint32_t instruction)
+void ARM_CPU::mrs(uint32_t instr)
 {
-    bool using_CPSR = (instruction & (1 << 22)) == 0;
-    uint32_t destination = (instruction >> 12) & 0xF;
+    bool using_CPSR = (instr & (1 << 22)) == 0;
+    uint32_t destination = (instr >> 12) & 0xF;
 
     if (using_CPSR)
     {
@@ -611,10 +621,10 @@ void ARM_CPU::mrs(uint32_t instruction)
     }
 }
 
-void ARM_CPU::msr(uint32_t instruction)
+void ARM_CPU::msr(uint32_t instr)
 {
-    bool is_imm = (instruction & (1 << 25));
-    bool using_CPSR = (instruction & (1 << 22)) == 0;
+    bool is_imm = (instr & (1 << 25));
+    bool using_CPSR = (instr & (1 << 22)) == 0;
 
     PSR_Flags* PSR;
     if (using_CPSR)
@@ -626,18 +636,18 @@ void ARM_CPU::msr(uint32_t instruction)
     uint32_t source;
     if (is_imm)
     {
-        source = instruction & 0xFF;
-        int shift = (instruction & 0xF00) >> 7;
+        source = instr & 0xFF;
+        int shift = (instr & 0xF00) >> 7;
         source = rotr32(source, shift, false);
     }
     else
-        source = get_register(instruction & 0xF);
+        source = get_register(instr & 0xF);
 
     uint32_t bitmask = 0;
-    if (instruction & (1 << 19))
+    if (instr & (1 << 19))
         bitmask |= 0xFF000000;
 
-    if (instruction & (1 << 16))
+    if (instr & (1 << 16))
         bitmask |= 0xFF;
 
     if (CPSR.mode == PSR_USER)
@@ -655,6 +665,142 @@ void ARM_CPU::msr(uint32_t instruction)
         update_reg_mode(new_mode);
     }
     PSR->set(value);
+}
+
+void ARM_CPU::cps(uint32_t instr)
+{
+    PSR_MODE psr_mode = (PSR_MODE)(instr & 0x1F);
+    bool f = (instr >> 6) & 0x1;
+    bool i = (instr >> 7) & 0x1;
+    bool a = (instr >> 8) & 0x1;
+    bool mmod = (instr >> 17) & 0x1;
+    int imod = (instr >> 18) & 0x3;
+
+    if (mmod)
+    {
+        update_reg_mode(psr_mode);
+        CPSR.mode = psr_mode;
+    }
+
+    if (imod == 2)
+    {
+        //TODO: data abort
+        CPSR.fiq_disable &= ~f;
+        CPSR.irq_disable &= ~i;
+    }
+    else if (imod == 3)
+    {
+        CPSR.fiq_disable |= f;
+        CPSR.irq_disable |= i;
+    }
+}
+
+void ARM_CPU::srs(uint32_t instr)
+{
+    bool is_writing_back = instr & (1 << 21);
+    bool is_adding_offset = instr & (1 << 23);
+    bool is_preindexing = instr & (1 << 24);
+
+    PSR_MODE mode = (PSR_MODE)(instr & 0x1F);
+
+    uint32_t saved_LR = gpr[REG_LR];
+    uint32_t saved_PSR = SPSR[CPSR.mode].get();
+
+    PSR_MODE old_mode = CPSR.mode;
+    update_reg_mode(mode);
+    CPSR.mode = mode;
+
+    uint32_t banked_addr = get_register(REG_SP);
+
+    int offset;
+    if (is_adding_offset)
+    {
+        offset = 4;
+
+        if (is_preindexing)
+        {
+            write32(banked_addr + offset, saved_LR);
+            write32(banked_addr + (offset * 2), saved_PSR);
+        }
+        else
+        {
+            write32(banked_addr, saved_LR);
+            write32(banked_addr + offset, saved_PSR);
+        }
+    }
+    else
+    {
+        offset = -4;
+
+        if (is_preindexing)
+        {
+            write32(banked_addr + offset, saved_PSR);
+            write32(banked_addr + (offset * 2), saved_LR);
+        }
+        else
+        {
+            write32(banked_addr, saved_PSR);
+            write32(banked_addr + offset, saved_LR);
+        }
+    }
+
+    if (is_writing_back)
+        set_register(REG_SP, banked_addr + (offset * 2));
+
+    //Restore previous state
+    update_reg_mode(old_mode);
+    CPSR.mode = old_mode;
+}
+
+void ARM_CPU::rfe(uint32_t instr)
+{
+    bool is_writing_back = instr & (1 << 21);
+    bool is_adding_offset = instr & (1 << 23);
+    bool is_preindexing = instr & (1 << 24);
+
+    int base = (instr >> 16) & 0xF;
+
+    uint32_t addr = get_register(base);
+    uint32_t PC, PSR;
+    int offset;
+    if (is_adding_offset)
+    {
+        offset = 4;
+
+        if (is_preindexing)
+        {
+            PC = read32(addr + offset);
+            PSR = read32(addr + (offset * 2));
+        }
+        else
+        {
+            PC = read32(addr);
+            PSR = read32(addr + offset);
+        }
+    }
+    else
+    {
+        offset = -4;
+
+        if (is_preindexing)
+        {
+            PSR = read32(addr + offset);
+            PC = read32(addr + (offset * 2));
+        }
+        else
+        {
+            PSR = read32(addr);
+            PC = read32(addr + offset);
+        }
+    }
+
+    if (is_writing_back)
+        set_register(base, addr + (offset * 2));
+
+    update_reg_mode((PSR_MODE)(PSR & 0x1F));
+    CPSR.set(PSR);
+
+    jp(PC, true);
 }
 
 uint32_t ARM_CPU::mrc(int coprocessor_id, int operation_mode, int CP_reg,
@@ -691,6 +837,15 @@ uint32_t ARM_CPU::lsl(uint32_t value, int shift, bool alter_flags)
             set_zero_neg_flags(value);
         return value;
     }
+    if (shift > 32)
+    {
+        if (alter_flags)
+        {
+            set_zero_neg_flags(0);
+            CPSR.carry = false;
+        }
+        return 0;
+    }
     if (shift > 31)
     {
         if (alter_flags)
@@ -711,6 +866,15 @@ uint32_t ARM_CPU::lsl(uint32_t value, int shift, bool alter_flags)
 
 uint32_t ARM_CPU::lsr(uint32_t value, int shift, bool alter_flags)
 {
+    if (shift > 32)
+    {
+        if (alter_flags)
+        {
+            set_zero_neg_flags(0);
+            CPSR.carry = false;
+        }
+        return 0;
+    }
     if (shift > 31)
         return lsr_32(value, alter_flags);
     uint32_t result = value >> shift;
@@ -776,7 +940,12 @@ uint32_t ARM_CPU::rotr32(uint32_t n, unsigned int c, bool alter_flags)
 {
     const unsigned int mask = 0x1F;
     if (alter_flags && c)
-        CPSR.carry = n & (1 << (c - 1));
+    {
+        if (c & 0x1F)
+            CPSR.carry = n & (1 << (c - 1));
+        else
+            CPSR.carry = n & (1 << 31);
+    }
     c &= mask;
 
     uint32_t result = (n>>c) | (n<<( (-c)&mask ));

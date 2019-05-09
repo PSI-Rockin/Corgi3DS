@@ -44,6 +44,10 @@ void CP15::mcr(int operation_mode, int CP_reg, int coprocessor_info, int coproce
         case 0x704:
             cpu->halt();
             break;
+        case 0x7A4:
+            break;
+        case 0x7E1:
+            break;
         default:
             printf("[CP15] Unrecognized MCR op $%04X\n", op);
     }

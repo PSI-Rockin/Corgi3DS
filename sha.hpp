@@ -10,6 +10,7 @@ struct SHA_CNT_REG
     bool irq0_enable;
     bool out_big_endian;
     uint8_t mode;
+    bool fifo_enable;
     bool irq1_enable;
 };
 
@@ -20,17 +21,20 @@ class SHA
 
         uint32_t hash[8];
 
-        uint32_t messages[64];
+        uint32_t messages[80];
         uint64_t message_len;
 
         std::queue<uint32_t> in_fifo;
+        std::queue<uint32_t> read_fifo;
 
         void reset_hash();
 
         void write_fifo(uint32_t value);
         void do_hash(bool final_round);
         void do_sha256(bool final_round);
+        void do_sha1(bool final_round);
         void _sha256();
+        void _sha1();
     public:
         SHA();
 

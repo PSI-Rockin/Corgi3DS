@@ -30,6 +30,8 @@ class PXI
         PXI_CNT cnt9, cnt11;
 
         std::queue<uint32_t> recv9, recv11;
+
+        uint32_t last_recv9, last_recv11;
     public:
         PXI(MPCore_PMR* mpcore, Interrupt9* int9);
 
@@ -42,6 +44,7 @@ class PXI
         void write_cnt9(uint16_t value);
         void write_cnt11(uint16_t value);
 
+        uint32_t read_msg9();
         uint32_t read_msg11();
 
         void send_to_9(uint32_t value);

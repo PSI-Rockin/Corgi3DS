@@ -9,6 +9,7 @@ Emulator::Emulator() :
     arm9_cp15(0, &arm9),
     sys_cp15(0, &arm11),
     app_cp15(1, &arm11),
+    dma9(this),
     emmc(&int9),
     int9(&arm9),
     mpcore_pmr(&arm11),
@@ -23,6 +24,7 @@ Emulator::~Emulator()
 {
     delete[] arm9_RAM;
     delete[] axi_RAM;
+    delete[] fcram;
 }
 
 void Emulator::reset()
@@ -31,6 +33,8 @@ void Emulator::reset()
         arm9_RAM = new uint8_t[1024 * 1024];
     if (!axi_RAM)
         axi_RAM = new uint8_t[1024 * 512];
+    if (!fcram)
+        fcram = new uint8_t[1024 * 1024 * 128];
     arm9.reset();
     arm11.reset();
     arm9_cp15.reset(true);
@@ -53,15 +57,18 @@ void Emulator::run()
     {
         arm9.run();
         arm11.run();
+        dma9.run_xdma();
         timers.run();
     }
+    gpu.render_frame();
 }
 
-void Emulator::load_roms(uint8_t *boot9, uint8_t *boot11, uint8_t *otp)
+void Emulator::load_roms(uint8_t *boot9, uint8_t *boot11, uint8_t *otp, uint8_t* cid)
 {
     memcpy(this->boot9, boot9, 1024 * 64);
     memcpy(this->boot11, boot11, 1024 * 64);
     memcpy(this->otp, otp, 256);
+    emmc.load_cid(cid);
 }
 
 bool Emulator::mount_nand(std::string file_name)
@@ -69,10 +76,24 @@ bool Emulator::mount_nand(std::string file_name)
     return emmc.mount_nand(file_name);
 }
 
+bool Emulator::mount_sd(std::string file_name)
+{
+    return emmc.mount_sd(file_name);
+}
+
 uint8_t Emulator::arm9_read8(uint32_t addr)
 {
     if (addr >= 0xFFFF0000)
         return boot9[addr & 0xFFFF];
+
+    if (addr >= 0x08000000 && addr < 0x08100000)
+        return arm9_RAM[addr & 0xFFFFF];
+
+    if (addr >= 0x20000000 && addr < 0x28000000)
+        return fcram[addr & 0x07FFFFFF];
+
+    if (addr >= 0x18000000 && addr < 0x18600000)
+        return gpu.read_vram<uint8_t>(addr);
 
     if (addr >= 0x1000A040 && addr < 0x1000A080)
         return sha.read_hash(addr);
@@ -80,11 +101,35 @@ uint8_t Emulator::arm9_read8(uint32_t addr)
     if (addr >= 0x1000B000 && addr < 0x1000C000)
         return rsa.read8(addr);
 
+    if (addr >= 0x10144000 && addr < 0x10145000)
+    {
+        printf("[A9 I2C] Unrecognized read8 $%08X\n", addr);
+        return 0;
+    }
+
+    if (addr >= 0x10148000 && addr < 0x10149000)
+    {
+        printf("[A9 I2C] Unrecognized read8 $%08X\n", addr);
+        return 0;
+    }
+
     if (addr >= 0x10160000 && addr < 0x10161000)
     {
         printf("[SPI2] Unrecognized read8 $%08X\n", addr);
         return 0;
     }
+
+    if (addr >= 0x10161000 && addr < 0x10162000)
+    {
+        printf("[A9 I2C] Unrecognized read8 $%08X\n", addr);
+        return 0;
+    }
+
+    if (addr >= 0x18000000 && addr < 0x18600000)
+        return gpu.read_vram<uint8_t>(addr);
+
+    if (addr >= 0x1FF80000 && addr < 0x20000000)
+        return axi_RAM[addr & 0x7FFFF];
 
     switch (addr)
     {
@@ -98,13 +143,20 @@ uint8_t Emulator::arm9_read8(uint32_t addr)
             return 0; //AES related
         case 0x10000010:
             return 1; //Cartridge not inserted
-        case 0x10010010:
-            return 0; //0=retail, 1=dev
+        case 0x10008000:
+            return pxi.read_sync9() & 0xFF;
+        case 0x10008003:
+            return pxi.read_sync9() >> 24;
         case 0x10009011:
             return aes.read_keycnt();
+        case 0x10010010:
+            return 0; //0=retail, 1=dev
+        case 0x10010014:
+            return 0;
     }
 
     printf("[ARM9] Invalid read8 $%08X\n", addr);
+    arm9.print_state();
     exit(1);
 }
 
@@ -112,6 +164,12 @@ uint16_t Emulator::arm9_read16(uint32_t addr)
 {
     if (addr >= 0xFFFF0000)
         return *(uint16_t*)&boot9[addr & 0xFFFF];
+
+    if (addr >= 0x08000000 && addr < 0x08100000)
+        return *(uint16_t*)&arm9_RAM[addr & 0xFFFFF];
+
+    if (addr >= 0x20000000 && addr < 0x28000000)
+        return *(uint16_t*)&fcram[addr & 0x07FFFFFF];
 
     if (addr >= 0x10003000 && addr < 0x10004000)
         return timers.arm9_read16(addr);
@@ -130,7 +188,7 @@ uint16_t Emulator::arm9_read16(uint32_t addr)
         case 0x10008004:
             return pxi.read_cnt9();
         case 0x10146000:
-            return 0xFFFF; //bits on = keys not pressed
+            return 0x3FF; //bits on = keys not pressed
     }
 
     printf("[ARM9] Invalid read16 $%08X\n", addr);
@@ -145,8 +203,11 @@ uint32_t Emulator::arm9_read32(uint32_t addr)
     if (addr >= 0x08000000 && addr < 0x08100000)
         return *(uint32_t*)&arm9_RAM[addr & 0xFFFFF];
 
+    if (addr >= 0x20000000 && addr < 0x28000000)
+        return *(uint32_t*)&fcram[addr & 0x07FFFFFF];
+
     if (addr >= 0x10002000 && addr < 0x10003000)
-        return dma9.read32(addr);
+        return dma9.read32_ndma(addr);
 
     if (addr >= 0x10006000 && addr < 0x10007000)
         return emmc.read32(addr);
@@ -161,10 +222,7 @@ uint32_t Emulator::arm9_read32(uint32_t addr)
         return rsa.read32(addr);
 
     if (addr >= 0x1000C000 && addr < 0x1000D000)
-    {
-        printf("[XDMA9] Unrecognized read32 $%08X\n", addr);
-        return 0;
-    }
+        return dma9.read32_xdma(addr);
 
     if (addr >= 0x10012000 && addr < 0x10012100)
         return *(uint32_t*)&otp[addr & 0xFF];
@@ -180,6 +238,14 @@ uint32_t Emulator::arm9_read32(uint32_t addr)
             return int9.read_if();
         case 0x10008000:
             return pxi.read_sync9();
+        case 0x1000800C:
+            return pxi.read_msg9();
+        case 0x101401C0:
+            return 0; //SPI control
+        case 0x10140FFC:
+            return 0x1; //bit 1 = New3DS (we're only emulating Old3DS for now)
+        case 0x10146000:
+            return 0x3FF;
     }
 
     printf("[ARM9] Invalid read32 $%08X\n", addr);
@@ -198,6 +264,21 @@ void Emulator::arm9_write8(uint32_t addr, uint8_t value)
         axi_RAM[addr & 0x7FFFF] = value;
         return;
     }
+    if (addr >= 0x20000000 && addr < 0x28000000)
+    {
+        fcram[addr & 0x07FFFFFF] = value;
+        return;
+    }
+    if (addr >= 0x18000000 && addr < 0x18600000)
+    {
+        gpu.write_vram<uint8_t>(addr, value);
+        return;
+    }
+    if (addr >= 0x10144000 && addr < 0x10145000)
+    {
+        printf("[A9 I2C] Unrecognized write8 $%08X: $%02X\n", addr, value);
+        return;
+    }
     if (addr >= 0x10160000 && addr < 0x10170000)
     {
         printf("[SPI2] Unrecognized write8 $%08X: $%02X\n", addr, value);
@@ -206,6 +287,15 @@ void Emulator::arm9_write8(uint32_t addr, uint8_t value)
     if (addr >= 0x1000B000 && addr < 0x1000C000)
     {
         rsa.write8(addr, value);
+        return;
+    }
+    if (addr >= 0x10008000 && addr < 0x10008004)
+    {
+        uint32_t sync = pxi.read_sync9();
+        int shift = (addr & 0x3) * 8;
+        int mask = ~(0xFF * shift);
+        sync &= ~mask;
+        pxi.write_sync9(sync | (value << shift));
         return;
     }
     switch (addr)
@@ -237,6 +327,8 @@ void Emulator::arm9_write8(uint32_t addr, uint8_t value)
         case 0x10009011:
             aes.write_keycnt(value);
             return;
+        case 0x10010014:
+            return;
     }
     printf("[ARM9] Invalid write8 $%08X: $%02X\n", addr, value);
     exit(1);
@@ -254,6 +346,11 @@ void Emulator::arm9_write16(uint32_t addr, uint16_t value)
         *(uint16_t*)&axi_RAM[addr & 0x7FFFF] = value;
         return;
     }
+    if (addr >= 0x20000000 && addr < 0x28000000)
+    {
+        *(uint16_t*)&fcram[addr & 0x07FFFFFF] = value;
+        return;
+    }
     if (addr >= 0x10003000 && addr < 0x10004000)
     {
         timers.arm9_write16(addr, value);
@@ -264,6 +361,16 @@ void Emulator::arm9_write16(uint32_t addr, uint16_t value)
         emmc.write16(addr, value);
         return;
     }
+    if (addr >= 0x10144000 && addr < 0x10145000)
+    {
+        printf("[A9 I2C] Unrecognized write16 $%08X: $%04X\n", addr, value);
+        return;
+    }
+    if (addr >= 0x10148000 && addr < 0x10149000)
+    {
+        printf("[A9 I2C] Unrecognized write16 $%08X: $%04X\n", addr, value);
+        return;
+    }
     if (addr >= 0x10160000 && addr < 0x10170000)
     {
         printf("[SPI2] Unrecognized write16 $%08X: $%04X\n", addr, value);
@@ -271,6 +378,8 @@ void Emulator::arm9_write16(uint32_t addr, uint16_t value)
     }
     switch (addr)
     {
+        case 0x10000020:
+            return;
         case 0x10008004:
             pxi.write_cnt9(value);
             return;
@@ -294,9 +403,19 @@ void Emulator::arm9_write32(uint32_t addr, uint32_t value)
         *(uint32_t*)&axi_RAM[addr & 0x7FFFF] = value;
         return;
     }
+    if (addr >= 0x18000000 && addr < 0x18600000)
+    {
+        gpu.write_vram<uint32_t>(addr, value);
+        return;
+    }
+    if (addr >= 0x20000000 && addr < 0x28000000)
+    {
+        *(uint32_t*)&fcram[addr & 0x07FFFFFF] = value;
+        return;
+    }
     if (addr >= 0x10002000 && addr < 0x10003000)
     {
-        dma9.write32(addr, value);
+        dma9.write32_ndma(addr, value);
         return;
     }
     if (addr >= 0x10009000 && addr < 0x1000A000)
@@ -316,11 +435,26 @@ void Emulator::arm9_write32(uint32_t addr, uint32_t value)
     }
     if (addr >= 0x1000C000 && addr < 0x1000D000)
     {
-        printf("[XDMA9] Unrecognized write32 $%08X: $%08X\n", addr, value);
+        dma9.write32_xdma(addr, value);
+        return;
+    }
+
+    if (addr >= 0x10012100 && addr < 0x10012108)
+    {
+        *(uint32_t*)&twl_consoleid[addr & 0x7] = value;
+        return;
+    }
+
+    //No clue??? boot9strap's hacked firmware writes here
+    if (addr >= 0xC0000000 && addr < 0xC0000200)
+    {
         return;
     }
     switch (addr)
     {
+        case 0x10000020:
+            printf("[ARM9] Set SDMMCCTL: $%08X\n", value);
+            return;
         case 0x10001000:
             printf("[ARM9] Set IE: $%08X\n", value);
             int9.write_ie(value);
@@ -370,6 +504,8 @@ uint8_t Emulator::arm11_read8(uint32_t addr)
             return 0; //Unk GPU power reg
         case 0x10141220:
             return 0; //Enable FCRAM?
+        case 0x10163000:
+            return pxi.read_sync11() & 0xFF;
     }
     printf("[ARM11] Invalid read8 $%08X\n", addr);
     exit(1);
@@ -391,7 +527,7 @@ uint16_t Emulator::arm11_read16(uint32_t addr)
         case 0x10140FFC:
             return 0x1; //Clock multiplier; bit 2 off = 2x
         case 0x10146000:
-            return 0xFFFF;
+            return 0x3FF;
         case 0x10163004:
             return pxi.read_cnt11();
     }
@@ -415,7 +551,7 @@ uint32_t Emulator::arm11_read32(uint32_t addr)
     if (addr >= 0x10400000 && addr < 0x10402000)
         return gpu.read32(addr);
     if (addr >= 0x18000000 && addr < 0x18600000)
-        return gpu.read_vram32(addr);
+        return gpu.read_vram<uint32_t>(addr);
     if (addr >= 0x10202000 && addr < 0x10203000)
     {
         printf("[LCD] Unrecognized read $%08X\n", addr);
@@ -469,6 +605,18 @@ void Emulator::arm11_write8(uint32_t addr, uint8_t value)
         case 0x10141208:
             return;
         case 0x10141220:
+            return;
+        case 0x10163001:
+        {
+            uint32_t sync = pxi.read_sync11() & 0xFFFF00FF;
+            pxi.write_sync11(sync | (value << 8));
+        }
+            return;
+        case 0x10163003:
+        {
+            uint32_t sync = pxi.read_sync11() & 0x00FFFFFF;
+            pxi.write_sync11(sync | (value << 24));
+        }
             return;
     }
     printf("[ARM11] Invalid write8 $%08X: $%02X\n", addr, value);
@@ -536,7 +684,7 @@ void Emulator::arm11_write32(uint32_t addr, uint32_t value)
     }
     if (addr >= 0x18000000 && addr < 0x18600000)
     {
-        gpu.write_vram32(addr, value);
+        gpu.write_vram<uint32_t>(addr, value);
         return;
     }
     switch (addr)
@@ -553,7 +701,12 @@ void Emulator::arm11_write32(uint32_t addr, uint32_t value)
     exit(1);
 }
 
-uint8_t* Emulator::get_buffer()
+uint8_t* Emulator::get_top_buffer()
 {
-    return gpu.get_buffer();
+    return gpu.get_top_buffer();
+}
+
+uint8_t* Emulator::get_bottom_buffer()
+{
+    return gpu.get_bottom_buffer();
 }

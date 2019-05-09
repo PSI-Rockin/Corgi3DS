@@ -144,6 +144,9 @@ void AES::crypt_check()
             case 0x5:
                 encrypt_cbc();
                 break;
+            case 0x6:
+                decrypt_ecb();
+                break;
             default:
                 printf("[AES] Unrecognized crypt mode %d\n", AES_CNT.mode);
                 exit(1);
@@ -259,6 +262,18 @@ void AES::encrypt_cbc()
     AES_CBC_encrypt_buffer(&lib_aes_ctx, (uint8_t*)crypt_results, 16);
 }
 
+void AES::decrypt_ecb()
+{
+    printf("[AES] Decrypt ECB\n");
+    for (int i = 0; i < 4; i++)
+    {
+        *(uint32_t*)&crypt_results[i * 4] = input_fifo.front();
+        input_fifo.pop();
+    }
+
+    AES_ECB_decrypt(&lib_aes_ctx, (uint8_t*)crypt_results);
+}
+
 uint8_t AES::read_keycnt()
 {
     return KEYCNT;
@@ -304,7 +319,7 @@ uint32_t AES::read32(uint32_t addr)
 
 void AES::write_block_count(uint16_t value)
 {
-    printf("[AES] Block count: $%02X\n", value);
+    printf("[AES] Block count: $%04X\n", value);
     block_count = value;
 }
 
@@ -329,6 +344,30 @@ void AES::write32(uint32_t addr, uint32_t value)
         AES_ctx_set_iv(&lib_aes_ctx, (uint8_t*)AES_CTR);
         return;
     }
+
+    //KEY0/1/2/3 - mirrors of the DSi key registers
+    if (addr >= 0x10009040 && addr < 0x10009100)
+    {
+        int key = ((addr - 0x10009040) / 48) & 0x3;
+        int fifo_id = ((addr / 16)) % 3;
+        int offset = 3 - ((addr / 4) & 0x3);
+
+        switch (fifo_id)
+        {
+            case 0:
+                input_vector((uint8_t*)keys[key].normal, offset, value, 4);
+                break;
+            case 1:
+                input_vector((uint8_t*)keys[key].x, offset, value, 4);
+                break;
+            case 2:
+                //TODO: DSi key gen
+                input_vector((uint8_t*)keys[key].y, offset, value, 4);
+                break;
+        }
+        return;
+    }
+
     switch (addr)
     {
         case 0x10009000:
@@ -357,6 +396,10 @@ void AES::write32(uint32_t addr, uint32_t value)
                 cur_key = &keys[KEYSEL & 0x3F];
                 init_aes_key(KEYSEL & 0x3F);
             }
+            return;
+        case 0x10009004:
+            mac_count = value & 0xFFFF;
+            block_count = (value >> 16);
             return;
         case 0x10009008:
             printf("[AES] Write WRFIFO: $%08X\n", value);

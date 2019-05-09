@@ -14,6 +14,11 @@ EMMC::EMMC(Interrupt9* int9) : int9(int9)
     regcsd[1] = 0xdff6db7f;
     regcsd[2] = 0x2a0f5901;
     regcsd[3] = 0x3f269001;
+
+    sd_cid[0] = 0xD71C65CD;
+    sd_cid[1] = 0x4445147B;
+    sd_cid[2] = 0x4D324731;
+    sd_cid[3] = 0x00150100;
 }
 
 EMMC::~EMMC()
@@ -50,6 +55,17 @@ bool EMMC::mount_nand(std::string file_name)
     return nand.is_open();
 }
 
+bool EMMC::mount_sd(std::string file_name)
+{
+    sd.open(file_name, std::ios::binary);
+    return sd.is_open();
+}
+
+void EMMC::load_cid(uint8_t *cid)
+{
+    memcpy(nand_cid, cid, 16);
+}
+
 uint16_t EMMC::read16(uint32_t addr)
 {
     uint16_t reg = 0;
@@ -72,7 +88,8 @@ uint16_t EMMC::read16(uint32_t addr)
             reg = data_blocks;
             break;
         case 0x1000601C:
-            reg = (istat & 0xFFFF) | (1 << 5);
+            reg = (istat & 0xFFFF);
+            reg |= 1 << 5;
             printf("[EMMC] Read ISTAT_L: $%04X\n", reg);
             break;
         case 0x1000601E:
@@ -105,6 +122,9 @@ uint16_t EMMC::read16(uint32_t addr)
             reg |= sd_data32.rd32rdy_irq_enable << 11;
             reg |= sd_data32.tx32rq_irq_enable << 12;
             printf("[EMMC] Read SD_DATA32_IRQ: $%04X\n", reg);
+            break;
+        case 0x10006104:
+            reg = data32_block_len;
             break;
         default:
             printf("[EMMC] Unrecognized read16 $%08X\n", addr);
@@ -214,21 +234,18 @@ void EMMC::send_cmd(int command)
             command_end();
             state = MMC_Idle;
             break;
+        case 1:
+            response[0] = ocr_reg;
+            command_end();
+            break;
         case 2:
             if (nand_selected())
-            {
-                //No regcid for NAND
-                memset(response, 0, 16);
-            }
+                memcpy(response, nand_cid, 16);
             else
-            {
-                printf("[EMMC] SD selected on GET_CID command\n");
-                exit(1);
-            }
+                memcpy(response, sd_cid, 16);
             command_end();
             if (state == MMC_Ready)
                 state = MMC_Identify;
-            //int9->assert_irq(16);
             break;
         case 3:
             //3dmoo9 sets the "regrca" register to 1 no matter what...
@@ -236,6 +253,13 @@ void EMMC::send_cmd(int command)
             command_end();
             if (state == MMC_Identify)
                 state = MMC_Standby;
+            break;
+        case 6:
+            response[0] = get_r1_reply();
+            command_end();
+
+            if (state == MMC_Transfer)
+                state = MMC_Program;
             break;
         case 7:
             response[0] = get_r1_reply();
@@ -247,6 +271,10 @@ void EMMC::send_cmd(int command)
             break;
         case 9:
             memcpy(response, regcsd, 16);
+            command_end();
+            break;
+        case 10:
+            memcpy(response, nand_cid, 16);
             command_end();
             break;
         case 12:
@@ -263,6 +291,10 @@ void EMMC::send_cmd(int command)
             command_end();
             break;
         case 18:
+            if (port_select)
+                cur_transfer_drive = &nand;
+            else
+                cur_transfer_drive = &sd;
             transfer_start_addr = argument;
             state = MMC_Transfer;
             response[0] = get_r1_reply();
@@ -271,9 +303,10 @@ void EMMC::send_cmd(int command)
             transfer_blocks = data_blocks;
             transfer_size = data_block_len;
             block_transfer = true;
+            printf("[EMMC] Transfer multiple blocks (start: $%08X blocks: $%08X)\n", argument, data_blocks);
 
-            nand.seekg(transfer_start_addr);
-            nand.read((char*)&nand_block, transfer_size);
+            cur_transfer_drive->seekg(transfer_start_addr);
+            cur_transfer_drive->read((char*)&nand_block, transfer_size);
 
             transfer_buffer = (uint8_t*)nand_block;
             data_ready();
@@ -317,10 +350,7 @@ void EMMC::send_acmd(int command)
             if (nand_selected())
                 response[0] = ocr_reg;
             else
-            {
-                printf("[EMMC] SD selected on CMD41!\n");
-                exit(1);
-            }
+                response[0] = ocr_reg;
             command_end();
             if (state == MMC_Idle)
                 state = MMC_Ready;
@@ -393,6 +423,7 @@ uint16_t EMMC::read_fifo()
     {
         printf("[EMMC] Read FIFO\n");
         uint16_t value = *(uint16_t*)&transfer_buffer[transfer_pos];
+        printf("[EMMC] Read FIFO16: $%04X\n", value);
         transfer_pos += 2;
         transfer_size -= 2;
 
@@ -422,12 +453,13 @@ uint32_t EMMC::read_fifo32()
             if (block_transfer)
             {
                 transfer_blocks--;
+                printf("Transfer blocks: %d\n", transfer_blocks);
                 if (!transfer_blocks)
                     transfer_end();
                 else
                 {
                     transfer_size = data_block_len;
-                    nand.read((char*)transfer_buffer, transfer_size);
+                    cur_transfer_drive->read((char*)transfer_buffer, transfer_size);
                 }
             }
             else

@@ -10,7 +10,7 @@ class EmuWindow : public QMainWindow
     Q_OBJECT
     private:
         bool running;
-        QImage image;
+        QImage top_image, bottom_image;
     public:
         EmuWindow();
 
@@ -18,7 +18,7 @@ class EmuWindow : public QMainWindow
 
         void closeEvent(QCloseEvent* event) override;
 
-        void draw(uint8_t* buffer);
+        void draw(uint8_t* top_screen, uint8_t* bottom_screen);
         void paintEvent(QPaintEvent* event) override;
 };
 

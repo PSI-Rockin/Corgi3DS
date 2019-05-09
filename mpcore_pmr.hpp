@@ -10,6 +10,8 @@ class MPCore_PMR
         ARM_CPU* syscore, *appcore;
         uint32_t irq_cause;
         uint32_t hw_int_mask[8], hw_int_pending[8];
+
+        void set_int_signal(ARM_CPU* core);
     public:
         MPCore_PMR(ARM_CPU* syscore);
 

@@ -12,7 +12,9 @@ namespace ARM_Interpreter
     void arm_blx(ARM_CPU& cpu, uint32_t instr);
     void arm_blx_reg(ARM_CPU& cpu, uint32_t instr);
     void arm_clz(ARM_CPU& cpu, uint32_t instr);
+    void arm_uxtb(ARM_CPU& cpu, uint32_t instr);
     void arm_data_processing(ARM_CPU& cpu, uint32_t instr);
+    void arm_signed_halfword_multiply(ARM_CPU& cpu, uint32_t instr);
     void arm_mul(ARM_CPU& cpu, uint32_t instr);
     void arm_mul_long(ARM_CPU& cpu, uint32_t instr);
     void arm_load_byte(ARM_CPU& cpu, uint32_t instr);
@@ -21,6 +23,9 @@ namespace ARM_Interpreter
     void arm_store_word(ARM_CPU& cpu, uint32_t instr);
     void arm_load_halfword(ARM_CPU& cpu, uint32_t instr);
     void arm_store_halfword(ARM_CPU& cpu, uint32_t instr);
+    void arm_load_signed_byte(ARM_CPU& cpu, uint32_t instr);
+    void arm_load_doubleword(ARM_CPU& cpu, uint32_t instr);
+    void arm_store_doubleword(ARM_CPU& cpu, uint32_t instr);
     void arm_load_block(ARM_CPU& cpu, uint32_t instr);
     void arm_store_block(ARM_CPU& cpu, uint32_t instr);
     void arm_cop_transfer(ARM_CPU& cpu, uint32_t instr);

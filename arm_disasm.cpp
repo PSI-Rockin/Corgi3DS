@@ -7,6 +7,12 @@ using namespace std;
 
 ARM_INSTR decode_arm(uint32_t instr)
 {
+    if ((instr & 0xFE5D0F00) == 0xF84D0500)
+        return ARM_SRS;
+
+    if ((instr & 0xFE500F00) == 0xF8100A00)
+        return ARM_RFE;
+
     if ((instr & 0x0F000000) == 0x0A000000)
         return ARM_B;
 
@@ -27,6 +33,22 @@ ARM_INSTR decode_arm(uint32_t instr)
         if (((instr >> 4) & 0xFF) == 0xF1)
             return ARM_CLZ;
     }
+
+    if (((instr >> 4) & 0xFF) == 0x05)
+    {
+        if (((instr >> 24) & 0xF) == 0x1)
+        {
+            int op = (instr >> 20) & 0xF;
+            if (op == 0 || op == 2 || op == 4 || op == 6)
+                return ARM_SATURATED_OP;
+        }
+    }
+
+    if ((instr & 0x0FFF00F0) == 0x06EF0070)
+        return ARM_UXTB;
+
+    if ((instr & 0xFD70F000) == 0xF550F000)
+        return ARM_PLD;
 
     if (((instr >> 26) & 0x3) == 0)
     {
@@ -156,6 +178,8 @@ string cond_name(int cond)
 
 string disasm_arm(ARM_CPU& cpu, uint32_t instr)
 {
+    if ((instr >> 20) == 0xF10)
+        return arm_cps(instr);
     switch (decode_arm(instr))
     {
         case ARM_B:
@@ -164,20 +188,33 @@ string disasm_arm(ARM_CPU& cpu, uint32_t instr)
         case ARM_BX:
         case ARM_BLX:
             return arm_bx(instr);
+        case ARM_CLZ:
+            return arm_clz(instr);
+        case ARM_UXTB:
+            return arm_uxtb(instr);
         case ARM_DATA_PROCESSING:
             return arm_data_processing(instr);
         case ARM_MULTIPLY:
             return arm_mul(instr);
         case ARM_MULTIPLY_LONG:
             return arm_mul_long(instr);
+        case ARM_SIGNED_HALFWORD_MULTIPLY:
+            return arm_signed_halfword_multiply(instr);
         case ARM_LOAD_WORD:
         case ARM_STORE_WORD:
         case ARM_LOAD_BYTE:
         case ARM_STORE_BYTE:
+        case ARM_PLD:
             return arm_load_store(cpu, instr);
         case ARM_LOAD_HALFWORD:
         case ARM_STORE_HALFWORD:
             return arm_load_store_halfword(cpu, instr);
+        case ARM_LOAD_SIGNED_BYTE:
+        case ARM_LOAD_SIGNED_HALFWORD:
+            return arm_load_signed(cpu, instr);
+        case ARM_LOAD_DOUBLEWORD:
+        case ARM_STORE_DOUBLEWORD:
+            return arm_load_store_doubleword(cpu, instr);
         case ARM_LOAD_BLOCK:
         case ARM_STORE_BLOCK:
             return arm_load_store_block(instr);
@@ -185,9 +222,111 @@ string disasm_arm(ARM_CPU& cpu, uint32_t instr)
             return arm_cop_transfer(instr);
         case ARM_WFI:
             return "wfi";
+        case ARM_SRS:
+            return arm_srs(instr);
+        case ARM_RFE:
+            return arm_rfe(instr);
         default:
             return "undefined";
     }
+}
+
+string arm_cps(uint32_t instr)
+{
+    stringstream output;
+    int psr_mode = instr & 0x1F;
+    bool f = (instr >> 6) & 0x1;
+    bool i = (instr >> 7) & 0x1;
+    bool a = (instr >> 8) & 0x1;
+    bool mmod = (instr >> 17) & 0x1;
+    int imod = (instr >> 18) & 0x3;
+
+    output << "cps";
+
+    switch (imod)
+    {
+        case 0x2:
+            output << "ie";
+            break;
+        case 0x3:
+            output << "id";
+            break;
+    }
+
+    output << " ";
+
+    if (a)
+        output << "a";
+    if (i)
+        output << "i";
+    if (f)
+        output << "f";
+
+    if (mmod)
+    {
+        if (imod >= 2)
+            output << ", ";
+        output << "#" << std::hex << "0x" << psr_mode;
+    }
+
+    return output.str();
+}
+
+string arm_srs(uint32_t instr)
+{
+    stringstream output;
+    bool is_writing_back = instr & (1 << 21);
+    bool is_adding_offset = instr & (1 << 23);
+    bool is_preindexing = instr & (1 << 24);
+
+    int mode = instr & 0x1F;
+
+    output << "srs";
+
+    if (is_adding_offset)
+        output << "i";
+    else
+        output << "d";
+
+    if (is_preindexing)
+        output << "b";
+    else
+        output << "a";
+
+    output << " #0x" << std::hex << mode;
+
+    if (is_writing_back)
+        output << "!";
+
+    return output.str();
+}
+
+string arm_rfe(uint32_t instr)
+{
+    stringstream output;
+    int base = (instr >> 16) & 0xF;
+    bool is_writing_back = instr & (1 << 21);
+    bool is_adding_offset = instr & (1 << 23);
+    bool is_preindexing = instr & (1 << 24);
+
+    output << "rfe";
+
+    if (is_adding_offset)
+        output << "i";
+    else
+        output << "d";
+
+    if (is_preindexing)
+        output << "b";
+    else
+        output << "a";
+
+    output << " " << ARM_CPU::get_reg_name(base);
+
+    if (is_writing_back)
+        output << "!";
+
+    return output.str();
 }
 
 string arm_b(ARM_CPU& cpu, uint32_t instr)
@@ -229,6 +368,31 @@ string arm_bx(uint32_t instr)
     output += " ";
     output += ARM_CPU::get_reg_name(instr & 0xF);
     return output;
+}
+
+string arm_clz(uint32_t instr)
+{
+    stringstream output;
+    uint32_t source = instr & 0xF;
+    uint32_t destination = (instr >> 12) & 0xF;
+
+    output << "clz " << ARM_CPU::get_reg_name(destination) << ", " << ARM_CPU::get_reg_name(source);
+    return output.str();
+}
+
+string arm_uxtb(uint32_t instr)
+{
+    stringstream output;
+    int source = instr & 0xF;
+    int rot = (instr >> 10) & 0x3;
+    int dest = (instr >> 12) & 0xF;
+
+    output << "uxtb " << ARM_CPU::get_reg_name(dest) << ", " << ARM_CPU::get_reg_name(source);
+
+    if (rot)
+        output << ", ror #" << std::dec << rot * 8;
+
+    return output.str();
 }
 
 string arm_data_processing(uint32_t instr)
@@ -395,6 +559,44 @@ string arm_data_processing(uint32_t instr)
     return output.str();
 }
 
+string arm_signed_halfword_multiply(uint32_t instr)
+{
+    stringstream output;
+    uint32_t destination = (instr >> 16) & 0xF;
+    uint32_t accumulate = (instr >> 12) & 0xF;
+    uint32_t first_operand = (instr >> 8) & 0xF;
+    uint32_t second_operand = instr & 0xF;
+    int opcode = (instr >> 21) & 0xF;
+
+    bool first_op_top = instr & (1 << 6);
+    bool second_op_top = instr & (1 << 5);
+
+    string first_op_str;
+    string second_op_str;
+
+    if (first_op_top)
+        first_op_str = "t";
+    else
+        first_op_str = "b";
+
+    if (second_op_top)
+        second_op_str = "t";
+    else
+        second_op_str = "b";
+
+    switch (opcode)
+    {
+        case 0xB:
+            output << "smul" << first_op_str << second_op_str << cond_name(instr >> 28);
+            output << " " << ARM_CPU::get_reg_name(destination) << ", " << ARM_CPU::get_reg_name(second_operand);
+            output << ", " << ARM_CPU::get_reg_name(first_operand);
+            break;
+        default:
+            return "undefined signed halfword";
+    }
+    return output.str();
+}
+
 string arm_mul(uint32_t instr)
 {
     stringstream output;
@@ -497,13 +699,19 @@ string arm_load_store(ARM_CPU& cpu, uint32_t instr)
 {
     stringstream output;
     bool is_loading = instr & (1 << 20);
-    if (is_loading)
-        output << "ldr";
+    bool is_pld = ((instr >> 28) & 0xF) == 0xF;
+    if (is_pld)
+        output << "pld";
     else
-        output << "str";
-    if (instr & (1 << 22))
-        output << "b";
-    output << cond_name(instr >> 28);
+    {
+        if (is_loading)
+            output << "ldr";
+        else
+            output << "str";
+        if (instr & (1 << 22))
+            output << "b";
+        output << cond_name(instr >> 28);
+    }
 
     bool is_adding_offset = instr & (1 << 23);
     bool pre_indexing = instr & (1 << 24);
@@ -568,7 +776,10 @@ string arm_load_store(ARM_CPU& cpu, uint32_t instr)
     }
 
 
-    output << " " << ARM_CPU::get_reg_name(reg) << ", ";
+    if (!is_pld)
+        output << " " << ARM_CPU::get_reg_name(reg) << ", ";
+    else
+        output << " ";
     output << "[" << ARM_CPU::get_reg_name(base);
 
     if (pre_indexing)
@@ -629,6 +840,99 @@ string arm_load_store_halfword(ARM_CPU &cpu, uint32_t instr)
         if (offset_str.length())
             output << ", " << offset_str;
     }
+
+    return output.str();
+}
+
+string arm_load_signed(ARM_CPU &cpu, uint32_t instr)
+{
+    stringstream output;
+    bool is_preindexing = (instr & (1 << 24)) != 0;
+    bool is_adding_offset = (instr & (1 << 23)) != 0;
+    bool is_writing_back = (instr & (1 << 21)) != 0;
+    uint32_t base = (instr >> 16) & 0xF;
+    uint32_t destination = (instr >> 12) & 0xF;
+
+    bool is_imm_offset = (instr & (1 << 22)) != 0;
+    bool load_halfword = (instr & (1 << 5)) != 0;
+
+    output << "ldrs";
+    if (load_halfword)
+        output << "h";
+    else
+        output << "b";
+
+    output << cond_name(instr >> 28);
+    output << " " << ARM_CPU::get_reg_name(destination) << ", [";
+    output << ARM_CPU::get_reg_name(base);
+
+    stringstream offset_str;
+    string sub_str;
+    if (!is_adding_offset)
+        sub_str = "-";
+    if (is_imm_offset)
+    {
+        int offset = ((instr >> 4) & 0xF0) | (instr & 0xF);
+        if (offset)
+            offset_str << sub_str << ", #0x" << std::hex << offset;
+    }
+    else
+    {
+        offset_str << sub_str << ", " << ARM_CPU::get_reg_name(instr & 0xF);
+    }
+    if (is_preindexing)
+        output << offset_str.str();
+    output << "]";
+    if (is_writing_back && is_preindexing)
+        output << "!";
+    if (!is_preindexing)
+        output << offset_str.str();
+    return output.str();
+}
+
+string arm_load_store_doubleword(ARM_CPU &cpu, uint32_t instr)
+{
+    stringstream output;
+    bool pre_indexing = instr & (1 << 24);
+    bool add_offset = instr & (1 << 23);
+    bool is_imm_offset = instr & (1 << 22);
+    bool write_back = instr & (1 << 21);
+
+    uint32_t base = (instr >> 16) & 0xF;
+    uint32_t reg = (instr >> 12) & 0xF;
+    bool load = !(instr & (1 << 5));
+
+    int offset = instr & 0xF;
+    string sub_str;
+
+    if (load)
+        output << "ldrd ";
+    else
+        output << "strd ";
+
+    if (!add_offset)
+        sub_str = "-";
+
+    output << ARM_CPU::get_reg_name(reg) << ", [";
+    output << ARM_CPU::get_reg_name(base);
+
+    stringstream offset_str;
+    if (is_imm_offset)
+    {
+        offset |= (instr >> 4) & 0xF0;
+        if (offset)
+            offset_str << ", #" << sub_str << std::hex << offset;
+    }
+    else
+        offset_str << ", " << sub_str << ARM_CPU::get_reg_name(offset);
+
+    if (pre_indexing)
+        output << offset_str.str();
+    output << "]";
+    if (pre_indexing && (instr & (1 << 21)))
+        output << "!";
+    if (!pre_indexing)
+        output << offset_str.str();
 
     return output.str();
 }

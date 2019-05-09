@@ -3,6 +3,7 @@
 #include "arm.hpp"
 #include "arm_disasm.hpp"
 #include "arm_interpret.hpp"
+#include "rotr.hpp"
 
 namespace ARM_Interpreter
 {
@@ -10,6 +11,20 @@ namespace ARM_Interpreter
 void interpret_arm(ARM_CPU &cpu, uint32_t instr)
 {
     int cond = instr >> 28;
+
+    if (cond == 0xF)
+    {
+        if ((instr & 0xFE000000) == 0xFA000000)
+        {
+            arm_blx(cpu, instr);
+            return;
+        }
+        if (cpu.get_id() == 11 && (instr >> 20) == 0xF10)
+        {
+            cpu.cps(instr);
+            return;
+        }
+    }
 
     if (cond == 0xF && (instr & 0xFE000000) == 0xFA000000)
     {
@@ -22,6 +37,12 @@ void interpret_arm(ARM_CPU &cpu, uint32_t instr)
 
     switch (decode_arm(instr))
     {
+        case ARM_SRS:
+            cpu.srs(instr);
+            break;
+        case ARM_RFE:
+            cpu.rfe(instr);
+            break;
         case ARM_B:
         case ARM_BL:
             arm_b(cpu, instr);
@@ -35,8 +56,14 @@ void interpret_arm(ARM_CPU &cpu, uint32_t instr)
         case ARM_CLZ:
             arm_clz(cpu, instr);
             break;
+        case ARM_UXTB:
+            arm_uxtb(cpu, instr);
+            break;
         case ARM_DATA_PROCESSING:
             arm_data_processing(cpu, instr);
+            break;
+        case ARM_SIGNED_HALFWORD_MULTIPLY:
+            arm_signed_halfword_multiply(cpu, instr);
             break;
         case ARM_MULTIPLY:
             arm_mul(cpu, instr);
@@ -56,11 +83,23 @@ void interpret_arm(ARM_CPU &cpu, uint32_t instr)
         case ARM_STORE_WORD:
             arm_store_word(cpu, instr);
             break;
+        case ARM_PLD:
+            //We don't emulate cache, so ignore
+            break;
         case ARM_LOAD_HALFWORD:
             arm_load_halfword(cpu, instr);
             break;
         case ARM_STORE_HALFWORD:
             arm_store_halfword(cpu, instr);
+            break;
+        case ARM_LOAD_SIGNED_BYTE:
+            arm_load_signed_byte(cpu, instr);
+            break;
+        case ARM_LOAD_DOUBLEWORD:
+            arm_load_doubleword(cpu, instr);
+            break;
+        case ARM_STORE_DOUBLEWORD:
+            arm_store_doubleword(cpu, instr);
             break;
         case ARM_LOAD_BLOCK:
             arm_load_block(cpu, instr);
@@ -157,6 +196,17 @@ void arm_clz(ARM_CPU &cpu, uint32_t instr)
     cpu.set_register(destination, bits);
 }
 
+void arm_uxtb(ARM_CPU &cpu, uint32_t instr)
+{
+    int source = instr & 0xF;
+    int rot = (instr >> 10) & 0x3;
+    int dest = (instr >> 12) & 0xF;
+
+    uint32_t source_reg = rotr32(cpu.get_register(source), rot * 8);
+
+    cpu.set_register(dest, source_reg & 0xFF);
+}
+
 void arm_data_processing(ARM_CPU &cpu, uint32_t instr)
 {
     int opcode = (instr >> 21) & 0xF;
@@ -205,7 +255,7 @@ void arm_data_processing(ARM_CPU &cpu, uint32_t instr)
 
         if (instr & (1 << 4))
         {
-            shift = cpu.get_register((instr >> 8) & 0xF);
+            shift = cpu.get_register((instr >> 8) & 0xF) & 0xFF;
             //cpu.add_internal_cycles(1); //Extra cycle due to SHIFT(reg) operation
 
             //PC must take into account pipelining
@@ -318,6 +368,85 @@ void arm_data_processing(ARM_CPU &cpu, uint32_t instr)
         default:
             printf("Data processing opcode $%01X not recognized\n", opcode);
     }
+}
+
+void arm_signed_halfword_multiply(ARM_CPU &cpu, uint32_t instr)
+{
+    uint32_t destination = (instr >> 16) & 0xF;
+    uint32_t accumulate = (instr >> 12) & 0xF;
+    uint32_t first_operand = (instr >> 8) & 0xF;
+    uint32_t second_operand = instr & 0xF;
+    int opcode = (instr >> 21) & 0xF;
+
+    bool first_op_top = instr & (1 << 6);
+    bool second_op_top = instr & (1 << 5);
+
+    uint32_t product;
+    uint32_t result;
+
+    switch (opcode)
+    {
+        case 0x8:
+            //SMLAxy
+            if (first_op_top)
+                product = (int16_t)(cpu.get_register(first_operand) >> 16);
+            else
+                product = (int16_t)(cpu.get_register(first_operand) & 0xFFFF);
+
+            if (second_op_top)
+                product *= (int16_t)(cpu.get_register(second_operand) >> 16);
+            else
+                product *= (int16_t)(cpu.get_register(second_operand) & 0xFFFF);
+
+            result = product + cpu.get_register(accumulate);
+
+            if (ADD_OVERFLOW(product, cpu.get_register(accumulate), result))
+                cpu.get_CPSR()->q_overflow = true;
+            break;
+        case 0x9:
+            //SMULWy/SMLAWy
+            //TODO: is all this correct?
+            if (first_op_top)
+                product = (int16_t)(cpu.get_register(first_operand) >> 16);
+            else
+                product = (int16_t)(cpu.get_register(first_operand) & 0xFFFF);
+
+            if (!(instr & (1 << 5))) //SMLAW
+            {
+                int64_t big_product = product * (int32_t)cpu.get_register(second_operand);
+                big_product /= 0x10000;
+                result = big_product + cpu.get_register(accumulate);
+
+                if (ADD_OVERFLOW(big_product, cpu.get_register(accumulate), result))
+                    cpu.get_CPSR()->q_overflow = true;
+            }
+            else //SMULW
+            {
+                int64_t big_product = product * (int32_t)cpu.get_register(second_operand);
+                big_product /= 0x10000;
+                result = big_product;
+            }
+            break;
+        case 0xB:
+            //SMULxy
+            if (first_op_top)
+                product = (int16_t)(cpu.get_register(first_operand) >> 16);
+            else
+                product = (int16_t)(cpu.get_register(first_operand) & 0xFFFF);
+
+            if (second_op_top)
+                product *= (int16_t)(cpu.get_register(second_operand) >> 16);
+            else
+                product *= (int16_t)(cpu.get_register(second_operand) & 0xFFFF);
+
+            result = product;
+            break;
+        default:
+            printf("Unrecognized smul opcode $%01X\n", opcode);
+            exit(1);
+    }
+
+    cpu.set_register(destination, result);
 }
 
 void arm_mul(ARM_CPU &cpu, uint32_t instr)
@@ -715,6 +844,144 @@ void arm_store_halfword(ARM_CPU &cpu, uint32_t instr)
         cpu.set_register(base, address);
     }
     //cpu.add_n16_data(address, 1);
+}
+
+void arm_load_signed_byte(ARM_CPU &cpu, uint32_t instr)
+{
+    bool is_preindexing = (instr & (1 << 24)) != 0;
+    bool is_adding_offset = (instr & (1 << 23)) != 0;
+    bool is_writing_back = (instr & (1 << 21)) != 0;
+    uint32_t base = (instr >> 16) & 0xF;
+    uint32_t destination = (instr >> 12) & 0xF;
+
+    bool is_imm_offset = (instr & (1 << 22)) != 0;
+    uint32_t offset = 0;
+
+    offset = instr & 0xF;
+    if (is_imm_offset)
+        offset |= (instr >> 4) & 0xF0;
+    else
+        offset = cpu.get_register(offset);
+
+    uint32_t address = cpu.get_register(base);
+
+    if (is_preindexing)
+    {
+        if (is_adding_offset)
+            address += offset;
+        else
+            address -= offset;
+
+        if (is_writing_back)
+            cpu.set_register(base, address);
+
+        uint32_t word = static_cast<int32_t>(static_cast<int8_t>(cpu.read8(address)));
+        cpu.set_register(destination, word);
+    }
+    else
+    {
+        uint32_t word = static_cast<int32_t>(static_cast<int8_t>(cpu.read8(address)));
+        cpu.set_register(destination, word);
+
+        if (is_adding_offset)
+            address += offset;
+        else
+            address -= offset;
+
+        if (base != destination)
+            cpu.set_register(base, address);
+    }
+
+    //cpu.add_n16_data(address, 1);
+}
+
+void arm_load_doubleword(ARM_CPU &cpu, uint32_t instr)
+{
+    bool is_preindexing = instr & (1 << 24);
+    bool add_offset = instr & (1 << 23);
+    bool is_imm_offset = instr & (1 << 22);
+    bool write_back = instr & (1 << 21);
+
+    uint32_t base = (instr >> 16) & 0xF;
+    uint32_t dest = (instr >> 12) & 0xF;
+
+    int offset;
+
+    offset = instr & 0xF;
+    if (is_imm_offset)
+        offset |= (instr >> 4) & 0xF0;
+    else
+        offset = cpu.get_register(offset);
+
+    uint32_t address = cpu.get_register(base);
+
+    if (is_preindexing)
+    {
+        if (add_offset)
+            address += offset;
+        else
+            address -= offset;
+
+        cpu.set_register(dest, cpu.read32(address));
+        cpu.set_register(dest + 1, cpu.read32(address + 4));
+
+        if (write_back)
+            cpu.set_register(base, address + 4);
+    }
+    else
+    {
+        cpu.set_register(dest, cpu.read32(address));
+        cpu.set_register(dest + 1, cpu.read32(address + 4));
+
+        if (add_offset)
+            address += offset;
+        else
+            address -= offset;
+        cpu.set_register(base, address);
+    }
+}
+
+void arm_store_doubleword(ARM_CPU &cpu, uint32_t instr)
+{
+    bool is_preindexing = instr & (1 << 24);
+    bool add_offset = instr & (1 << 23);
+    bool is_imm_offset = instr & (1 << 22);
+    bool write_back = instr & (1 << 21);
+
+    uint32_t base = (instr >> 16) & 0xF;
+    uint32_t source = (instr >> 12) & 0xF;
+
+    int offset;
+
+    offset = instr & 0xF;
+    if (is_imm_offset)
+        offset |= (instr >> 4) & 0xF0;
+    else
+        offset = cpu.get_register(offset);
+
+    uint32_t address = cpu.get_register(base);
+
+    if (is_preindexing)
+    {
+        if (add_offset)
+            address += offset;
+        else
+        {
+            address -= offset;
+            //exit(1);
+        }
+
+        cpu.write32(address, cpu.get_register(source));
+        cpu.write32(address + 4, cpu.get_register(source + 1));
+
+        if (write_back)
+            cpu.set_register(base, address + 4);
+    }
+    else
+    {
+        printf("STRD postindexing not supported");
+        exit(1);
+    }
 }
 
 void arm_load_block(ARM_CPU &cpu, uint32_t instr)

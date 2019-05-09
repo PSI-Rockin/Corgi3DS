@@ -69,6 +69,9 @@ void PXI::write_sync11(uint32_t value)
     printf("[PXI] Write sync11: $%08X\n", value);
     sync9.recv_data = (value >> 8) & 0xFF;
     sync11.local_irq = value & (1 << 31);
+
+    if ((value & (1 << 30)) && sync9.local_irq)
+        int9->assert_irq(12);
 }
 
 void PXI::write_cnt9(uint16_t value)
@@ -105,11 +108,24 @@ void PXI::write_cnt11(uint16_t value)
     }
 }
 
+uint32_t PXI::read_msg9()
+{
+    if (recv9.size())
+    {
+        last_recv9 = recv9.front();
+        recv9.pop();
+    }
+    return last_recv9;
+}
+
 uint32_t PXI::read_msg11()
 {
-    uint32_t msg = recv11.front();
-    recv11.pop();
-    return msg;
+    if (recv11.size())
+    {
+        last_recv11 = recv11.front();
+        recv11.pop();
+    }
+    return last_recv11;
 }
 
 void PXI::send_to_9(uint32_t value)
