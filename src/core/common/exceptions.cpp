@@ -1,3 +1,4 @@
+#include <cstdarg>
 #include "exceptions.hpp"
 
 namespace EmuException
