@@ -160,7 +160,6 @@ void DMA9::xdma_exec_instr(uint8_t byte, int chan)
                 xdma_command_set = true;
                 break;
             default:
-                printf("[XDMA] Unrecognized opcode $%02X\n", byte);
                 EmuException::die("[XDMA] Unrecognized opcode $%02X\n", byte);
         }
     }
