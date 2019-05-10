@@ -1,4 +1,5 @@
 #include <cstdio>
+#include <cstring>
 #include "arm11/mpcore_pmr.hpp"
 #include "arm9/interrupt9.hpp"
 #include "pxi.hpp"
