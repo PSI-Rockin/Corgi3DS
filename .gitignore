@@ -32,3 +32,15 @@
 *.app
 *.user
 .DS_Store
+
+# Make
+Makefile
+Makefile.Debug
+Makefile.Release
+
+# Qt
+.qmake.stash
+release/
+debug/
+object_script.*.Debug
+object_script.*.Release
