@@ -1,6 +1,5 @@
 #include <cstdio>
 #include <cstring>
-#include <cstdlib>
 #include "aes.hpp"
 #include "../common/common.hpp"
 
@@ -147,8 +146,7 @@ void AES::crypt_check()
                 decrypt_ecb();
                 break;
             default:
-                printf("[AES] Unrecognized crypt mode %d\n", AES_CNT.mode);
-                exit(1);
+                EmuException::die("[AES] Unrecognized crypt mode %d\n", AES_CNT.mode);
         }
 
         //Copy results into output FIFO

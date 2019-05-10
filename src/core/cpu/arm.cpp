@@ -2,6 +2,7 @@
 #include "arm.hpp"
 #include "arm_disasm.hpp"
 #include "arm_interpret.hpp"
+#include "../common/common.hpp"
 #include "../emulator.hpp"
 
 uint32_t PSR_Flags::get()
@@ -112,8 +113,7 @@ void ARM_CPU::run()
 }
 
 void ARM_CPU::print_state()
-{
-    printf("--PRINTING STATE--\n");
+{;
     for (int i = 0; i < 16; i++)
     {
         printf("%s:$%08X", get_reg_name(i).c_str(), gpr[i]);
@@ -127,8 +127,10 @@ void ARM_CPU::print_state()
 
 void ARM_CPU::jp(uint32_t addr, bool change_thumb_state)
 {
-    //if (addr == 0x8015F48)
-        //can_disassemble = true;
+    //if (id == 9)
+        //printf("jp: $%08X\n", addr);
+    if (addr == 0x801B000)
+        can_disassemble = true;
     gpr[15] = addr;
 
     if (change_thumb_state)
@@ -232,13 +234,16 @@ void ARM_CPU::update_reg_mode(PSR_MODE mode)
                 std::swap(gpr[13], SP_svc);
                 std::swap(gpr[14], LR_svc);
                 break;
+            case PSR_ABORT:
+                std::swap(gpr[13], SP_abt);
+                std::swap(gpr[14], LR_abt);
+                break;
             case PSR_UNDEFINED:
                 std::swap(gpr[13], SP_und);
                 std::swap(gpr[14], LR_und);
                 break;
             default:
-                printf("[ARM] Unrecognized PSR mode %d\n", CPSR.mode);
-                exit(1);
+                EmuException::die("[ARM%d] Unrecognized old PSR mode %d\n", id, CPSR.mode);
         }
 
         switch (mode)
@@ -263,13 +268,16 @@ void ARM_CPU::update_reg_mode(PSR_MODE mode)
                 std::swap(gpr[13], SP_svc);
                 std::swap(gpr[14], LR_svc);
                 break;
+            case PSR_ABORT:
+                std::swap(gpr[13], SP_abt);
+                std::swap(gpr[14], LR_abt);
+                break;
             case PSR_UNDEFINED:
                 std::swap(gpr[13], SP_und);
                 std::swap(gpr[14], LR_und);
                 break;
             default:
-                printf("[ARM] Unrecognized PSR mode %d\n", CPSR.mode);
-                exit(1);
+                EmuException::die("[ARM%d] Unrecognized new PSR mode %d\n", id, mode);
         }
     }
 }
@@ -334,8 +342,8 @@ bool ARM_CPU::meets_condition(int cond)
             //Some instructions have the 0xF condition required, so let them pass
             return true;
         default:
-            printf("[ARM_CPU] Unrecognized condition %d\n", cond);
-            exit(1);
+            EmuException::die("[ARM_CPU] Unrecognized condition %d\n", cond);
+            return false;
     }
 }
 

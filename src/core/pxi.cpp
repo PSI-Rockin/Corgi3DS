@@ -8,6 +8,20 @@ PXI::PXI(MPCore_PMR* mpcore, Interrupt9* int9) : mpcore(mpcore), int9(int9)
 
 }
 
+void PXI::reset()
+{
+    memset(&sync9, 0, sizeof(sync9));
+    memset(&sync11, 0, sizeof(sync11));
+    memset(&cnt9, 0, sizeof(cnt9));
+    memset(&cnt11, 0, sizeof(cnt11));
+
+    while (recv9.size())
+        recv9.pop();
+
+    while (recv11.size())
+        recv11.pop();
+}
+
 uint32_t PXI::read_sync9()
 {
     uint32_t reg = sync9.recv_data;

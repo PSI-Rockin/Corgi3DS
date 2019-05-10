@@ -1,7 +1,7 @@
 #include <cstdio>
-#include <cstdlib>
 #include <cstring>
 #include "dma9.hpp"
+#include "../common/common.hpp"
 #include "../emulator.hpp"
 
 DMA9::DMA9(Emulator* e) : e(e)
@@ -84,10 +84,7 @@ void DMA9::write32_xdma(uint32_t addr, uint32_t value)
             if ((value & 0x3) == 0)
                 xdma_exec_debug();
             else
-            {
-                printf("[XDMA] Reserved value $%02X passed to exec debug\n", value & 0x3);
-                exit(1);
-            }
+                EmuException::die("[XDMA] Reserved value $%02X passed to exec debug\n", value & 0x3);
             return;
         case 0x1000CD08:
             xdma_debug_instrs[0] = value;
@@ -164,7 +161,7 @@ void DMA9::xdma_exec_instr(uint8_t byte, int chan)
                 break;
             default:
                 printf("[XDMA] Unrecognized opcode $%02X\n", byte);
-                exit(1);
+                EmuException::die("[XDMA] Unrecognized opcode $%02X\n", byte);
         }
     }
     else
@@ -243,8 +240,7 @@ void DMA9::instr_mov(int chan)
             xdma_chan[chan].dest_addr = value;
             break;
         default:
-            printf("[XDMA] Unrecognized DMAMOV reg %d\n", reg);
-            exit(1);
+            EmuException::die("[XDMA] Unrecognized DMAMOV reg %d\n", reg);
     }
 }
 

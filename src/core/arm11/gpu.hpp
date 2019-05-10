@@ -8,6 +8,7 @@ struct FrameBuffer
     uint32_t right_addr_a, right_addr_b;
 
     uint8_t color_format;
+    bool buffer_select;
 };
 
 struct MemoryFill

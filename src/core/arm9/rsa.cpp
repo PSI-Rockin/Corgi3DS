@@ -1,6 +1,5 @@
 #include <cstdio>
 #include <cstring>
-#include <cstdlib>
 #include <sstream>
 #include "../common/common.hpp"
 #include "rsa.hpp"

@@ -56,8 +56,8 @@ class ARM_CPU
         CP15* cp15;
 
         uint32_t fiq_regs[5];
-        uint32_t SP_und, SP_irq, SP_svc, SP_fiq;
-        uint32_t LR_und, LR_irq, LR_svc, LR_fiq;
+        uint32_t SP_und, SP_irq, SP_svc, SP_fiq, SP_abt;
+        uint32_t LR_und, LR_irq, LR_svc, LR_fiq, LR_abt;
 
         PSR_Flags CPSR, SPSR[0x20];
     public:

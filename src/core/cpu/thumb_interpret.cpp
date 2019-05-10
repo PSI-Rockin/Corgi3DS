@@ -1,8 +1,8 @@
-#include <cstdlib>
 #include <cstdio>
 #include "arm.hpp"
 #include "arm_interpret.hpp"
 #include "arm_disasm.hpp"
+#include "../common/common.hpp"
 
 namespace ARM_Interpreter
 {
@@ -114,8 +114,7 @@ void interpret_thumb(ARM_CPU &cpu, uint16_t instr)
             thumb_long_blx(cpu, instr);
             break;
         default:
-            printf("[Thumb_Interpreter] Undefined Thumb instr $%04X\n", instr);
-            exit(1);
+            EmuException::die("[Thumb_Interpreter] Undefined Thumb instr $%04X\n", instr);
     }
 }
 
@@ -143,8 +142,7 @@ void thumb_move_shift(ARM_CPU &cpu, uint16_t instr)
             value = cpu.asr(value, shift, true);
             break;
         default:
-            printf("[Thumb_Interpreter] Unrecognized opcode %d in thumb_mov_shift\n", opcode);
-            exit(1);
+            EmuException::die("[Thumb_Interpreter] Unrecognized opcode %d in thumb_mov_shift\n", opcode);
     }
 
     //cpu.add_internal_cycles(1); //Extra cycle due to register shift
@@ -742,8 +740,7 @@ void thumb_cond_branch(ARM_CPU &cpu, uint16_t instr)
     int condition = (instr >> 8) & 0xF;
     if (condition == 0xF)
     {
-        printf("[Thumb_Interpreter] SWI not implemented\n");
-        exit(1);
+        EmuException::die("[Thumb_Interpreter] SWI not implemented\n");
         //cpu.handle_SWI();
         return;
     }

@@ -1,6 +1,6 @@
 #include <cstdio>
-#include <cstdlib>
 #include <cstring>
+#include "common/common.hpp"
 #include "emulator.hpp"
 
 Emulator::Emulator() :
@@ -18,6 +18,7 @@ Emulator::Emulator() :
 {
     arm9_RAM = nullptr;
     axi_RAM = nullptr;
+    fcram = nullptr;
 }
 
 Emulator::~Emulator()
@@ -27,7 +28,7 @@ Emulator::~Emulator()
     delete[] fcram;
 }
 
-void Emulator::reset()
+void Emulator::reset(bool cold_boot)
 {
     if (!arm9_RAM)
         arm9_RAM = new uint8_t[1024 * 1024];
@@ -42,6 +43,10 @@ void Emulator::reset()
     app_cp15.reset(false);
     mpcore_pmr.reset();
 
+    boot9 = boot9_free;
+    boot11 = boot11_free;
+    otp = otp_free;
+
     HID_PAD = 0xFFF;
 
     gpu.reset();
@@ -49,9 +54,13 @@ void Emulator::reset()
 
     aes.reset();
     emmc.reset();
+    pxi.reset();
 
     sysprot9 = 0;
     sysprot11 = 0;
+
+    if (cold_boot)
+        config_bootenv = 0;
 }
 
 void Emulator::run()
@@ -67,11 +76,31 @@ void Emulator::run()
     gpu.render_frame();
 }
 
+void Emulator::print_state()
+{
+    printf("--PRINTING STATE--\n");
+    printf("ARM9 state\n");
+    arm9.print_state();
+
+    printf("\nARM11 state\n");
+    arm11.print_state();
+
+    printf("\n--END LOG--\n");
+}
+
 void Emulator::load_roms(uint8_t *boot9, uint8_t *boot11, uint8_t *otp, uint8_t* cid)
 {
-    memcpy(this->boot9, boot9, 1024 * 64);
-    memcpy(this->boot11, boot11, 1024 * 64);
-    memcpy(this->otp, otp, 256);
+    memset(boot9_locked, 0, 1024 * 64);
+    memset(boot11_locked, 0, 1024 * 64);
+
+    memcpy(boot9_free, boot9, 1024 * 64);
+    memcpy(boot11_free, boot11, 1024 * 64);
+
+    memcpy(boot9_locked, boot9, 1024 * 32);
+    memcpy(boot11_locked, boot11, 1024 * 32);
+
+    memcpy(otp_free, otp, 256);
+    memset(otp_locked, 0xFF, 256);
     emmc.load_cid(cid);
 }
 
@@ -138,6 +167,8 @@ uint8_t Emulator::arm9_read8(uint32_t addr)
             return 0; //AES related
         case 0x10000010:
             return 1; //Cartridge not inserted
+        case 0x10000200:
+            return 0; //New3DS memory hidden
         case 0x10008000:
             return pxi.read_sync9() & 0xFF;
         case 0x10008003:
@@ -152,9 +183,8 @@ uint8_t Emulator::arm9_read8(uint32_t addr)
             return 1;
     }
 
-    printf("[ARM9] Invalid read8 $%08X\n", addr);
-    arm9.print_state();
-    exit(1);
+    EmuException::die("[ARM9] Invalid read8 $%08X\n", addr);
+    return 0;
 }
 
 uint16_t Emulator::arm9_read16(uint32_t addr)
@@ -182,14 +212,16 @@ uint16_t Emulator::arm9_read16(uint32_t addr)
 
     switch (addr)
     {
+        case 0x10000004:
+            return 0; //debug control?
         case 0x10008004:
             return pxi.read_cnt9();
         case 0x10146000:
             return HID_PAD; //bits on = keys not pressed
     }
 
-    printf("[ARM9] Invalid read16 $%08X\n", addr);
-    exit(1);
+    EmuException::die("[ARM9] Invalid read16 $%08X\n", addr);
+    return 0;
 }
 
 uint32_t Emulator::arm9_read32(uint32_t addr)
@@ -241,7 +273,7 @@ uint32_t Emulator::arm9_read32(uint32_t addr)
         case 0x1000800C:
             return pxi.read_msg9();
         case 0x10010000:
-            return 0; //Indicates if it's a cold boot
+            return config_bootenv;
         case 0x101401C0:
             return 0; //SPI control
         case 0x10140FFC:
@@ -250,8 +282,8 @@ uint32_t Emulator::arm9_read32(uint32_t addr)
             return HID_PAD;
     }
 
-    printf("[ARM9] Invalid read32 $%08X\n", addr);
-    exit(1);
+    EmuException::die("[ARM9] Invalid read32 $%08X\n", addr);
+    return 0;
 }
 
 void Emulator::arm9_write8(uint32_t addr, uint8_t value)
@@ -305,17 +337,20 @@ void Emulator::arm9_write8(uint32_t addr, uint8_t value)
         case 0x10000000:
             //Disable access to sensitive parts of boot ROM
             if (value & 0x1)
-                memset(boot9 + 0x8000, 0x00, 0x8000);
+                boot9 = boot9_locked;
 
             //Disable access to OTP
             if (value & 0x2)
-                memset(otp, 0xFF, 256);
+                otp = otp_locked;
 
             sysprot9 = value;
             return;
         case 0x10000001:
             if (value & 0x1)
-                memset(boot11 + 0x8000, 0x00, 0x8000);
+            {
+                boot11 = boot11_locked;
+                printf("Boot11 locked: $%08X\n", *(uint32_t*)&boot11[0x8000]);
+            }
 
             sysprot11 = value;
             return;
@@ -332,8 +367,7 @@ void Emulator::arm9_write8(uint32_t addr, uint8_t value)
         case 0x10010014:
             return;
     }
-    printf("[ARM9] Invalid write8 $%08X: $%02X\n", addr, value);
-    exit(1);
+    EmuException::die("[ARM9] Invalid write8 $%08X: $%02X\n", addr, value);
 }
 
 void Emulator::arm9_write16(uint32_t addr, uint16_t value)
@@ -380,6 +414,8 @@ void Emulator::arm9_write16(uint32_t addr, uint16_t value)
     }
     switch (addr)
     {
+        case 0x10000004:
+            return;
         case 0x10000020:
             return;
         case 0x10008004:
@@ -389,8 +425,7 @@ void Emulator::arm9_write16(uint32_t addr, uint16_t value)
             aes.write_block_count(value);
             return;
     }
-    printf("[ARM9] Invalid write16 $%08X: $%04X\n", addr, value);
-    exit(1);
+    EmuException::die("[ARM9] Invalid write16 $%08X: $%04X\n", addr, value);
 }
 
 void Emulator::arm9_write32(uint32_t addr, uint32_t value)
@@ -452,6 +487,10 @@ void Emulator::arm9_write32(uint32_t addr, uint32_t value)
         return;
     }
 
+    //DSP memory
+    if (addr >= 0x1FF00000 && addr < 0x1FF80000)
+        return;
+
     //B9S writes here to cause a data abort during boot9 exec, which allows it to dump the boot ROMs.
     //Data aborts not implemented yet, so just ignore
     if (addr >= 0xC0000000 && addr < 0xC0000200)
@@ -476,9 +515,11 @@ void Emulator::arm9_write32(uint32_t addr, uint32_t value)
         case 0x10008008:
             pxi.send_to_11(value);
             return;
+        case 0x10010000:
+            config_bootenv = value;
+            return;
     }
-    printf("[ARM9] Invalid write32 $%08X: $%08X\n", addr, value);
-    exit(1);
+    EmuException::die("[ARM9] Invalid write32 $%08X: $%08X\n", addr, value);
 }
 
 uint8_t Emulator::arm11_read8(uint32_t addr)
@@ -509,8 +550,8 @@ uint8_t Emulator::arm11_read8(uint32_t addr)
         case 0x10163000:
             return pxi.read_sync11() & 0xFF;
     }
-    printf("[ARM11] Invalid read8 $%08X\n", addr);
-    exit(1);
+    EmuException::die("[ARM9] Invalid read8 $%08X\n");
+    return 0;
 }
 
 uint16_t Emulator::arm11_read16(uint32_t addr)
@@ -533,8 +574,8 @@ uint16_t Emulator::arm11_read16(uint32_t addr)
         case 0x10163004:
             return pxi.read_cnt11();
     }
-    printf("[ARM11] Invalid read16 $%08X\n", addr);
-    exit(1);
+    EmuException::die("[ARM9] Invalid read16 $%08X\n");
+    return 0;
 }
 
 uint32_t Emulator::arm11_read32(uint32_t addr)
@@ -568,8 +609,8 @@ uint32_t Emulator::arm11_read32(uint32_t addr)
         case 0x1016300C:
             return pxi.read_msg11();
     }
-    printf("[ARM11] Invalid read32 $%08X\n", addr);
-    exit(1);
+    EmuException::die("[ARM9] Invalid read32 $%08X\n");
+    return 0;
 }
 
 void Emulator::arm11_write8(uint32_t addr, uint8_t value)
@@ -621,8 +662,7 @@ void Emulator::arm11_write8(uint32_t addr, uint8_t value)
         }
             return;
     }
-    printf("[ARM11] Invalid write8 $%08X: $%02X\n", addr, value);
-    exit(1);
+    EmuException::die("[ARM11] Invalid write8 $%08X: $%02X\n", addr, value);
 }
 
 void Emulator::arm11_write16(uint32_t addr, uint16_t value)
@@ -653,8 +693,7 @@ void Emulator::arm11_write16(uint32_t addr, uint16_t value)
             pxi.write_cnt11(value);
             return;
     }
-    printf("[ARM11] Invalid write16 $%08X: $%04X\n", addr, value);
-    exit(1);
+    EmuException::die("[ARM11] Invalid write16 $%08X: $%04X\n", addr, value);
 }
 
 void Emulator::arm11_write32(uint32_t addr, uint32_t value)
@@ -699,8 +738,7 @@ void Emulator::arm11_write32(uint32_t addr, uint32_t value)
         case 0x10202014:
             return;
     }
-    printf("[ARM11] Invalid write32 $%08X: $%08X\n", addr, value);
-    exit(1);
+    EmuException::die("[ARM11] Invalid write32 $%08X: $%08X\n", addr, value);
 }
 
 uint8_t* Emulator::get_top_buffer()

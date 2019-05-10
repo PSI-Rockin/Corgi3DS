@@ -1,6 +1,7 @@
 #include <fstream>
 #include <QApplication>
 #include "../core/emulator.hpp"
+#include "../core/common/exceptions.hpp"
 #include "emuwindow.hpp"
 
 using namespace std;
@@ -82,8 +83,21 @@ int main(int argc, char** argv)
         a.processEvents();
         uint16_t pad = emuwindow->get_pad_state();
         e.set_pad(pad);
-        e.run();
-        emuwindow->draw(e.get_top_buffer(), e.get_bottom_buffer());
+        try
+        {
+            e.run();
+            emuwindow->draw(e.get_top_buffer(), e.get_bottom_buffer());
+        }
+        catch (EmuException::FatalError& error)
+        {
+            e.print_state();
+            printf("Fatal emulation error occurred!\n%s\n", error.what());
+            return 1;
+        }
+        catch (EmuException::RebootException& r)
+        {
+            e.reset(false);
+        }
     }
 
     return 0;

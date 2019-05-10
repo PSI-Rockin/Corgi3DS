@@ -61,8 +61,7 @@ void SHA::reset_hash()
             hash[7] = 0;
             break;
         default:
-            printf("[SHA] Unrecognized mode %d\n", SHA_CNT.mode);
-            exit(1);
+            EmuException::die("[SHA] Unrecognized mode %d\n", SHA_CNT.mode);
     }
 
     message_len = 0;
@@ -170,8 +169,7 @@ void SHA::do_hash(bool final_round)
             do_sha1(final_round);
             break;
         default:
-            printf("[SHA] Unrecognized hash mode %d\n", SHA_CNT.mode);
-            exit(1);
+            EmuException::die("[SHA] Unrecognized hash mode %d\n", SHA_CNT.mode);
     }
 }
 
@@ -199,8 +197,7 @@ void SHA::do_sha256(bool final_round)
 
         if (round_size >= 14)
         {
-            printf("[SHA] 14 or above\n");
-            exit(1);
+            EmuException::die("[SHA] 14 or above\n");
             _sha256();
 
             //Not enough space to store the message variable. We need to do another round
@@ -258,8 +255,7 @@ void SHA::do_sha1(bool final_round)
 
         if (round_size >= 14)
         {
-            printf("[SHA] 14 or above\n");
-            exit(1);
+            EmuException::die("[SHA] 14 or above\n");
             _sha1();
 
             //Not enough space to store the message variable. We need to do another round

@@ -1,6 +1,5 @@
 #include <cstdio>
 #include <cstring>
-#include <cstdlib>
 #include "gpu.hpp"
 #include "../common/common.hpp"
 
@@ -54,7 +53,11 @@ void GPU::render_fb_pixel(uint8_t *screen, int fb_index, int x, int y)
 {
     FrameBuffer* screen_fb = &framebuffers[fb_index];
 
-    uint32_t start = screen_fb->left_addr_a % 0x00600000;
+    uint32_t start;
+    if (screen_fb->buffer_select)
+        start = screen_fb->left_addr_b % 0x00600000;
+    else
+        start = screen_fb->left_addr_a % 0x00600000;
 
     int index = x + (y * 240);
     uint32_t color;
@@ -72,8 +75,7 @@ void GPU::render_fb_pixel(uint8_t *screen, int fb_index, int x, int y)
             *(uint32_t*)&screen[(index * 4)] = color;
             break;
         default:
-            printf("[GPU] Unrecognized framebuffer color format %d\n", screen_fb->color_format);
-            exit(1);
+            EmuException::die("[GPU] Unrecognized framebuffer color format %d\n", screen_fb->color_format);
     }
 }
 
@@ -134,8 +136,7 @@ void GPU::write32(uint32_t addr, uint32_t value)
                                 write_vram<uint32_t>(i, memfill[index].value);
                                 break;
                             default:
-                                printf("[GPU] Unrecognized Memory Fill format %d\n", memfill[index].fill_width);
-                                exit(1);
+                                EmuException::die("[GPU] Unrecognized Memory Fill format %d\n", memfill[index].fill_width);
                         }
                     }
                     memfill[index].finished = true;
@@ -192,6 +193,9 @@ void GPU::write32_fb(int index, uint32_t addr, uint32_t value)
             return;
         case 0x70:
             fb->color_format = value & 0x7;
+            return;
+        case 0x78:
+            fb->buffer_select = value & 0x1;
             return;
         case 0x94:
             fb->right_addr_a = value;

@@ -1,7 +1,7 @@
 #include <cstring>
 #include <cstdio>
-#include <cstdlib>
 #include <ctime>
+#include "common/common.hpp"
 #include "i2c.hpp"
 
 #define itob(i) ((i)/10*16 + (i)%10)    /* u_char to BCD */
@@ -195,17 +195,11 @@ void I2C::write_mcu(uint8_t reg_id, uint8_t value)
         case 0x20:
             //Poweroff
             if (value & 0x1)
-            {
-                printf("[I2C_MCU] Powering off!\n");
-                exit(1);
-            }
+                EmuException::die("[I2C_MCU] Powering off!");
 
             //Reboot
             if (value & 0x4)
-            {
-                printf("[I2C_MCU] Reboot\n");
-                exit(1);
-            }
+                EmuException::reboot();
             break;
         default:
             printf("[I2C_MCU] Unrecognized write register $%02X\n", reg_id);

@@ -35,6 +35,8 @@ class PXI
     public:
         PXI(MPCore_PMR* mpcore, Interrupt9* int9);
 
+        void reset();
+
         uint32_t read_sync9();
         uint32_t read_sync11();
         uint16_t read_cnt9();

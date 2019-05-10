@@ -1,4 +1,3 @@
-#include <cstdlib>
 #include <cstdio>
 #include "arm.hpp"
 #include "arm_disasm.hpp"
@@ -108,8 +107,7 @@ void interpret_arm(ARM_CPU &cpu, uint32_t instr)
             cpu.halt();
             break;
         default:
-            printf("[ARM_Interpreter] Undefined instr $%08X\n", instr);
-            exit(1);
+            EmuException::die("[ARM_Interpreter] Undefined instr $%08X\n", instr);
     }
 }
 
@@ -283,8 +281,7 @@ void arm_data_processing(ARM_CPU &cpu, uint32_t instr)
                     second_operand = cpu.rotr32(second_operand, shift, set_carry);
                 break;
             default:
-                printf("[ARM_Interpreter] Invalid data processing shift: %d\n", shift_type);
-                exit(1);
+                EmuException::die("[ARM_Interpreter] Invalid data processing shift: %d\n", shift_type);
         }
     }
 
@@ -436,8 +433,8 @@ void arm_signed_halfword_multiply(ARM_CPU &cpu, uint32_t instr)
             result = product;
             break;
         default:
-            printf("Unrecognized smul opcode $%01X\n", opcode);
-            exit(1);
+            EmuException::die("Unrecognized smul opcode $%01X\n", opcode);
+            result = 0;
     }
 
     cpu.set_register(destination, result);

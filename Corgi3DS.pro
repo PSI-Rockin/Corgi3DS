@@ -32,7 +32,8 @@ SOURCES += src/qt/main.cpp \
     src/core/arm9/emmc.cpp \
     src/core/arm9/interrupt9.cpp \
     src/qt/emuwindow.cpp \
-    src/core/i2c.cpp
+    src/core/i2c.cpp \
+    src/core/common/exceptions.cpp
 
 HEADERS += \
     src/core/emulator.hpp \
@@ -56,7 +57,8 @@ HEADERS += \
     src/core/arm9/interrupt9.hpp \
     src/qt/emuwindow.hpp \
     src/core/i2c.hpp \
-    src/core/common/common.hpp
+    src/core/common/common.hpp \
+    src/core/common/exceptions.hpp
 
 INCLUDEPATH += /usr/local/include
 

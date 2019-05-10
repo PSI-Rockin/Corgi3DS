@@ -1,6 +1,6 @@
 #include <cstdio>
-#include <cstdlib>
 #include <cstring>
+#include "../common/common.hpp"
 #include "emmc.hpp"
 #include "interrupt9.hpp"
 
@@ -95,8 +95,7 @@ uint16_t EMMC::read16(uint32_t addr)
         case 0x1000601C:
             reg = (istat & 0xFFFF);
             reg |= 1 << 5;
-            if (!nand_selected())
-                reg |= (!sd_write_protected) << 7;
+            reg |= (!sd_write_protected) << 7;
             printf("[EMMC] Read ISTAT_L: $%04X\n", reg);
             break;
         case 0x1000601E:
@@ -147,8 +146,8 @@ uint32_t EMMC::read32(uint32_t addr)
         case 0x1000610C:
             return read_fifo32();
         default:
-            printf("[EMMC] Unrecognized read32 $%08X\n", addr);
-            exit(1);
+            EmuException::die("[EMMC] Unrecognized read32 $%08X\n", addr);
+            return 0;
     }
 }
 
@@ -366,8 +365,7 @@ void EMMC::send_cmd(int command)
             command_end();
             break;
         default:
-            printf("[EMMC] Unrecognized CMD%d\n", command);
-            exit(1);
+            EmuException::die("[EMMC] Unrecognized CMD%d\n", command);
     }
 }
 
@@ -420,8 +418,7 @@ void EMMC::send_acmd(int command)
             data_ready();
             break;
         default:
-            printf("[EMMC] Unrecognized ACMD%d\n", command);
-            exit(1);
+            EmuException::die("[EMMC] Unrecognized ACMD%d\n", command);
     }
 }
 
