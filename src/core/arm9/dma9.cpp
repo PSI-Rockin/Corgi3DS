@@ -11,6 +11,7 @@ DMA9::DMA9(Emulator* e) : e(e)
 
 void DMA9::reset()
 {
+    memset(ndma_chan, 0, sizeof(ndma_chan));
     memset(xdma_chan, 0, sizeof(xdma_chan));
 
     xdma_command_set = false;
@@ -35,8 +36,29 @@ void DMA9::run_xdma()
     }
 }
 
+void DMA9::ndma_req(NDMA_Request req)
+{
+    bool dma_ran = false;
+    for (int i = 0; i < 8; i++)
+    {
+        if (ndma_chan[i].startup_mode == req && ndma_chan[i].busy)
+        {
+            run_ndma(i);
+            dma_ran = true;
+        }
+    }
+}
+
+void DMA9::run_ndma(int chan)
+{
+    //EmuException::die("Run NDMA%d", chan);
+
+    NDMA_Request req = ndma_chan[chan].startup_mode;
+}
+
 uint32_t DMA9::read32_ndma(uint32_t addr)
 {
+    addr &= 0xFF;
     printf("[NDMA] Unrecognized read32 $%08X\n", addr);
     return 0;
 }
@@ -65,6 +87,67 @@ uint32_t DMA9::read32_xdma(uint32_t addr)
 
 void DMA9::write32_ndma(uint32_t addr, uint32_t value)
 {
+    addr &= 0xFF;
+
+    if (addr >= 0x4)
+    {
+        int index = (addr - 4) / 0x1C;
+        int reg = (addr - 4) % 0x1C;
+
+        switch (reg)
+        {
+            case 0x00:
+                printf("[NDMA] Write chan%d source addr: $%08X\n", index, value);
+                ndma_chan[index].source_addr = value & 0xFFFFFFFC;
+                break;
+            case 0x04:
+                printf("[NDMA] Write chan%d dest addr: $%08X\n", index, value);
+                ndma_chan[index].dest_addr = value & 0xFFFFFFFC;
+                break;
+            case 0x08:
+                printf("[NDMA] Write chan%d transfer count: $%08X\n", index, value);
+                ndma_chan[index].transfer_count = value & 0x0FFFFFFF;
+                break;
+            case 0x0C:
+                printf("[NDMA] Write chan%d write count: $%08X\n", index, value);
+                ndma_chan[index].write_count = value & 0x00FFFFFF;
+                break;
+            case 0x10:
+                printf("[NDMA] Write chan%d block interval: $%08X\n", index, value);
+                break;
+            case 0x14:
+                printf("[NDMA] Write chan%d fill: $%08X\n", index, value);
+                ndma_chan[index].fill_data = value;
+                break;
+            case 0x18:
+            {
+                printf("[NDMA] Write chan%d control: $%08X\n", index, value);
+
+                ndma_chan[index].dest_update_method = (value >> 10) & 0x3;
+                ndma_chan[index].dest_reload = value & (1 << 12);
+                ndma_chan[index].src_update_method = (value >> 13) & 0x3;
+                ndma_chan[index].src_reload = value & (1 << 15);
+                ndma_chan[index].words_per_block = (value >> 16) & 0xF;
+                ndma_chan[index].startup_mode = (NDMA_Request)((value >> 24) & 0xF);
+                ndma_chan[index].imm_mode = value & (1 << 28);
+                ndma_chan[index].repeating_mode = value & (1 << 29);
+                ndma_chan[index].irq_enable = value & (1 << 30);
+
+                bool old_busy = ndma_chan[index].busy;
+                ndma_chan[index].busy = value & (1 << 31);
+
+                //Start NDMA transfer
+                if (!old_busy && ndma_chan[index].busy)
+                {
+                    if (ndma_chan[index].imm_mode)
+                        run_ndma(index);
+                }
+                break;
+            }
+        }
+
+        return;
+    }
     printf("[NDMA] Unrecognized write32 $%08X: $%08X\n", addr, value);
 }
 
@@ -140,6 +223,14 @@ void DMA9::xdma_exec_instr(uint8_t byte, int chan)
                 xdma_chan[chan].state = XDMA_Chan::Status::STOP;
                 break;
             case 0x18:
+                printf("[XDMA] DMANOP\n");
+                break;
+            case 0x20:
+            case 0x22:
+                xdma_params_needed = 1;
+                xdma_command_set = true;
+                break;
+            case 0x32:
                 //DMAWFP
                 xdma_params_needed = 1;
                 xdma_command_set = true;
@@ -172,7 +263,11 @@ void DMA9::xdma_exec_instr(uint8_t byte, int chan)
         {
             switch (xdma_command)
             {
-                case 0x18:
+                case 0x20:
+                case 0x22:
+                    instr_lp(chan, (xdma_command >> 1) & 0x1);
+                    break;
+                case 0x32:
                     instr_wfp(chan);
                     break;
                 case 0x35:
@@ -191,12 +286,25 @@ void DMA9::xdma_exec_instr(uint8_t byte, int chan)
     }
 }
 
+void DMA9::instr_lp(int chan, int loop_ctr_index)
+{
+    uint16_t iterations = xdma_params[0] + 1;
+    xdma_chan[chan].loop_ctr[loop_ctr_index] = iterations;
+    printf("[XDMA] DMALP%d: chan%d iterations: %d\n", loop_ctr_index, chan, iterations);
+}
+
 void DMA9::instr_wfp(int chan)
 {
     int peripheral = xdma_params[0] >> 3;
     xdma_chan[chan].state = XDMA_Chan::Status::WFP;
 
     printf("[XDMA] DMAWFP: chan%d, peripheral %d\n", chan, peripheral);
+}
+
+void DMA9::instr_flushp()
+{
+    int peripheral = xdma_params[0] >> 3;
+    printf("[XDMA] FLUSHP: peripheral: %d\n", peripheral);
 }
 
 void DMA9::instr_dmago()
@@ -210,12 +318,6 @@ void DMA9::instr_dmago()
     xdma_chan[chan].PC = start;
 
     printf("[XDMA] DMAGO: chan%d, PC: $%08X\n", chan, start);
-}
-
-void DMA9::instr_flushp()
-{
-    int peripheral = xdma_params[0] >> 3;
-    printf("[XDMA] FLUSHP: peripheral: %d\n", peripheral);
 }
 
 void DMA9::instr_mov(int chan)

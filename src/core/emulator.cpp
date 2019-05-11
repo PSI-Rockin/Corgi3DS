@@ -9,6 +9,7 @@ Emulator::Emulator() :
     arm9_cp15(0, &arm9),
     app_cp15(0, &arm11),
     sys_cp15(1, &arm11),
+    aes(&dma9),
     dma9(this),
     emmc(&int9),
     int9(&arm9),
@@ -90,6 +91,8 @@ void Emulator::print_state()
 
 void Emulator::load_roms(uint8_t *boot9, uint8_t *boot11, uint8_t *otp, uint8_t* cid)
 {
+    //The boot ROMs lock the upper halves of themselves (0x8000 and up)
+    //This is required for emulation. Boot11 at least checks for the ROM to be disabled before booting a FIRM.
     memset(boot9_locked, 0, 1024 * 64);
     memset(boot11_locked, 0, 1024 * 64);
 
@@ -288,6 +291,7 @@ uint32_t Emulator::arm9_read32(uint32_t addr)
 
 void Emulator::arm9_write8(uint32_t addr, uint8_t value)
 {
+    printf("[ARM9] Write8 $%08X: $%02X\n", addr, value);
     if (addr >= 0x08000000 && addr < 0x08100000)
     {
         arm9_RAM[addr & 0xFFFFF] = value;

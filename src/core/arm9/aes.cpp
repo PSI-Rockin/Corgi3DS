@@ -1,6 +1,7 @@
 #include <cstdio>
 #include <cstring>
 #include "aes.hpp"
+#include "dma9.hpp"
 #include "../common/common.hpp"
 
 const static uint8_t key_const[] = {0x1F, 0xF9, 0xE9, 0xAA, 0xC5, 0xFE, 0x04, 0x08, 0x02, 0x45,
@@ -80,7 +81,7 @@ void n128_add(unsigned char *a, unsigned char *b)
     }
 }
 
-AES::AES()
+AES::AES(DMA9* dma9) : dma9(dma9)
 {
 
 }
@@ -171,6 +172,7 @@ void AES::crypt_check()
         if (!block_count)
             AES_CNT.busy = false;
     }
+    send_dma_requests();
 }
 
 void AES::write_input_fifo(uint32_t value)
@@ -386,6 +388,10 @@ void AES::write32(uint32_t addr, uint32_t value)
             AES_CNT.in_word_order = value & (1 << 25);
             AES_CNT.mode = (value >> 27) & 0x7;
             AES_CNT.irq_enable = value & (1 << 30);
+
+            if ((value & (1 << 31)) && !AES_CNT.busy)
+                send_dma_requests();
+
             AES_CNT.busy = value & (1 << 31);
 
             if (value & (1 << 26))
@@ -456,4 +462,19 @@ void AES::input_vector(uint8_t *vector, int index, uint32_t value, int max_words
     vector[index + 1] = (value >> 8) & 0xFF;
     vector[index + 2] = (value >> 16) & 0xFF;
     vector[index + 3] = value >> 24;
+}
+
+void AES::send_dma_requests()
+{
+    if (input_fifo.size() < 8)
+    {
+        dma9->ndma_req(NDMA_AES_WRITEFREE);
+        dma9->ndma_req(NDMA_AES2);
+    }
+
+    if (output_fifo.size() >= 8)
+    {
+        dma9->ndma_req(NDMA_AES_READFREE);
+        dma9->ndma_req(NDMA_AES2);
+    }
 }

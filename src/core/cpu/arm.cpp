@@ -113,7 +113,7 @@ void ARM_CPU::run()
 }
 
 void ARM_CPU::print_state()
-{;
+{
     for (int i = 0; i < 16; i++)
     {
         printf("%s:$%08X", get_reg_name(i).c_str(), gpr[i]);

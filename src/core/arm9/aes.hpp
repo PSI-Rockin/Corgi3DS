@@ -27,9 +27,12 @@ struct AES_KeySlot
     uint8_t y[16];
 };
 
+class DMA9;
+
 class AES
 {
     private:
+        DMA9* dma9;
         AES_CNT_REG AES_CNT;
         uint8_t KEYSEL;
         uint8_t KEYCNT;
@@ -66,8 +69,10 @@ class AES
         void decrypt_cbc();
         void encrypt_cbc();
         void decrypt_ecb();
+
+        void send_dma_requests();
     public:
-        AES();
+        AES(DMA9* dma9);
 
         void reset();
         void write_input_fifo(uint32_t value);
