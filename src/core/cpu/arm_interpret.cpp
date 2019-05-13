@@ -88,6 +88,9 @@ void interpret_arm(ARM_CPU &cpu, uint32_t instr)
         case ARM_LOAD_SIGNED_BYTE:
             arm_load_signed_byte(cpu, instr);
             break;
+        case ARM_LOAD_SIGNED_HALFWORD:
+            arm_load_signed_halfword(cpu, instr);
+            break;
         case ARM_LOAD_DOUBLEWORD:
             arm_load_doubleword(cpu, instr);
             break;
@@ -866,12 +869,61 @@ void arm_load_signed_byte(ARM_CPU &cpu, uint32_t instr)
         if (is_writing_back)
             cpu.set_register(base, address);
 
-        uint32_t word = static_cast<int32_t>(static_cast<int8_t>(cpu.read8(address)));
+        uint32_t word = (int32_t)(int8_t)(cpu.read8(address));
         cpu.set_register(destination, word);
     }
     else
     {
-        uint32_t word = static_cast<int32_t>(static_cast<int8_t>(cpu.read8(address)));
+        uint32_t word = (int32_t)(int8_t)(cpu.read8(address));
+        cpu.set_register(destination, word);
+
+        if (is_adding_offset)
+            address += offset;
+        else
+            address -= offset;
+
+        if (base != destination)
+            cpu.set_register(base, address);
+    }
+
+    //cpu.add_n16_data(address, 1);
+}
+
+void arm_load_signed_halfword(ARM_CPU &cpu, uint32_t instr)
+{
+    bool is_preindexing = (instr & (1 << 24)) != 0;
+    bool is_adding_offset = (instr & (1 << 23)) != 0;
+    bool is_writing_back = (instr & (1 << 21)) != 0;
+    uint32_t base = (instr >> 16) & 0xF;
+    uint32_t destination = (instr >> 12) & 0xF;
+
+    bool is_imm_offset = (instr & (1 << 22)) != 0;
+    uint32_t offset = 0;
+
+    offset = instr & 0xF;
+    if (is_imm_offset)
+        offset |= (instr >> 4) & 0xF0;
+    else
+        offset = cpu.get_register(offset);
+
+    uint32_t address = cpu.get_register(base);
+
+    if (is_preindexing)
+    {
+        if (is_adding_offset)
+            address += offset;
+        else
+            address -= offset;
+
+        if (is_writing_back)
+            cpu.set_register(base, address);
+
+        uint32_t word = (int32_t)(int8_t)(cpu.read16(address));
+        cpu.set_register(destination, word);
+    }
+    else
+    {
+        uint32_t word = (int32_t)(int8_t)(cpu.read16(address));
         cpu.set_register(destination, word);
 
         if (is_adding_offset)

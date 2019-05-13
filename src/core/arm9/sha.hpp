@@ -14,9 +14,12 @@ struct SHA_CNT_REG
     bool irq1_enable;
 };
 
+class DMA9;
+
 class SHA
 {
     private:
+        DMA9* dma9;
         SHA_CNT_REG SHA_CNT;
 
         uint32_t hash[8];
@@ -36,7 +39,7 @@ class SHA
         void _sha256();
         void _sha1();
     public:
-        SHA();
+        SHA(DMA9* dma9);
 
         void reset();
 

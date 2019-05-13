@@ -1,6 +1,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include "../common/common.hpp"
+#include "dma9.hpp"
 #include "sha.hpp"
 
 const static uint32_t k_1[4] =
@@ -20,7 +21,7 @@ const static uint32_t k_256[64] =
    0x748f82ee, 0x78a5636f, 0x84c87814, 0x8cc70208, 0x90befffa, 0xa4506ceb, 0xbef9a3f7, 0xc67178f2
 };
 
-SHA::SHA()
+SHA::SHA(DMA9* dma9) : dma9(dma9)
 {
 
 }
@@ -89,10 +90,15 @@ uint32_t SHA::read32(uint32_t addr)
     if (addr >= 0x1000A080 && addr < 0x1000A0C0)
     {
         uint32_t value = read_fifo.front();
-        printf("[SHA] Read FIFO: $%08X\n", value);
+        //printf("[SHA] Read FIFO: $%08X\n", value);
         read_fifo.pop();
         if (!read_fifo.size())
+        {
             SHA_CNT.fifo_enable = false;
+            dma9->clear_xdma_req(XDMA_SHA);
+            dma9->clear_ndma_req(NDMA_SHA2);
+            dma9->set_ndma_req(NDMA_AES2);
+        }
         return value;
     }
     switch (addr)
@@ -151,6 +157,9 @@ void SHA::write_fifo(uint32_t value)
     message_len++;
     if (in_fifo.size() == 16)
     {
+        dma9->set_xdma_req(XDMA_SHA);
+        dma9->set_ndma_req(NDMA_SHA2);
+        dma9->clear_ndma_req(NDMA_AES2);
         do_hash(false);
         SHA_CNT.fifo_enable = true;
     }

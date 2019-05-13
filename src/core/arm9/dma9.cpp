@@ -4,13 +4,15 @@
 #include "../common/common.hpp"
 #include "../emulator.hpp"
 
-DMA9::DMA9(Emulator* e) : e(e)
+DMA9::DMA9(Emulator* e, Interrupt9* int9) : e(e), int9(int9)
 {
 
 }
 
 void DMA9::reset()
 {
+    memset(pending_ndma_reqs, 0, sizeof(pending_ndma_reqs));
+    memset(pending_xdma_reqs, 0, sizeof(pending_xdma_reqs));
     memset(ndma_chan, 0, sizeof(ndma_chan));
     memset(xdma_chan, 0, sizeof(xdma_chan));
 
@@ -20,11 +22,32 @@ void DMA9::reset()
     xdma_params_needed = 0;
 }
 
+void DMA9::process_ndma_reqs()
+{
+    for (int i = 0; i < 8; i++)
+    {
+        if (ndma_chan[i].busy && pending_ndma_reqs[ndma_chan[i].startup_mode])
+        {
+            run_ndma(i);
+            while (i < 7 && ndma_chan[i + 1].startup_mode == NDMA_AES2)
+            {
+                i++;
+                run_ndma(i);
+            }
+        }
+    }
+}
+
 void DMA9::run_xdma()
 {
     //TODO: can the DMA manager thread run on its own? This code assumes it can't
-    for (int i = 0; i < 7; i++)
+    for (int i = 0; i < 8; i++)
     {
+        if (xdma_chan[i].state == XDMA_Chan::Status::WFP)
+        {
+            if (pending_xdma_reqs[xdma_chan[i].peripheral])
+                xdma_chan[i].state = XDMA_Chan::Status::EXEC;
+        }
         //TODO: Check if programs care about transfers being instant
         while (xdma_chan[i].state == XDMA_Chan::Status::EXEC)
         {
@@ -36,24 +59,101 @@ void DMA9::run_xdma()
     }
 }
 
-void DMA9::ndma_req(NDMA_Request req)
+void DMA9::set_ndma_req(NDMA_Request req)
 {
-    bool dma_ran = false;
-    for (int i = 0; i < 8; i++)
-    {
-        if (ndma_chan[i].startup_mode == req && ndma_chan[i].busy)
-        {
-            run_ndma(i);
-            dma_ran = true;
-        }
-    }
+    //printf("[DMA9] Set NDMA req%d\n", req);
+    pending_ndma_reqs[req] = true;
+}
+
+void DMA9::clear_ndma_req(NDMA_Request req)
+{
+    //printf("[DMA9] Clear NDMA req%d\n", req);
+    pending_ndma_reqs[req] = false;
+}
+
+void DMA9::set_xdma_req(XDMA_Request req)
+{
+    pending_xdma_reqs[req] = true;
+}
+
+void DMA9::clear_xdma_req(XDMA_Request req)
+{
+    pending_xdma_reqs[req] = false;
 }
 
 void DMA9::run_ndma(int chan)
 {
-    //EmuException::die("Run NDMA%d", chan);
+    int src_multiplier = 0;
+    switch (ndma_chan[chan].src_update_method)
+    {
+        case 0:
+            //Increment
+            src_multiplier = 4;
+            break;
+        case 1:
+            //Decrement
+            src_multiplier = -4;
+            break;
+        case 2:
+            //Fixed
+            src_multiplier = 0;
+            break;
+        case 3:
+            //No address (fill)
+            EmuException::die("[NDMA] Source update method 3 (fill) selected!");
+    }
 
-    NDMA_Request req = ndma_chan[chan].startup_mode;
+    int dest_multiplier = 0;
+    switch (ndma_chan[chan].dest_update_method)
+    {
+        case 0:
+            //Increment
+            dest_multiplier = 4;
+            break;
+        case 1:
+            //Decrement
+            dest_multiplier = -4;
+            break;
+        case 2:
+            //Fixed
+            dest_multiplier = 0;
+            break;
+        default:
+            EmuException::die("[NDMA] Invalid dest update method %d", ndma_chan[chan].dest_update_method);
+    }
+
+    int block_size = ndma_chan[chan].write_count;
+
+    //Write a logical block's worth of words
+    for (int i = 0; i < block_size; i++)
+    {
+        uint32_t word = e->arm9_read32(ndma_chan[chan].int_src + (i * src_multiplier));
+        e->arm9_write32(ndma_chan[chan].int_dest + (i * dest_multiplier), word);
+    }
+
+    //If reload flags are set, dest/source remain the same
+    if (!ndma_chan[chan].dest_reload)
+        ndma_chan[chan].int_src += (block_size * src_multiplier);
+
+    if (!ndma_chan[chan].src_reload)
+        ndma_chan[chan].int_dest += (block_size * dest_multiplier);
+
+    if (ndma_chan[chan].imm_mode)
+    {
+        ndma_chan[chan].busy = false;
+
+        //TODO: IRQs
+    }
+    else if (!ndma_chan[chan].repeating_mode)
+    {
+        ndma_chan[chan].transfer_count -= block_size;
+        if (!ndma_chan[chan].transfer_count)
+        {
+            ndma_chan[chan].busy = false;
+
+            //TODO: IRQs
+        }
+    }
 }
 
 uint32_t DMA9::read32_ndma(uint32_t addr)
@@ -77,8 +177,10 @@ uint32_t DMA9::read32_xdma(uint32_t addr)
     switch (addr)
     {
         case 0x1000C020:
+            printf("[XDMA] Read IE: $%08X\n", xdma_ie);
             return xdma_ie;
         case 0x1000C028:
+            printf("[XDMA] Read IF: $%08X\n", xdma_if);
             return xdma_if;
     }
     printf("[XDMA] Unrecognized read32 $%08X\n", addr);
@@ -139,6 +241,8 @@ void DMA9::write32_ndma(uint32_t addr, uint32_t value)
                 //Start NDMA transfer
                 if (!old_busy && ndma_chan[index].busy)
                 {
+                    ndma_chan[index].int_src = ndma_chan[index].source_addr;
+                    ndma_chan[index].int_dest = ndma_chan[index].dest_addr;
                     if (ndma_chan[index].imm_mode)
                         run_ndma(index);
                 }
@@ -218,15 +322,32 @@ void DMA9::xdma_exec_instr(uint8_t byte, int chan)
                 xdma_chan[chan].state = XDMA_Chan::Status::STOP;
                 break;
             case 0x01:
-                //DMAKILL
                 printf("[XDMA] DMAKILL\n");
                 xdma_chan[chan].state = XDMA_Chan::Status::STOP;
+                break;
+            case 0x0B:
+                printf("[XDMA] DMAST: chan%d\n", chan);
+                instr_st(chan, xdma_command & 0x3);
+                break;
+            case 0x12:
+                //Don't need to do anything here, since all memory accesses are done instantly
+                printf("[XDMA] DMARMB\n");
+                break;
+            case 0x13:
+                //Same as DMARMB
+                printf("[XDMA] DMAWMB\n");
                 break;
             case 0x18:
                 printf("[XDMA] DMANOP\n");
                 break;
             case 0x20:
             case 0x22:
+                //DMALP
+                xdma_params_needed = 1;
+                xdma_command_set = true;
+                break;
+            case 0x27:
+                //DMALDP
                 xdma_params_needed = 1;
                 xdma_command_set = true;
                 break;
@@ -235,8 +356,19 @@ void DMA9::xdma_exec_instr(uint8_t byte, int chan)
                 xdma_params_needed = 1;
                 xdma_command_set = true;
                 break;
+            case 0x34:
+                //DMASEV
+                xdma_params_needed = 1;
+                xdma_command_set = true;
+                break;
             case 0x35:
                 //DMAFLUSHP
+                xdma_params_needed = 1;
+                xdma_command_set = true;
+                break;
+            case 0x38:
+            case 0x3C:
+                //DMALPEND
                 xdma_params_needed = 1;
                 xdma_command_set = true;
                 break;
@@ -267,11 +399,21 @@ void DMA9::xdma_exec_instr(uint8_t byte, int chan)
                 case 0x22:
                     instr_lp(chan, (xdma_command >> 1) & 0x1);
                     break;
+                case 0x27:
+                    instr_ldp(chan, (xdma_command >> 1) & 0x1);
+                    break;
                 case 0x32:
                     instr_wfp(chan);
                     break;
+                case 0x34:
+                    instr_sev(chan);
+                    break;
                 case 0x35:
                     instr_flushp();
+                    break;
+                case 0x38:
+                case 0x3C:
+                    instr_lpend(chan);
                     break;
                 case 0xA2:
                     instr_dmago();
@@ -286,25 +428,117 @@ void DMA9::xdma_exec_instr(uint8_t byte, int chan)
     }
 }
 
+void DMA9::instr_st(int chan, uint8_t modifier)
+{
+    if ((modifier & 0x2) == 0)
+        EmuException::die("[XDMA] Single mode for ST");
+
+    if (xdma_chan[chan].ctrl.endian_swap_size)
+        EmuException::die("[XDMA] Endian size for ST");
+
+    int store_size = xdma_chan[chan].ctrl.dest_burst_size;
+    if (store_size & 0x3)
+        EmuException::die("[XDMA] Store size not word aligned for ST");
+
+    int multiplier = (int)xdma_chan[chan].ctrl.inc_dest;
+    uint32_t addr = xdma_chan[chan].dest_addr;
+    for (int i = 0; i < store_size; i += 4)
+    {
+        uint32_t word = xdma_chan[chan].fifo.front();
+        //printf("[XDMA] Write32 $%08X: $%08X\n", addr + (multiplier * i), word);
+        e->arm9_write32(addr + (multiplier * i), word);
+        xdma_chan[chan].fifo.pop();
+    }
+
+    xdma_chan[chan].dest_addr += (store_size * multiplier);
+}
+
 void DMA9::instr_lp(int chan, int loop_ctr_index)
 {
-    uint16_t iterations = xdma_params[0] + 1;
+    uint16_t iterations = xdma_params[0];
     xdma_chan[chan].loop_ctr[loop_ctr_index] = iterations;
     printf("[XDMA] DMALP%d: chan%d iterations: %d\n", loop_ctr_index, chan, iterations);
+}
+
+void DMA9::instr_ldp(int chan, bool burst)
+{
+    if (!burst)
+        EmuException::die("[XDMA] Single mode for LDP");
+
+    if (xdma_chan[chan].ctrl.endian_swap_size)
+        EmuException::die("[XDMA] Endian size for LDP");
+
+    int load_size = xdma_chan[chan].ctrl.src_burst_size;
+    if (load_size & 0x3)
+        EmuException::die("[XDMA] Load size not word aligned for LDP");
+
+    //There is a peripheral byte here, but we ignore it
+    printf("[XDMA] LDP: chan%d\n", chan);
+
+    int multiplier = (int)xdma_chan[chan].ctrl.inc_src;
+    uint32_t addr = xdma_chan[chan].source_addr;
+    for (int i = 0; i < load_size; i += 4)
+    {
+        uint32_t word = e->arm9_read32(addr + (i * multiplier));
+        xdma_chan[chan].fifo.push(word);
+    }
+    xdma_chan[chan].source_addr += (load_size * multiplier);
 }
 
 void DMA9::instr_wfp(int chan)
 {
     int peripheral = xdma_params[0] >> 3;
     xdma_chan[chan].state = XDMA_Chan::Status::WFP;
+    xdma_chan[chan].peripheral = peripheral;
 
     printf("[XDMA] DMAWFP: chan%d, peripheral %d\n", chan, peripheral);
+}
+
+void DMA9::instr_sev(int chan)
+{
+    int event = xdma_params[0] >> 3;
+
+    printf("[XDMA] DMASEV: chan%d event%d\n", chan, event);
+
+    event = 1 << event;
+
+    if (xdma_ie & event)
+    {
+        xdma_if |= event;
+        int9->assert_irq(28);
+    }
+    //else
+        //EmuException::die("[XDMA] No IRQ registered for DMASEV event");
 }
 
 void DMA9::instr_flushp()
 {
     int peripheral = xdma_params[0] >> 3;
-    printf("[XDMA] FLUSHP: peripheral: %d\n", peripheral);
+
+    //TODO: We need to check with the peripheral so it can resend a DMA request
+    pending_xdma_reqs[peripheral] = false;
+
+    printf("[XDMA] DMAFLUSHP: peripheral: %d\n", peripheral);
+}
+
+void DMA9::instr_lpend(int chan)
+{
+    int index = (xdma_command >> 2) & 0x1;
+    bool loop_finite = (xdma_command >> 4) & 0x1;
+
+    if (!loop_finite)
+        EmuException::die("[XDMA] Loop forever on DMALPEND");
+
+    //Add +2 to account for two bytes of the instruction
+    uint16_t jump = xdma_params[0] + 2;
+    printf("[XDMA] DMALPEND: chan%d, jump offset: $%02X\n", chan, jump);
+
+    if (xdma_chan[chan].loop_ctr[index])
+    {
+        xdma_chan[chan].loop_ctr[index]--;
+        printf("New loop: %d\n", xdma_chan[chan].loop_ctr[index]);
+        xdma_chan[chan].PC -= jump;
+    }
 }
 
 void DMA9::instr_dmago()
@@ -350,6 +584,15 @@ void DMA9::xdma_write_chan_ctrl(int chan, uint32_t value)
     printf("[XDMA] Write chan%d ctrl: $%08X\n", chan, value);
 
     xdma_chan[chan].ctrl.inc_src = value & 0x1;
-    xdma_chan[chan].ctrl.inc_dest = value & (1 << 16);
+    xdma_chan[chan].ctrl.src_burst_size = ((value >> 4) & 0xF) + 1;
+    xdma_chan[chan].ctrl.src_burst_size <<= (value >> 1) & 0x7;
+    xdma_chan[chan].ctrl.inc_dest = value & (1 << 14);
+    xdma_chan[chan].ctrl.dest_burst_size = ((value >> 18) & 0xF) + 1;
+    xdma_chan[chan].ctrl.dest_burst_size <<= (value >> 15) & 0x7;
     xdma_chan[chan].ctrl.endian_swap_size = (value >> 28) & 0x7;
+
+    printf("Inc src: %d Inc dest: %d\n", xdma_chan[chan].ctrl.inc_src, xdma_chan[chan].ctrl.inc_dest);
+    printf("Src burst size: %d\n", xdma_chan[chan].ctrl.src_burst_size);
+    printf("Dest burst size: %d\n", xdma_chan[chan].ctrl.dest_burst_size);
+    printf("Endian swap size: %d\n", xdma_chan[chan].ctrl.endian_swap_size);
 }

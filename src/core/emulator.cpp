@@ -10,11 +10,12 @@ Emulator::Emulator() :
     app_cp15(0, &arm11),
     sys_cp15(1, &arm11),
     aes(&dma9),
-    dma9(this),
-    emmc(&int9),
+    dma9(this, &int9),
+    emmc(&int9, &dma9),
     int9(&arm9),
     mpcore_pmr(&arm11),
     pxi(&mpcore_pmr, &int9),
+    sha(&dma9),
     timers(&int9)
 {
     arm9_RAM = nullptr;
@@ -54,6 +55,7 @@ void Emulator::reset(bool cold_boot)
     i2c.reset();
 
     aes.reset();
+    dma9.reset();
     emmc.reset();
     pxi.reset();
 
@@ -67,12 +69,16 @@ void Emulator::reset(bool cold_boot)
 void Emulator::run()
 {
     i2c.update_time();
-    for (int i = 0; i < 200000; i++)
+    for (int i = 0; i < 50000; i++)
     {
-        arm9.run();
-        arm11.run();
+        for (int j = 0; j < 16; j++)
+        {
+            arm9.run();
+            arm11.run();
+            timers.run();
+        }
+        dma9.process_ndma_reqs();
         dma9.run_xdma();
-        timers.run();
     }
     gpu.render_frame();
 }
@@ -291,7 +297,6 @@ uint32_t Emulator::arm9_read32(uint32_t addr)
 
 void Emulator::arm9_write8(uint32_t addr, uint8_t value)
 {
-    printf("[ARM9] Write8 $%08X: $%02X\n", addr, value);
     if (addr >= 0x08000000 && addr < 0x08100000)
     {
         arm9_RAM[addr & 0xFFFFF] = value;
@@ -554,7 +559,7 @@ uint8_t Emulator::arm11_read8(uint32_t addr)
         case 0x10163000:
             return pxi.read_sync11() & 0xFF;
     }
-    EmuException::die("[ARM9] Invalid read8 $%08X\n");
+    EmuException::die("[ARM11] Invalid read8 $%08X\n", addr);
     return 0;
 }
 
@@ -578,7 +583,7 @@ uint16_t Emulator::arm11_read16(uint32_t addr)
         case 0x10163004:
             return pxi.read_cnt11();
     }
-    EmuException::die("[ARM9] Invalid read16 $%08X\n");
+    EmuException::die("[ARM11] Invalid read16 $%08X\n", addr);
     return 0;
 }
 
@@ -613,7 +618,7 @@ uint32_t Emulator::arm11_read32(uint32_t addr)
         case 0x1016300C:
             return pxi.read_msg11();
     }
-    EmuException::die("[ARM9] Invalid read32 $%08X\n");
+    EmuException::die("[ARM11] Invalid read32 $%08X\n", addr);
     return 0;
 }
 

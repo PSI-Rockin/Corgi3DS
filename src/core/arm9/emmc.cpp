@@ -1,6 +1,7 @@
 #include <cstdio>
 #include <cstring>
 #include "../common/common.hpp"
+#include "dma9.hpp"
 #include "emmc.hpp"
 #include "interrupt9.hpp"
 
@@ -9,7 +10,7 @@
 #define ISTAT_RXRDY 0x01000000
 #define ISTAT_TXRQ 0x02000000
 
-EMMC::EMMC(Interrupt9* int9) : int9(int9)
+EMMC::EMMC(Interrupt9* int9, DMA9* dma9) : int9(int9), dma9(dma9)
 {
     regcsd[0] = 0xe9964040;
     regcsd[1] = 0xdff6db7f;
@@ -104,9 +105,11 @@ uint16_t EMMC::read16(uint32_t addr)
             break;
         case 0x10006020:
             reg = imask & 0xFFFF;
+            printf("[EMMC] Read IMASK_L: $%04X\n", reg);
             break;
         case 0x10006022:
             reg = imask >> 16;
+            printf("[EMMC] Read IMASK_H: $%04X\n", reg);
             break;
         case 0x10006026:
             reg = data_block_len;
@@ -211,8 +214,6 @@ void EMMC::write16(uint32_t addr, uint16_t value)
             printf("[EMMC] Write SD_DATA32_IRQ: $%04X\n", value);
             sd_data32.data32 = value & (1 << 1);
 
-            //TODO: Boot9 doesn't appear to set these at first, yet it still expects IRQs to happen.
-            //Why is this?
             sd_data32.rd32rdy_irq_enable = value & (1 << 11);
             sd_data32.tx32rq_irq_enable = value & (1 << 12);
             break;
@@ -332,7 +333,7 @@ void EMMC::send_cmd(int command)
 
             transfer_buffer = (uint8_t*)nand_block;
             data_ready();
-            command_end();
+            //command_end();
             break;
         case 25:
             if (nand_selected())
@@ -357,7 +358,7 @@ void EMMC::send_cmd(int command)
             transfer_buffer = (uint8_t*)nand_block;
 
             write_ready();
-            command_end();
+            //command_end();
             break;
         case 55:
             app_command = true;
@@ -452,13 +453,18 @@ void EMMC::data_ready()
 {
     sd_data32.tx32rq_irq_pending = false;
     sd_data32.rd32rdy_irq_pending = true;
-    set_istat(ISTAT_RXRDY);
+
+    if (sd_data32.rd32rdy_irq_enable)
+        set_istat(ISTAT_RXRDY);
+    dma9->set_ndma_req(NDMA_EMMC);
+    dma9->set_ndma_req(NDMA_AES2);
 }
 
 void EMMC::write_ready()
 {
     sd_data32.rd32rdy_irq_pending = false;
     //sd_data32.tx32rq_irq_pending = true;
+
     set_istat(ISTAT_TXRQ);
 }
 
@@ -466,6 +472,9 @@ void EMMC::set_istat(uint32_t field)
 {
     uint32_t old_istat = istat;
     istat |= field;
+
+    printf("ISTAT: $%08X IMSK: $%08X COMB: $%08X\n", istat, imask, istat & imask);
+
     if (!(old_istat & imask) && (istat & imask))
         int9->assert_irq(16);
 }
@@ -494,7 +503,7 @@ uint32_t EMMC::read_fifo32()
     if (transfer_size)
     {
         uint32_t value = *(uint32_t*)&transfer_buffer[transfer_pos];
-        printf("[EMMC] Read FIFO32: $%08X ($%08X)\n", value, transfer_pos);
+        //printf("[EMMC] Read FIFO32: $%08X ($%08X)\n", value, transfer_pos);
         transfer_pos += 4;
         transfer_size -= 4;
 
@@ -560,6 +569,7 @@ void EMMC::transfer_end()
 {
     transfer_buffer = nullptr;
     block_transfer = false;
+    sd_data32.rd32rdy_irq_pending = false;
     printf("[EMMC] Transfer end\n");
     switch (state)
     {
@@ -578,4 +588,6 @@ void EMMC::transfer_end()
     }
     set_istat(ISTAT_DATAEND);
     command_end();
+    dma9->clear_ndma_req(NDMA_EMMC);
+    dma9->clear_ndma_req(NDMA_AES2);
 }

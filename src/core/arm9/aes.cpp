@@ -199,7 +199,7 @@ void AES::crypt_ctr()
         input_fifo.pop();
     }
 
-    printf("Input: ");
+    /*printf("Input: ");
     for (int i = 0; i < 16; i++)
         printf("%02X ", crypt_results[i]);
     printf("\n");
@@ -212,7 +212,7 @@ void AES::crypt_ctr()
     printf("IV: ");
     for (int i = 0; i < 16; i++)
         printf("%02X ", AES_CTR[i]);
-    printf("\n");
+    printf("\n");*/
 
     AES_CTR_xcrypt_buffer(&lib_aes_ctx, (uint8_t*)crypt_results, 16);
 }
@@ -308,7 +308,7 @@ uint32_t AES::read32(uint32_t addr)
             }
             reg = most_recent_output;
             crypt_check();
-            printf("[AES] Read RDFIFO: $%08X\n", reg);
+            //printf("[AES] Read RDFIFO: $%08X\n", reg);
             break;
         default:
             printf("[AES] Unrecognized read32 $%08X\n", addr);
@@ -388,11 +388,10 @@ void AES::write32(uint32_t addr, uint32_t value)
             AES_CNT.in_word_order = value & (1 << 25);
             AES_CNT.mode = (value >> 27) & 0x7;
             AES_CNT.irq_enable = value & (1 << 30);
-
-            if ((value & (1 << 31)) && !AES_CNT.busy)
-                send_dma_requests();
-
             AES_CNT.busy = value & (1 << 31);
+
+            send_dma_requests();
+            dma9->clear_ndma_req(NDMA_AES2);
 
             if (value & (1 << 26))
             {
@@ -405,7 +404,7 @@ void AES::write32(uint32_t addr, uint32_t value)
             block_count = (value >> 16);
             return;
         case 0x10009008:
-            printf("[AES] Write WRFIFO: $%08X\n", value);
+            //printf("[AES] Write WRFIFO: $%08X\n", value);
             write_input_fifo(value);
             return;
         case 0x10009100:
@@ -466,15 +465,21 @@ void AES::input_vector(uint8_t *vector, int index, uint32_t value, int max_words
 
 void AES::send_dma_requests()
 {
-    if (input_fifo.size() < 8)
+    if (!AES_CNT.busy)
     {
-        dma9->ndma_req(NDMA_AES_WRITEFREE);
-        dma9->ndma_req(NDMA_AES2);
+        dma9->clear_ndma_req(NDMA_AES_WRITEFREE);
+        dma9->clear_ndma_req(NDMA_AES_READFREE);
     }
-
-    if (output_fifo.size() >= 8)
+    else
     {
-        dma9->ndma_req(NDMA_AES_READFREE);
-        dma9->ndma_req(NDMA_AES2);
+        if (input_fifo.size() <= 8)
+            dma9->set_ndma_req(NDMA_AES_WRITEFREE);
+        else
+            dma9->clear_ndma_req(NDMA_AES_WRITEFREE);
+
+        if (output_fifo.size() >= 8)
+            dma9->set_ndma_req(NDMA_AES_READFREE);
+        else
+            dma9->clear_ndma_req(NDMA_AES_READFREE);
     }
 }

@@ -3,8 +3,6 @@
 #include <cstdint>
 #include <fstream>
 
-class Interrupt9;
-
 struct SD_DATA32_IRQ
 {
     bool data32;
@@ -26,12 +24,16 @@ enum MMC_State
     MMC_Program
 };
 
+class DMA9;
+class Interrupt9;
+
 class EMMC
 {
     private:
         std::fstream nand, sd;
         std::fstream* cur_transfer_drive;
         Interrupt9* int9;
+        DMA9* dma9;
         bool app_command;
         uint16_t port_select;
         uint32_t istat, imask;
@@ -86,7 +88,7 @@ class EMMC
         void write_ready();
         void set_istat(uint32_t field);
     public:
-        EMMC(Interrupt9* int9);
+        EMMC(Interrupt9* int9, DMA9* dma9);
         ~EMMC();
 
         bool mount_nand(std::string file_name);

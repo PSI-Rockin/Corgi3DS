@@ -24,6 +24,7 @@ namespace ARM_Interpreter
     void arm_load_halfword(ARM_CPU& cpu, uint32_t instr);
     void arm_store_halfword(ARM_CPU& cpu, uint32_t instr);
     void arm_load_signed_byte(ARM_CPU& cpu, uint32_t instr);
+    void arm_load_signed_halfword(ARM_CPU& cpu, uint32_t instr);
     void arm_load_doubleword(ARM_CPU& cpu, uint32_t instr);
     void arm_store_doubleword(ARM_CPU& cpu, uint32_t instr);
     void arm_load_block(ARM_CPU& cpu, uint32_t instr);

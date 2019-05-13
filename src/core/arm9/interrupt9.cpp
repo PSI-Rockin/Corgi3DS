@@ -14,7 +14,7 @@ uint32_t Interrupt9::read_ie()
 
 uint32_t Interrupt9::read_if()
 {
-    printf("[Int9] Read IF\n");
+    printf("[Int9] Read IF: $%08X\n", IF);
     return IF;
 }
 
