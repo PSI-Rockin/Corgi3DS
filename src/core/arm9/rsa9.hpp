@@ -3,8 +3,6 @@
 #include <cstdint>
 #include <string>
 
-#include <gmp.h>
-
 struct RSA_CNT_REG
 {
     uint8_t keyslot;
@@ -32,8 +30,6 @@ class RSA
         int msg_ctr;
 
         void do_rsa_op();
-        void convert_to_bignum(uint8_t* src, mpz_t dest);
-        void convert_from_bignum(mpz_t src, uint8_t* dest);
     public:
         RSA();
 

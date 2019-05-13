@@ -1,12 +1,12 @@
 #ifndef EMULATOR_HPP
 #define EMULATOR_HPP
 #include <cstdint>
-#include "arm9/aes.hpp"
+#include "arm9/aes9.hpp"
 #include "arm9/dma9.hpp"
 #include "arm9/emmc.hpp"
 #include "arm9/interrupt9.hpp"
-#include "arm9/rsa.hpp"
-#include "arm9/sha.hpp"
+#include "arm9/rsa9.hpp"
+#include "arm9/sha9.hpp"
 
 #include "arm11/gpu.hpp"
 #include "arm11/mpcore_pmr.hpp"

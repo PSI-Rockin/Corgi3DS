@@ -2,7 +2,10 @@
 #include <cstring>
 #include <sstream>
 #include "../common/common.hpp"
-#include "rsa.hpp"
+#include "rsa9.hpp"
+
+#include "../../polarssl/rsa.h"
+#include "../../polarssl/bignum.h"
 
 RSA::RSA()
 {
@@ -187,66 +190,29 @@ void RSA::write32(uint32_t addr, uint32_t value)
     }
 }
 
-void RSA::convert_to_bignum(uint8_t *src, mpz_t dest)
-{
-    mpz_t base, temp;
-
-    mpz_init(temp);
-    mpz_init_set_ui(dest, 0);
-    mpz_init_set_ui(base, 1);
-    for (int i = 0xFF; i >= 0; i--)
-    {
-        mpz_set_ui(temp, src[i]);
-        mpz_mul(temp, temp, base);
-        mpz_add(dest, dest, temp);
-        mpz_mul_ui(base, base, 256);
-    }
-}
-
 void RSA::do_rsa_op()
 {
-    mpz_t gmp_msg, gmp_b, gmp_e, gmp_m;
-
+	rsa_context rsa;
+	int size = 256;
     RSA_KeySlot* key = &keys[RSA_CNT.keyslot];
-    mpz_inits(gmp_msg, NULL);
-    convert_to_bignum((uint8_t*)msg, gmp_b);
-    convert_to_bignum((uint8_t*)key->exp, gmp_e);
-    convert_to_bignum((uint8_t*)key->mod, gmp_m);
 
-    printf("Msg: %s\n", mpz_get_str(NULL, 16, gmp_b));
-    printf("Exp: %s\n", mpz_get_str(NULL, 16, gmp_e));
-    printf("Mod: %s\n", mpz_get_str(NULL, 16, gmp_m));
+	rsa_init(&rsa, RSA_PKCS_V15, 0);
+	rsa.len = size;
+	mpi_read_binary(&rsa.N, (uint8_t*)key->mod, size);
+	mpi_read_binary(&rsa.E, (uint8_t*)key->exp, size);
 
-    mpz_powm(gmp_msg, gmp_b, gmp_e, gmp_m);
-    printf("Result: %s\n", mpz_get_str(NULL, 16, gmp_msg));
+	int ret = rsa_check_pubkey(&rsa);
+	if (ret)
+		printf("rsa_check_pubkey failed %d\n", ret);
 
-    convert_from_bignum(gmp_msg, msg);
-}
+	ret = rsa_public(&rsa, msg, msg);
+	if (ret != 0)
+		printf("rsa_public failed %d\n", ret);
 
-void RSA::convert_from_bignum(mpz_t src, uint8_t* dest)
-{
-    std::string str = mpz_get_str(NULL, 16, src);
+    //printf("Msg: %s\n", mpz_get_str(NULL, 16, gmp_b));
+    //printf("Exp: %s\n", mpz_get_str(NULL, 16, gmp_e));
+    //printf("Mod: %s\n", mpz_get_str(NULL, 16, gmp_m));
+    //printf("Result: %s\n", mpz_get_str(NULL, 16, gmp_msg));
 
-    while (str.length() < 0x200)
-        str = '0' + str;
-
-    for (int i = 0; i < 0x100; i++)
-    {
-        uint8_t chr1 = str[(i * 2)];
-        uint8_t chr2 = str[(i * 2) + 1];
-
-        if (chr1 >= 'a')
-            chr1 = (chr1 - 'a') + 10;
-        else
-            chr1 -= '0';
-
-        if (chr2 >= 'a')
-            chr2 = (chr2 - 'a') + 10;
-        else
-            chr2 -= '0';
-
-        uint8_t byte = (chr1 << 4) | chr2;
-
-        dest[i] = byte;
-    }
+	rsa_free(&rsa);
 }

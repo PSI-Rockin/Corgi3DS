@@ -1,7 +1,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include "../common/common.hpp"
-#include "sha.hpp"
+#include "sha9.hpp"
 
 const static uint32_t k_1[4] =
 {
