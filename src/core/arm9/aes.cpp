@@ -2,6 +2,7 @@
 #include <cstring>
 #include "aes.hpp"
 #include "dma9.hpp"
+#include "interrupt9.hpp"
 #include "../common/common.hpp"
 
 const static uint8_t key_const[] = {0x1F, 0xF9, 0xE9, 0xAA, 0xC5, 0xFE, 0x04, 0x08, 0x02, 0x45,
@@ -81,7 +82,7 @@ void n128_add(unsigned char *a, unsigned char *b)
     }
 }
 
-AES::AES(DMA9* dma9) : dma9(dma9)
+AES::AES(DMA9* dma9, Interrupt9* int9) : dma9(dma9), int9(int9)
 {
 
 }
@@ -170,7 +171,11 @@ void AES::crypt_check()
         printf("Blocks left: %d\n", block_count);
 
         if (!block_count)
+        {
             AES_CNT.busy = false;
+            if (AES_CNT.irq_enable)
+                int9->assert_irq(15);
+        }
     }
     send_dma_requests();
 }
@@ -468,7 +473,6 @@ void AES::send_dma_requests()
     if (!AES_CNT.busy)
     {
         dma9->clear_ndma_req(NDMA_AES_WRITEFREE);
-        dma9->clear_ndma_req(NDMA_AES_READFREE);
     }
     else
     {
@@ -476,10 +480,10 @@ void AES::send_dma_requests()
             dma9->set_ndma_req(NDMA_AES_WRITEFREE);
         else
             dma9->clear_ndma_req(NDMA_AES_WRITEFREE);
-
-        if (output_fifo.size() >= 8)
-            dma9->set_ndma_req(NDMA_AES_READFREE);
-        else
-            dma9->clear_ndma_req(NDMA_AES_READFREE);
     }
+
+    if (output_fifo.size() >= 4)
+        dma9->set_ndma_req(NDMA_AES_READFREE);
+    else
+        dma9->clear_ndma_req(NDMA_AES_READFREE);
 }

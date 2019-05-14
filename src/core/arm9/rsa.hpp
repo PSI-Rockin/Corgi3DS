@@ -22,9 +22,12 @@ struct RSA_KeySlot
     int exp_ctr, mod_ctr;
 };
 
+class Interrupt9;
+
 class RSA
 {
     private:
+        Interrupt9* int9;
         RSA_CNT_REG RSA_CNT;
         RSA_KeySlot keys[4];
 
@@ -35,7 +38,7 @@ class RSA
         void convert_to_bignum(uint8_t* src, mpz_t dest);
         void convert_from_bignum(mpz_t src, uint8_t* dest);
     public:
-        RSA();
+        RSA(Interrupt9* int9);
 
         void reset();
 

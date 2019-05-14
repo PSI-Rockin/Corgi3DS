@@ -61,6 +61,7 @@ class Emulator
         void reset(bool cold_boot = true);
         void run();
         void print_state();
+        void dump();
 
         void load_roms(uint8_t* boot9, uint8_t* boot11, uint8_t* otp, uint8_t* cid);
         bool mount_nand(std::string file_name);

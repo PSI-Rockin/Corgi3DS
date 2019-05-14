@@ -150,7 +150,7 @@ void DMA9::run_ndma(int chan)
         if (!ndma_chan[chan].transfer_count)
         {
             ndma_chan[chan].busy = false;
-
+            printf("[NDMA] Chan%d finished!\n", chan);
             //TODO: IRQs
         }
     }
@@ -159,6 +159,41 @@ void DMA9::run_ndma(int chan)
 uint32_t DMA9::read32_ndma(uint32_t addr)
 {
     addr &= 0xFF;
+    if (addr >= 0x4)
+    {
+        int index = (addr - 4) / 0x1C;
+        int reg = (addr - 4) % 0x1C;
+
+        switch (reg)
+        {
+            case 0x00:
+                return ndma_chan[index].source_addr;
+            case 0x04:
+                return ndma_chan[index].dest_addr;
+            case 0x08:
+                return ndma_chan[index].transfer_count;
+            case 0x0C:
+                return ndma_chan[index].write_count;
+            case 0x14:
+                return ndma_chan[index].fill_data;
+            case 0x18:
+            {
+                uint32_t reg = 0;
+                reg |= ndma_chan[index].dest_update_method << 10;
+                reg |= ndma_chan[index].dest_reload << 12;
+                reg |= ndma_chan[index].src_update_method << 13;
+                reg |= ndma_chan[index].src_reload << 15;
+                reg |= ndma_chan[index].words_per_block << 16;
+                reg |= ndma_chan[index].startup_mode << 24;
+                reg |= ndma_chan[index].imm_mode << 28;
+                reg |= ndma_chan[index].repeating_mode << 29;
+                reg |= ndma_chan[index].irq_enable << 30;
+                reg |= ndma_chan[index].busy << 31;
+                printf("[NDMA] Read chan%d ctrl: $%08X\n", index, reg);
+                return reg;
+            }
+        }
+    }
     printf("[NDMA] Unrecognized read32 $%08X\n", addr);
     return 0;
 }

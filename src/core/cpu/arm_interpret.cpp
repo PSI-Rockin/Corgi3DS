@@ -46,11 +46,17 @@ void interpret_arm(ARM_CPU &cpu, uint32_t instr)
         case ARM_BLX:
             arm_blx_reg(cpu, instr);
             break;
+        case ARM_SWI:
+            cpu.swi();
+            break;
         case ARM_CLZ:
             arm_clz(cpu, instr);
             break;
         case ARM_UXTB:
             arm_uxtb(cpu, instr);
+            break;
+        case ARM_UXTH:
+            arm_uxth(cpu, instr);
             break;
         case ARM_DATA_PROCESSING:
             arm_data_processing(cpu, instr);
@@ -156,11 +162,9 @@ void arm_blx(ARM_CPU &cpu, uint32_t instr)
 
 void arm_blx_reg(ARM_CPU &cpu, uint32_t instr)
 {
+    //We have to fetch the address before we save the PC as the register might be LR
+    uint32_t new_address = cpu.get_register(instr & 0xF);
     cpu.set_register(REG_LR, cpu.get_PC() - 4);
-
-    uint32_t reg_id = instr & 0xF;
-
-    uint32_t new_address = cpu.get_register(reg_id);
     cpu.jp(new_address, true);
 }
 
@@ -200,6 +204,17 @@ void arm_uxtb(ARM_CPU &cpu, uint32_t instr)
     uint32_t source_reg = rotr32(cpu.get_register(source), rot * 8);
 
     cpu.set_register(dest, source_reg & 0xFF);
+}
+
+void arm_uxth(ARM_CPU &cpu, uint32_t instr)
+{
+    int source = instr & 0xF;
+    int rot = (instr >> 10) & 0x3;
+    int dest = (instr >> 12) & 0xF;
+
+    uint32_t source_reg = rotr32(cpu.get_register(source), rot * 8);
+
+    cpu.set_register(dest, source_reg & 0xFFFF);
 }
 
 void arm_data_processing(ARM_CPU &cpu, uint32_t instr)
@@ -918,12 +933,12 @@ void arm_load_signed_halfword(ARM_CPU &cpu, uint32_t instr)
         if (is_writing_back)
             cpu.set_register(base, address);
 
-        uint32_t word = (int32_t)(int8_t)(cpu.read16(address));
+        uint32_t word = (int32_t)(int16_t)(cpu.read16(address));
         cpu.set_register(destination, word);
     }
     else
     {
-        uint32_t word = (int32_t)(int8_t)(cpu.read16(address));
+        uint32_t word = (int32_t)(int16_t)(cpu.read16(address));
         cpu.set_register(destination, word);
 
         if (is_adding_offset)
@@ -1040,6 +1055,7 @@ void arm_load_block(ARM_CPU &cpu, uint32_t instr)
     bool is_adding_offset = instr & (1 << 23);
     bool is_preindexing = instr & (1 << 24);
     bool user_bank_transfer = load_PSR && !(reg_list & (1 << 15));
+    bool change_cpsr = load_PSR && (reg_list & (1 << 15));
 
     uint32_t address = cpu.get_register(base);
     int offset;
@@ -1047,14 +1063,6 @@ void arm_load_block(ARM_CPU &cpu, uint32_t instr)
         offset = 4;
     else
         offset = -4;
-
-    /*if (cpu.can_disassemble())
-    {
-        if (base == REG_SP && is_adding_offset && !is_preindexing && is_writing_back)
-            printf("POP $%04X", reg_list);
-        else
-            printf("LDM {%d}, $%04X", base, reg_list);
-    }*/
 
     PSR_Flags* cpsr = cpu.get_CPSR();
     PSR_MODE old_mode = cpsr->mode;
@@ -1099,8 +1107,6 @@ void arm_load_block(ARM_CPU &cpu, uint32_t instr)
                 cpu.jp(new_PC, true);
                 address += offset;
             }
-            if (load_PSR)
-                cpu.spsr_to_cpsr();
             regs++;
         }
     }
@@ -1120,8 +1126,6 @@ void arm_load_block(ARM_CPU &cpu, uint32_t instr)
                 cpu.jp(new_PC, true);
                 address += offset;
             }
-            if (load_PSR)
-                cpu.spsr_to_cpsr();
             regs++;
         }
         for (int i = 14; i >= 0; i--)
@@ -1155,9 +1159,11 @@ void arm_load_block(ARM_CPU &cpu, uint32_t instr)
     //cpu.add_n32_data(address, 1);
     //cpu.add_internal_cycles(1);
 
-    //TODO: ???
     if (is_writing_back && !((reg_list & (1 << base))))
         cpu.set_register(base, address);
+
+    if (change_cpsr)
+        cpu.spsr_to_cpsr();
 }
 
 void arm_store_block(ARM_CPU &cpu, uint32_t instr)

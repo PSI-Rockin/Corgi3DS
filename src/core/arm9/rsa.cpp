@@ -2,9 +2,10 @@
 #include <cstring>
 #include <sstream>
 #include "../common/common.hpp"
+#include "interrupt9.hpp"
 #include "rsa.hpp"
 
-RSA::RSA()
+RSA::RSA(Interrupt9* int9) : int9(int9)
 {
 
 }
@@ -47,6 +48,18 @@ uint32_t RSA::read32(uint32_t addr)
                 printf("[RSA] Read key%d size\n", index);
                 return 0x40;
         }
+    }
+
+    if (addr >= 0x1000B800 && addr < 0x1000B900)
+    {
+        int index = addr & 0xFF;
+        if (!RSA_CNT.word_order)
+            index = 0xFC - index;
+        uint32_t value = *(uint32_t*)&msg[index];
+        if (!RSA_CNT.big_endian)
+            value = bswp32(value);
+        printf("[RSA] Read TXT $%08X: $%08X\n", addr, value);
+        return value;
     }
 
     switch (addr)
@@ -171,6 +184,22 @@ void RSA::write32(uint32_t addr, uint32_t value)
         return;
     }
 
+    if (addr >= 0x1000B800 && addr < 0x1000B900)
+    {
+        printf("[RSA] Write TXT: $%08X (%d)\n", value, msg_ctr);
+        if (!RSA_CNT.big_endian)
+            value = bswp32(value);
+        if (!RSA_CNT.word_order)
+            *(uint32_t*)&msg[0xFC - msg_ctr] = value;
+        else
+            *(uint32_t*)&msg[msg_ctr] = value;
+
+        msg_ctr += 4;
+        if (msg_ctr >= 0x100)
+            msg_ctr = 0;
+        return;
+    }
+
     switch (addr)
     {
         case 0x1000B000:
@@ -221,6 +250,7 @@ void RSA::do_rsa_op()
     printf("Result: %s\n", mpz_get_str(NULL, 16, gmp_msg));
 
     convert_from_bignum(gmp_msg, msg);
+    int9->assert_irq(22);
 }
 
 void RSA::convert_from_bignum(mpz_t src, uint8_t* dest)

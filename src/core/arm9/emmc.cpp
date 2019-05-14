@@ -249,6 +249,8 @@ void EMMC::send_cmd(int command)
     switch (command)
     {
         case 0:
+            //Reset
+            istat = 0;
             response[0] = get_csr();
             command_end();
             state = MMC_Idle;
@@ -373,6 +375,8 @@ void EMMC::send_cmd(int command)
 void EMMC::send_acmd(int command)
 {
     printf("[EMMC] ACMD%d\n", command);
+
+    istat &= ~0x1;
 
     app_command = false;
 
@@ -586,6 +590,8 @@ void EMMC::transfer_end()
             state = MMC_Standby;
             break;
     }
+    //clear busy bit to allow "command end" IRQ to hit
+    istat &= ~0x1;
     set_istat(ISTAT_DATAEND);
     command_end();
     dma9->clear_ndma_req(NDMA_EMMC);

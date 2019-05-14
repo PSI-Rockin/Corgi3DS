@@ -1,4 +1,6 @@
 #include <cstdio>
+#include <cstring>
+#include "common/common.hpp"
 #include "arm9/interrupt9.hpp"
 #include "timers.hpp"
 
@@ -9,12 +11,7 @@ Timers::Timers(Interrupt9* int9) : int9(int9)
 
 void Timers::reset()
 {
-    for (int i = 0; i < 4; i++)
-    {
-        arm9_timers[i].counter = 0;
-        arm9_timers[i].clocks = 0;
-        arm9_timers[i].enabled = false;
-    }
+    memset(arm9_timers, 0, sizeof(arm9_timers));
 }
 
 void Timers::run()
@@ -40,13 +37,13 @@ void Timers::run()
 void Timers::handle_overflow(int index)
 {
     arm9_timers[index].counter -= 0x10000;
-    //printf("[Timer9] Overflow on timer %d!\n", i);
+    printf("[Timer9] Overflow on timer %d!\n", index);
     if (arm9_timers[index].overflow_irq)
         int9->assert_irq(8 + index);
 
     if (index != 3)
     {
-        if (arm9_timers[index + 1].countup)
+        if (arm9_timers[index + 1].countup && arm9_timers[index + 1].enabled)
         {
             arm9_timers[index + 1].counter++;
             if (arm9_timers[index + 1].counter >= 0x10000)
@@ -100,13 +97,13 @@ void Timers::arm9_write16(uint32_t addr, uint16_t value)
             set_counter(2, value);
             return;
         case 0x1000300A:
-            set_control(1, value);
+            set_control(2, value);
             return;
         case 0x1000300C:
             set_counter(3, value);
             return;
         case 0x1000300E:
-            set_control(1, value);
+            set_control(3, value);
             return;
     }
     printf("[Timer9] Unrecognized write16 $%08X: $%04X\n", addr, value);
@@ -130,6 +127,7 @@ uint16_t Timers::get_control(int index)
     reg |= arm9_timers[index].countup << 2;
     reg |= arm9_timers[index].overflow_irq << 6;
     reg |= arm9_timers[index].enabled << 7;
+    printf("[Timer9] Get timer%d control: $%04X\n", index, reg);
     return reg;
 }
 

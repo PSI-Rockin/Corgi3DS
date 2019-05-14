@@ -34,6 +34,7 @@ void Interrupt9::write_if(uint32_t value)
 
 void Interrupt9::assert_irq(int id)
 {
+    printf("[Int9] Assert IRQ: %d\n", id);
     IF |= 1 << id;
     arm9->set_int_signal(IE & IF);
 }

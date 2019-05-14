@@ -16,7 +16,7 @@ ARM_INSTR decode_arm(uint32_t instr)
     if ((instr & 0x0F000000) == 0x0A000000)
         return ARM_B;
 
-    if ((instr & (0x0F000000)) >> 24 == 0xB)
+    if ((instr & 0x0F000000) == 0x0B000000)
         return ARM_BL;
 
     if ((instr & 0x0FFFFFFF) == 0x0320F003)
@@ -27,6 +27,9 @@ ARM_INSTR decode_arm(uint32_t instr)
 
     if (((instr >> 4) & 0x0FFFFFF) == 0x12FFF3)
         return ARM_BLX;
+
+    if ((instr & 0x0F000000) == 0x0F000000)
+        return ARM_SWI;
 
     if (((instr >> 16) & 0xFFF) == 0x16F)
     {
@@ -46,6 +49,9 @@ ARM_INSTR decode_arm(uint32_t instr)
 
     if ((instr & 0x0FFF00F0) == 0x06EF0070)
         return ARM_UXTB;
+
+    if ((instr & 0x0FFF00F0) == 0x06FF0070)
+        return ARM_UXTH;
 
     if ((instr & 0xFD70F000) == 0xF550F000)
         return ARM_PLD;
@@ -188,10 +194,14 @@ string disasm_arm(ARM_CPU& cpu, uint32_t instr)
         case ARM_BX:
         case ARM_BLX:
             return arm_bx(instr);
+        case ARM_SWI:
+            return arm_swi(cpu, instr);
         case ARM_CLZ:
             return arm_clz(instr);
         case ARM_UXTB:
             return arm_uxtb(instr);
+        case ARM_UXTH:
+            return arm_uxth(instr);
         case ARM_DATA_PROCESSING:
             return arm_data_processing(instr);
         case ARM_MULTIPLY:
@@ -370,6 +380,20 @@ string arm_bx(uint32_t instr)
     return output;
 }
 
+string arm_swi(ARM_CPU &cpu, uint32_t instr)
+{
+    stringstream output;
+
+    if (cpu.get_id() == 9)
+        output << "swi";
+    else
+        output << "svc";
+
+    output << " 0x" << std::hex << (instr & 0xFFFFFF);
+
+    return output.str();
+}
+
 string arm_clz(uint32_t instr)
 {
     stringstream output;
@@ -388,6 +412,21 @@ string arm_uxtb(uint32_t instr)
     int dest = (instr >> 12) & 0xF;
 
     output << "uxtb " << ARM_CPU::get_reg_name(dest) << ", " << ARM_CPU::get_reg_name(source);
+
+    if (rot)
+        output << ", ror #" << std::dec << rot * 8;
+
+    return output.str();
+}
+
+string arm_uxth(uint32_t instr)
+{
+    stringstream output;
+    int source = instr & 0xF;
+    int rot = (instr >> 10) & 0x3;
+    int dest = (instr >> 12) & 0xF;
+
+    output << "uxth " << ARM_CPU::get_reg_name(dest) << ", " << ARM_CPU::get_reg_name(source);
 
     if (rot)
         output << ", ror #" << std::dec << rot * 8;

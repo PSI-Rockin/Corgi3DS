@@ -52,6 +52,7 @@ class ARM_CPU
         bool halted;
         bool can_disassemble;
         bool int_pending;
+        uint32_t exception_base;
 
         CP15* cp15;
 
@@ -83,6 +84,7 @@ class ARM_CPU
         uint32_t get_register(int id);
         void set_register(int id, uint32_t value);
 
+        void swi();
         void int_check();
         void set_int_signal(bool pending);
         void halt();

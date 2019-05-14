@@ -9,12 +9,13 @@ Emulator::Emulator() :
     arm9_cp15(0, &arm9),
     app_cp15(0, &arm11),
     sys_cp15(1, &arm11),
-    aes(&dma9),
+    aes(&dma9, &int9),
     dma9(this, &int9),
     emmc(&int9, &dma9),
     int9(&arm9),
     mpcore_pmr(&arm11),
     pxi(&mpcore_pmr, &int9),
+    rsa(&int9),
     sha(&dma9),
     timers(&int9)
 {
@@ -93,6 +94,14 @@ void Emulator::print_state()
     arm11.print_state();
 
     printf("\n--END LOG--\n");
+}
+
+void Emulator::dump()
+{
+    std::ofstream hey("memdump.bin", std::ofstream::binary);
+    hey.write((char*)arm9_RAM, 1024 * 1024);
+    hey.close();
+    EmuException::die("memdump");
 }
 
 void Emulator::load_roms(uint8_t *boot9, uint8_t *boot11, uint8_t *otp, uint8_t* cid)
@@ -174,6 +183,8 @@ uint8_t Emulator::arm9_read8(uint32_t addr)
             return 0; //Related to powering on ARM11?
         case 0x10000008:
             return 0; //AES related
+        case 0x1000000C:
+            return 0; //card select
         case 0x10000010:
             return 1; //Cartridge not inserted
         case 0x10000200:
@@ -223,6 +234,10 @@ uint16_t Emulator::arm9_read16(uint32_t addr)
     {
         case 0x10000004:
             return 0; //debug control?
+        case 0x1000000C:
+            return 0; //card select
+        case 0x10000020:
+            return 0;
         case 0x10008004:
             return pxi.read_cnt9();
         case 0x10146000:
@@ -250,6 +265,12 @@ uint32_t Emulator::arm9_read32(uint32_t addr)
     if (addr >= 0x10002000 && addr < 0x10003000)
         return dma9.read32_ndma(addr);
 
+    if (addr >= 0x10004000 && addr < 0x10006000)
+    {
+        printf("[ARM9] Unrecognized read32 from CTRCARD $%08X\n", addr);
+        return 0;
+    }
+
     if (addr >= 0x10006000 && addr < 0x10007000)
         return emmc.read32(addr);
 
@@ -265,8 +286,20 @@ uint32_t Emulator::arm9_read32(uint32_t addr)
     if (addr >= 0x1000C000 && addr < 0x1000D000)
         return dma9.read32_xdma(addr);
 
+    if (addr >= 0x1000D800 && addr < 0x1000E000)
+    {
+        printf("[ARM9] Unrecognized read32 from SPICARD $%08X\n", addr);
+        return 0;
+    }
+
     if (addr >= 0x10012000 && addr < 0x10012100)
         return *(uint32_t*)&otp[addr & 0xFF];
+
+    if (addr >= 0x10164000 && addr < 0x10165000)
+    {
+        printf("[ARM9] Unrecognized read32 from NTRCARD $%08X\n", addr);
+        return 0;
+    }
 
     if (addr >= 0x1FF80000 && addr < 0x20000000)
         return *(uint32_t*)&axi_RAM[addr & 0x7FFFF];
@@ -356,16 +389,15 @@ void Emulator::arm9_write8(uint32_t addr, uint8_t value)
             return;
         case 0x10000001:
             if (value & 0x1)
-            {
                 boot11 = boot11_locked;
-                printf("Boot11 locked: $%08X\n", *(uint32_t*)&boot11[0x8000]);
-            }
 
             sysprot11 = value;
             return;
         case 0x10000002:
             return;
         case 0x10000008:
+            return;
+        case 0x10000010:
             return;
         case 0x10009010:
             aes.write_keysel(value);
@@ -425,6 +457,12 @@ void Emulator::arm9_write16(uint32_t addr, uint16_t value)
     {
         case 0x10000004:
             return;
+        case 0x1000000C:
+            return; //card select
+        case 0x10000012:
+            return;
+        case 0x10000014:
+            return;
         case 0x10000020:
             return;
         case 0x10008004:
@@ -464,6 +502,11 @@ void Emulator::arm9_write32(uint32_t addr, uint32_t value)
         dma9.write32_ndma(addr, value);
         return;
     }
+    if (addr >= 0x10004000 && addr < 0x10006000)
+    {
+        printf("[ARM9] Unrecognized write32 to CTRCARD $%08X: $%08X\n", addr, value);
+        return;
+    }
     if (addr >= 0x10006000 && addr < 0x10007000)
     {
         emmc.write32(addr, value);
@@ -489,10 +532,21 @@ void Emulator::arm9_write32(uint32_t addr, uint32_t value)
         dma9.write32_xdma(addr, value);
         return;
     }
+    if (addr >= 0x1000D800 && addr < 0x1000E000)
+    {
+        printf("[ARM9] Unrecognized write32 to SPICARD $%08X: $%08X\n", addr, value);
+        return;
+    }
 
     if (addr >= 0x10012100 && addr < 0x10012108)
     {
         *(uint32_t*)&twl_consoleid[addr & 0x7] = value;
+        return;
+    }
+
+    if (addr >= 0x10164000 && addr < 0x10165000)
+    {
+        printf("[ARM9] Unrecognized write32 to NTRCARD $%08X: $%08X\n", addr, value);
         return;
     }
 

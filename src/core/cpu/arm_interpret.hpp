@@ -13,6 +13,7 @@ namespace ARM_Interpreter
     void arm_blx_reg(ARM_CPU& cpu, uint32_t instr);
     void arm_clz(ARM_CPU& cpu, uint32_t instr);
     void arm_uxtb(ARM_CPU& cpu, uint32_t instr);
+    void arm_uxth(ARM_CPU& cpu, uint32_t instr);
     void arm_data_processing(ARM_CPU& cpu, uint32_t instr);
     void arm_signed_halfword_multiply(ARM_CPU& cpu, uint32_t instr);
     void arm_mul(ARM_CPU& cpu, uint32_t instr);

@@ -39,7 +39,10 @@ void PSR_Flags::set(uint32_t value)
 
 ARM_CPU::ARM_CPU(Emulator* e, int id, CP15* cp15) : e(e), id(id), cp15(cp15)
 {
-
+    if (id == 9)
+        exception_base = 0xFFFF0000;
+    else
+        exception_base = 0;
 }
 
 std::string ARM_CPU::get_reg_name(int id)
@@ -76,10 +79,7 @@ void ARM_CPU::reset()
     CPSR.mode = PSR_SUPERVISOR;
     CPSR.fiq_disable = true;
     CPSR.irq_disable = true;
-    if (id == 9)
-        jp(0xFFFF0000, true);
-    else
-        jp(0x0, true);
+    jp(exception_base, true);
 
     can_disassemble = false;
 }
@@ -87,6 +87,10 @@ void ARM_CPU::reset()
 void ARM_CPU::run()
 {
     if (halted)
+        return;
+
+    //ARM11 entrypoint for tested NATIVE_FIRM - comment out to enable ARM11 FIRM execution
+    if (gpr[15] - 4 == 0x1FFAC034)
         return;
     if (CPSR.thumb)
     {
@@ -134,6 +138,27 @@ void ARM_CPU::jp(uint32_t addr, bool change_thumb_state)
         //printf("jp: $%08X\n", addr);
     //if (addr == 0x1FFAC034)
         //can_disassemble = true;
+    //if (addr == 0x0801B01C)
+        //can_disassemble = true;
+    //if (id == 9)
+        //printf("JP: $%08X\n", addr);
+    if (addr == 0x0801B280)
+    {
+        gpr[3] = 1;
+        addr += 4;
+        print_state();
+        //exit(1);
+    }
+    if (addr == 0x0801B29C)
+    {
+        gpr[2] = 1;
+        addr += 4;
+    }
+    if (addr == 0 && id == 9)
+    {
+        print_state();
+        exit(1);
+    }
     gpr[15] = addr;
 
     if (change_thumb_state)
@@ -151,12 +176,35 @@ void ARM_CPU::jp(uint32_t addr, bool change_thumb_state)
     }
 }
 
+void ARM_CPU::swi()
+{
+    uint8_t op = read32(gpr[15] - 8) & 0xFF;
+    printf("SWI $%02X!\n", op);
+    if (op == 0x3C)
+    {
+        EmuException::die("[ARM%d] svcBreak called!", id);
+    }
+    //print_state();
+    //can_disassemble = true;
+
+    uint32_t value = CPSR.get();
+    SPSR[PSR_SUPERVISOR].set(value);
+
+    LR_svc = gpr[15];
+    LR_svc -= (!CPSR.thumb) ? 4 : 2;
+
+    update_reg_mode(PSR_SUPERVISOR);
+    CPSR.mode = PSR_SUPERVISOR;
+    CPSR.irq_disable = true;
+    jp(exception_base + 0x08, true);
+}
+
 void ARM_CPU::int_check()
 {
     //printf("[ARM%d] Interrupt check\n", id);
     if (!CPSR.irq_disable && int_pending)
     {
-        printf("Interrupt!\n");
+        printf("[ARM%d] Interrupt!\n", id);
         uint32_t value = CPSR.get();
         SPSR[PSR_IRQ].set(value);
 
@@ -488,7 +536,7 @@ void ARM_CPU::add(uint32_t destination, uint32_t source, uint32_t operand, bool 
     if (destination == REG_PC)
     {
         if (set_condition_codes)
-            throw "[CPU] Op 'adds pc' unsupported";
+            EmuException::die("adds pc, operand unsupported");
         else
             jp(unsigned_result & 0xFFFFFFFF, true);
     }
