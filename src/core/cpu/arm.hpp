@@ -71,6 +71,7 @@ class ARM_CPU
         void print_state();
         int get_id();
 
+        bool is_halted();
         uint32_t get_PC();
         PSR_Flags* get_CPSR();
 
@@ -89,6 +90,7 @@ class ARM_CPU
         void set_int_signal(bool pending);
         void halt();
         void unhalt();
+        void set_disassembly(bool dis);
 
         void jp(uint32_t addr, bool change_thumb_state);
         void set_zero_neg_flags(uint32_t value);
@@ -135,6 +137,11 @@ class ARM_CPU
         uint32_t rotr32(uint32_t n, unsigned int c, bool alter_flags);
 };
 
+inline bool ARM_CPU::is_halted()
+{
+    return halted;
+}
+
 inline int ARM_CPU::get_id()
 {
     return id;
@@ -168,6 +175,11 @@ inline void ARM_CPU::set_zero(bool flag)
 inline void ARM_CPU::set_neg(bool flag)
 {
     CPSR.negative = flag;
+}
+
+inline void ARM_CPU::set_disassembly(bool dis)
+{
+    can_disassemble = dis;
 }
 
 #endif // ARM_HPP

@@ -21,6 +21,13 @@ void PXI::reset()
 
     while (recv11.size())
         recv11.pop();
+
+    is_hle = false;
+}
+
+void PXI::run_hle11()
+{
+
 }
 
 uint32_t PXI::read_sync9()
@@ -77,6 +84,12 @@ void PXI::write_sync9(uint32_t value)
 
     if ((value & (1 << 29)) && sync11.local_irq)
         mpcore->assert_hw_irq(0x50);
+
+    if (is_hle)
+    {
+        sync9.recv_data = sync11.recv_data;
+        int9->assert_irq(12);
+    }
 }
 
 void PXI::write_sync11(uint32_t value)
@@ -130,6 +143,7 @@ uint32_t PXI::read_msg9()
         last_recv9 = recv9.front();
         recv9.pop();
     }
+    printf("[PXI9] Read $%08X\n", last_recv9);
     return last_recv9;
 }
 
@@ -146,10 +160,21 @@ uint32_t PXI::read_msg11()
 void PXI::send_to_9(uint32_t value)
 {
     recv9.push(value);
+    if (recv9.size() == 1 && cnt9.recv_not_empty_irq)
+        int9->assert_irq(14);
 }
 
 void PXI::send_to_11(uint32_t value)
 {
     printf("[PXI] Send to 11: $%08X\n", value);
     recv11.push(value);
+}
+
+void PXI::activate_hle()
+{
+    is_hle = true;
+    std::queue<uint32_t> empty;
+    recv11.swap(empty);
+    sync9.recv_data = 1;
+    int9->assert_irq(12);
 }

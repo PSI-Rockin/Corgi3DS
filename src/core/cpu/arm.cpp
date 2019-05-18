@@ -205,6 +205,7 @@ void ARM_CPU::int_check()
     if (!CPSR.irq_disable && int_pending)
     {
         printf("[ARM%d] Interrupt!\n", id);
+        print_state();
         uint32_t value = CPSR.get();
         SPSR[PSR_IRQ].set(value);
 

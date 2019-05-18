@@ -20,6 +20,8 @@ void DMA9::reset()
     xdma_command = 0;
     xdma_param_count = 0;
     xdma_params_needed = 0;
+
+    pending_ndma_reqs[NDMA_SHA_IN] = true;
 }
 
 void DMA9::process_ndma_reqs()
@@ -143,6 +145,8 @@ void DMA9::run_ndma(int chan)
         ndma_chan[chan].busy = false;
 
         //TODO: IRQs
+        if (ndma_chan[chan].irq_enable)
+            int9->assert_irq(chan);
     }
     else if (!ndma_chan[chan].repeating_mode)
     {
@@ -152,6 +156,9 @@ void DMA9::run_ndma(int chan)
             ndma_chan[chan].busy = false;
             printf("[NDMA] Chan%d finished!\n", chan);
             //TODO: IRQs
+
+            if (ndma_chan[chan].irq_enable)
+                int9->assert_irq(chan);
         }
     }
 }

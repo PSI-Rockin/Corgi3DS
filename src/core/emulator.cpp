@@ -70,6 +70,14 @@ void Emulator::reset(bool cold_boot)
 void Emulator::run()
 {
     i2c.update_time();
+    if (arm9.is_halted() && (int9.read_ie() & 0x4000) && !pxi.get_hle())
+    {
+        pxi.send_to_9(0x7);
+        //pxi.send_to_9(0x10040);
+        //pxi.send_to_9(0x0);
+        pxi.activate_hle();
+        //arm9.set_disassembly(true);
+    }
     for (int i = 0; i < 50000; i++)
     {
         for (int j = 0; j < 16; j++)
@@ -566,7 +574,6 @@ void Emulator::arm9_write32(uint32_t addr, uint32_t value)
             printf("[ARM9] Set SDMMCCTL: $%08X\n", value);
             return;
         case 0x10001000:
-            printf("[ARM9] Set IE: $%08X\n", value);
             int9.write_ie(value);
             return;
         case 0x10001004:

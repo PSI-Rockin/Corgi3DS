@@ -8,6 +8,9 @@
 const static uint8_t key_const[] = {0x1F, 0xF9, 0xE9, 0xAA, 0xC5, 0xFE, 0x04, 0x08, 0x02, 0x45,
                                      0x91, 0xDC, 0x5D, 0x52, 0x76, 0x8A};
 
+const static uint8_t dsi_const[] = {0xFF, 0xFE, 0xFB, 0x4E, 0x29, 0x59, 0x02, 0x58, 0x2A, 0x68,
+                                     0x0F, 0x5F, 0x1A, 0x4F, 0x3E, 0x79};
+
 //128-bit arithmetic functions used for generating a normal key
 //Source: https://github.com/yellows8/3dscrypto-tools/blob/master/ctr-cryptotool/ctr-cryptotool.c
 void n128_lrot(unsigned char *num, unsigned long shift)
@@ -114,6 +117,25 @@ void AES::gen_normal_key(int slot)
     n128_rrot((uint8_t*)normal, 41);
 
     printf("[AES] Generated key: ");
+    for (int i = 0; i < 16; i++)
+        printf("%02x", normal[i]);
+    printf("\n");
+
+    memcpy(keys[slot].normal, normal, 16);
+}
+
+void AES::gen_dsi_key(int slot)
+{
+    uint8_t normal[16];
+    memcpy(normal, keys[slot].x, 16);
+
+    for (int i = 0; i < 16; i++)
+        normal[i] ^= keys[slot].y[i];
+
+    n128_add((uint8_t*)normal, (uint8_t*)dsi_const);
+    n128_lrot((uint8_t*)normal, 42);
+
+    printf("[AES] Generated DSi key: ");
     for (int i = 0; i < 16; i++)
         printf("%02x", normal[i]);
     printf("\n");
@@ -344,7 +366,12 @@ void AES::write32(uint32_t addr, uint32_t value)
     if (addr >= 0x10009020 && addr < 0x10009030)
     {
         printf("[AES] Write CTR $%08X: $%08X\n", addr, value);
+
+        //The CTR word order cannot be reversed
+        bool temp_order = AES_CNT.in_word_order;
+        AES_CNT.in_word_order = true;
         input_vector((uint8_t*)AES_CTR, 3 - ((addr / 4) & 0x3), value, 4);
+        AES_CNT.in_word_order = temp_order;
         AES_ctx_set_iv(&lib_aes_ctx, (uint8_t*)AES_CTR);
         return;
     }
@@ -352,23 +379,30 @@ void AES::write32(uint32_t addr, uint32_t value)
     //KEY0/1/2/3 - mirrors of the DSi key registers
     if (addr >= 0x10009040 && addr < 0x10009100)
     {
-        int key = ((addr - 0x10009040) / 48) & 0x3;
-        int fifo_id = ((addr / 16)) % 3;
+        addr -= 0x10009040;
+        int key = (addr / 48) & 0x3;
+        int fifo_id = (addr / 16) % 3;
         int offset = 3 - ((addr / 4) & 0x3);
 
         switch (fifo_id)
         {
             case 0:
+                printf("[AES] Write DSi KEY%d NORMAL: $%08X\n", key, value);
                 input_vector((uint8_t*)keys[key].normal, offset, value, 4);
                 break;
             case 1:
+                printf("[AES] Write DSi KEY%d X: $%08X\n", key, value);
                 input_vector((uint8_t*)keys[key].x, offset, value, 4);
                 break;
             case 2:
-                //TODO: DSi key gen
+                printf("[AES] Write DSi KEY%d Y: $%08X\n", key, value);
                 input_vector((uint8_t*)keys[key].y, offset, value, 4);
+
+                //Keygen is done every time the keyslot is updated
+                gen_dsi_key(key);
                 break;
         }
+        printf("Addr: $%08X\n", addr + 0x10009040);
         return;
     }
 
@@ -409,7 +443,7 @@ void AES::write32(uint32_t addr, uint32_t value)
             block_count = (value >> 16);
             return;
         case 0x10009008:
-            //printf("[AES] Write WRFIFO: $%08X\n", value);
+            printf("[AES] Write WRFIFO: $%08X\n", value);
             write_input_fifo(value);
             return;
         case 0x10009100:

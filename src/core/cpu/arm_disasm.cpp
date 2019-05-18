@@ -47,6 +47,9 @@ ARM_INSTR decode_arm(uint32_t instr)
         }
     }
 
+    if ((instr & 0xFFF000F0) == 0xE1200070)
+        return ARM_BKPT;
+
     if ((instr & 0x0FFF00F0) == 0x06EF0070)
         return ARM_UXTB;
 

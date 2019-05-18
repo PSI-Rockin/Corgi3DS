@@ -96,7 +96,7 @@ uint32_t SHA::read32(uint32_t addr)
         {
             SHA_CNT.fifo_enable = false;
             dma9->clear_xdma_req(XDMA_SHA);
-            dma9->clear_ndma_req(NDMA_SHA2);
+            dma9->clear_ndma_req(NDMA_SHA_OUT);
             dma9->set_ndma_req(NDMA_AES2);
         }
         return value;
@@ -152,13 +152,14 @@ void SHA::write_fifo(uint32_t value)
         std::queue<uint32_t> empty;
         read_fifo.swap(empty);
     }
+    printf("[SHA] Write FIFO: $%08X\n", value);
     in_fifo.push(value);
     read_fifo.push(value);
     message_len++;
     if (in_fifo.size() == 16)
     {
         dma9->set_xdma_req(XDMA_SHA);
-        dma9->set_ndma_req(NDMA_SHA2);
+        dma9->set_ndma_req(NDMA_SHA_OUT);
         dma9->clear_ndma_req(NDMA_AES2);
         do_hash(false);
         SHA_CNT.fifo_enable = true;

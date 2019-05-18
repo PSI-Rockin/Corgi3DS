@@ -302,6 +302,18 @@ void EMMC::send_cmd(int command)
             response[0] = get_r1_reply();
             transfer_size = 0;
             transfer_end();
+            switch (state)
+            {
+                case MMC_Data:
+                case MMC_Receive:
+                    state = MMC_Transfer;
+                    break;
+                case MMC_Transfer:
+                    state = MMC_Standby;
+                    break;
+                default:
+                    break;
+            }
             break;
         case 13:
             response[0] = get_r1_reply();
@@ -460,14 +472,17 @@ void EMMC::data_ready()
 
     if (sd_data32.rd32rdy_irq_enable)
         set_istat(ISTAT_RXRDY);
-    dma9->set_ndma_req(NDMA_EMMC);
+    dma9->set_ndma_req(NDMA_MMC1);
     dma9->set_ndma_req(NDMA_AES2);
 }
 
 void EMMC::write_ready()
 {
     sd_data32.rd32rdy_irq_pending = false;
-    //sd_data32.tx32rq_irq_pending = true;
+    sd_data32.tx32rq_irq_pending = false;
+
+    if (sd_data32.tx32rq_irq_enable)
+        int9->assert_irq(16);
 
     set_istat(ISTAT_TXRQ);
 }
@@ -479,7 +494,7 @@ void EMMC::set_istat(uint32_t field)
 
     printf("ISTAT: $%08X IMSK: $%08X COMB: $%08X\n", istat, imask, istat & imask);
 
-    if (!(old_istat & imask) && (istat & imask))
+    if (!(old_istat & imask & field) && (istat & imask & field))
         int9->assert_irq(16);
 }
 
@@ -546,7 +561,6 @@ void EMMC::write_fifo32(uint32_t value)
 
         if (!transfer_size)
         {
-            write_ready();
             transfer_pos = 0;
             cur_transfer_drive->write((char*)transfer_buffer, data_block_len);
             if (block_transfer)
@@ -558,7 +572,10 @@ void EMMC::write_fifo32(uint32_t value)
                     cur_transfer_drive->flush();
                 }
                 else
+                {
                     transfer_size = data_block_len;
+                    write_ready();
+                }
             }
             else
             {
@@ -594,6 +611,6 @@ void EMMC::transfer_end()
     istat &= ~0x1;
     set_istat(ISTAT_DATAEND);
     command_end();
-    dma9->clear_ndma_req(NDMA_EMMC);
+    dma9->clear_ndma_req(NDMA_MMC1);
     dma9->clear_ndma_req(NDMA_AES2);
 }
