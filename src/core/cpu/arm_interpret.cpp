@@ -18,7 +18,7 @@ void interpret_arm(ARM_CPU &cpu, uint32_t instr)
             arm_blx(cpu, instr);
             return;
         }
-        if (cpu.get_id() == 11 && (instr >> 20) == 0xF10)
+        if (cpu.get_id() != 9 && (instr >> 20) == 0xF10)
         {
             cpu.cps(instr);
             return;
@@ -51,6 +51,12 @@ void interpret_arm(ARM_CPU &cpu, uint32_t instr)
             break;
         case ARM_CLZ:
             arm_clz(cpu, instr);
+            break;
+        case ARM_SXTB:
+            arm_sxtb(cpu, instr);
+            break;
+        case ARM_SXTH:
+            arm_sxth(cpu, instr);
             break;
         case ARM_UXTB:
             arm_uxtb(cpu, instr);
@@ -109,11 +115,41 @@ void interpret_arm(ARM_CPU &cpu, uint32_t instr)
         case ARM_STORE_BLOCK:
             arm_store_block(cpu, instr);
             break;
+        case ARM_LOAD_EX_BYTE:
+            arm_load_ex_byte(cpu, instr);
+            break;
+        case ARM_STORE_EX_BYTE:
+            arm_store_ex_byte(cpu, instr);
+            break;
+        case ARM_LOAD_EX_HALFWORD:
+            arm_load_ex_halfword(cpu, instr);
+            break;
+        case ARM_STORE_EX_HALFWORD:
+            arm_store_ex_halfword(cpu, instr);
+            break;
+        case ARM_LOAD_EX_WORD:
+            arm_load_ex_word(cpu, instr);
+            break;
+        case ARM_STORE_EX_WORD:
+            arm_store_ex_word(cpu, instr);
+            break;
+        case ARM_LOAD_EX_DOUBLEWORD:
+            arm_load_ex_doubleword(cpu, instr);
+            break;
+        case ARM_STORE_EX_DOUBLEWORD:
+            arm_store_ex_doubleword(cpu, instr);
+            break;
         case ARM_COP_REG_TRANSFER:
             arm_cop_transfer(cpu, instr);
             break;
+        case ARM_NOP:
+        case ARM_YIELD:
+            break;
         case ARM_WFI:
             cpu.halt();
+            break;
+        case ARM_CLREX:
+            cpu.clear_exclusive();
             break;
         default:
             EmuException::die("[ARM_Interpreter] Undefined instr $%08X\n", instr);
@@ -193,6 +229,28 @@ void arm_clz(ARM_CPU &cpu, uint32_t instr)
     }
 
     cpu.set_register(destination, bits);
+}
+
+void arm_sxtb(ARM_CPU &cpu, uint32_t instr)
+{
+    int source = instr & 0xF;
+    int rot = (instr >> 10) & 0x3;
+    int dest = (instr >> 12) & 0xF;
+
+    uint32_t source_reg = rotr32(cpu.get_register(source), rot * 8);
+
+    cpu.set_register(dest, (int32_t)(int8_t)(source_reg & 0xFF));
+}
+
+void arm_sxth(ARM_CPU &cpu, uint32_t instr)
+{
+    int source = instr & 0xF;
+    int rot = (instr >> 10) & 0x3;
+    int dest = (instr >> 12) & 0xF;
+
+    uint32_t source_reg = rotr32(cpu.get_register(source), rot * 8);
+
+    cpu.set_register(dest, (int32_t)(int16_t)(source_reg & 0xFFFF));
 }
 
 void arm_uxtb(ARM_CPU &cpu, uint32_t instr)
@@ -650,10 +708,12 @@ void arm_store_byte(ARM_CPU &cpu, uint32_t instr)
             cpu.set_register(base, address);
 
         cpu.write8(address, value);
+        cpu.clear_global_exclusives(address);
     }
     else
     {
         cpu.write8(address, value);
+        cpu.clear_global_exclusives(address);
 
         if (is_adding_offset)
             address += offset;
@@ -694,6 +754,8 @@ void arm_load_word(ARM_CPU &cpu, uint32_t instr)
             cpu.set_register(base, address);
 
         //TODO: What does ARM11 do on unaligned access?
+        if (cpu.get_id() != 9 && (address & 0x3))
+            EmuException::die("ARM11 unaligned read32");
         uint32_t word = cpu.rotr32(cpu.read32(address & ~0x3), (address & 0x3) * 8, false);
 
         if (destination == REG_PC)
@@ -703,6 +765,8 @@ void arm_load_word(ARM_CPU &cpu, uint32_t instr)
     }
     else
     {
+        if (cpu.get_id() != 9 && (address & 0x3))
+            EmuException::die("ARM11 unaligned read32");
         uint32_t word = cpu.rotr32(cpu.read32(address & ~0x3), (address & 0x3) * 8, false);
 
         if (destination == REG_PC)
@@ -750,12 +814,18 @@ void arm_store_word(ARM_CPU &cpu, uint32_t instr)
             cpu.set_register(base, address);
 
         //cpu.add_n32_data(address, 1);
+        if (cpu.get_id() != 9 && (address & 0x3))
+            EmuException::die("ARM11 unaligned write32");
         cpu.write32(address & ~0x3, value);
+        cpu.clear_global_exclusives(address);
     }
     else
     {
         //cpu.add_n32_data(address, 1);
+        if (cpu.get_id() != 9 && (address & 0x3))
+            EmuException::die("ARM11 unaligned write32");
         cpu.write32(address & ~0x3, value);
+        cpu.clear_global_exclusives(address);
 
         if (is_adding_offset)
             address += offset;
@@ -839,12 +909,14 @@ void arm_store_halfword(ARM_CPU &cpu, uint32_t instr)
         else
             address -= offset;
         cpu.write16(address, halfword);
+        cpu.clear_global_exclusives(address);
         if (is_writing_back)
             cpu.set_register(base, address);
     }
     else
     {
         cpu.write16(address, halfword);
+        cpu.clear_global_exclusives(address);
         if (is_adding_offset)
             address += offset;
         else
@@ -1028,6 +1100,8 @@ void arm_store_doubleword(ARM_CPU &cpu, uint32_t instr)
 
         cpu.write32(address, cpu.get_register(source));
         cpu.write32(address + 4, cpu.get_register(source + 1));
+        cpu.clear_global_exclusives(address);
+        cpu.clear_global_exclusives(address + 4);
 
         if (write_back)
             cpu.set_register(base, address);
@@ -1036,6 +1110,8 @@ void arm_store_doubleword(ARM_CPU &cpu, uint32_t instr)
     {
         cpu.write32(address, cpu.get_register(source));
         cpu.write32(address + 4, cpu.get_register(source + 1));
+        cpu.clear_global_exclusives(address);
+        cpu.clear_global_exclusives(address + 4);
 
         if (add_offset)
             address += offset;
@@ -1205,10 +1281,12 @@ void arm_store_block(ARM_CPU &cpu, uint32_t instr)
                 {
                     address += offset;
                     cpu.write32(address, cpu.get_register(i));
+                    cpu.clear_global_exclusives(address);
                 }
                 else
                 {
                     cpu.write32(address, cpu.get_register(i));
+                    cpu.clear_global_exclusives(address);
                     address += offset;
                 }
             }
@@ -1226,10 +1304,12 @@ void arm_store_block(ARM_CPU &cpu, uint32_t instr)
                 {
                     address += offset;
                     cpu.write32(address, cpu.get_register(i));
+                    cpu.clear_global_exclusives(address);
                 }
                 else
                 {
                     cpu.write32(address, cpu.get_register(i));
+                    cpu.clear_global_exclusives(address);
                     address += offset;
                 }
             }
@@ -1247,6 +1327,132 @@ void arm_store_block(ARM_CPU &cpu, uint32_t instr)
     //cpu.add_n32_data(address, 2);
     if (is_writing_back)
         cpu.set_register(base, address);
+}
+
+void arm_load_ex_byte(ARM_CPU &cpu, uint32_t instr)
+{
+    uint32_t base = (instr >> 16) & 0xF;
+    uint32_t dest = (instr >> 12) & 0xF;
+
+    uint32_t addr = cpu.get_register(base);
+
+    cpu.set_register(dest, cpu.read8(addr));
+
+    cpu.set_exclusive(addr, 1);
+}
+
+void arm_store_ex_byte(ARM_CPU &cpu, uint32_t instr)
+{
+    uint32_t base = (instr >> 16) & 0xF;
+    uint32_t dest = (instr >> 12) & 0xF;
+    uint32_t source = instr & 0xF;
+
+    uint32_t addr = cpu.get_register(base);
+
+    if (cpu.has_exclusive(addr))
+    {
+        cpu.write8(addr, cpu.get_register(source) & 0xFF);
+        cpu.set_register(dest, 0);
+    }
+    else
+        cpu.set_register(dest, 1);
+
+    cpu.clear_exclusive();
+}
+
+void arm_load_ex_halfword(ARM_CPU &cpu, uint32_t instr)
+{
+    uint32_t base = (instr >> 16) & 0xF;
+    uint32_t dest = (instr >> 12) & 0xF;
+
+    uint32_t addr = cpu.get_register(base);
+
+    cpu.set_register(dest, cpu.read16(addr));
+
+    cpu.set_exclusive(addr, 2);
+}
+
+void arm_store_ex_halfword(ARM_CPU &cpu, uint32_t instr)
+{
+    uint32_t base = (instr >> 16) & 0xF;
+    uint32_t dest = (instr >> 12) & 0xF;
+    uint32_t source = instr & 0xF;
+
+    uint32_t addr = cpu.get_register(base);
+
+    if (cpu.has_exclusive(addr))
+    {
+        cpu.write16(addr, cpu.get_register(source) & 0xFFFF);
+        cpu.set_register(dest, 0);
+    }
+    else
+        cpu.set_register(dest, 1);
+
+    cpu.clear_exclusive();
+}
+
+void arm_load_ex_word(ARM_CPU &cpu, uint32_t instr)
+{
+    uint32_t base = (instr >> 16) & 0xF;
+    uint32_t dest = (instr >> 12) & 0xF;
+
+    uint32_t addr = cpu.get_register(base);
+
+    cpu.set_register(dest, cpu.read32(addr));
+
+    cpu.set_exclusive(addr, 4);
+}
+
+void arm_store_ex_word(ARM_CPU &cpu, uint32_t instr)
+{
+    uint32_t base = (instr >> 16) & 0xF;
+    uint32_t dest = (instr >> 12) & 0xF;
+    uint32_t source = instr & 0xF;
+
+    uint32_t addr = cpu.get_register(base);
+
+    if (cpu.has_exclusive(addr))
+    {
+        cpu.write32(addr, cpu.get_register(source));
+        cpu.set_register(dest, 0);
+    }
+    else
+        cpu.set_register(dest, 1);
+
+    cpu.clear_exclusive();
+}
+
+void arm_load_ex_doubleword(ARM_CPU &cpu, uint32_t instr)
+{
+    uint32_t base = (instr >> 16) & 0xF;
+    uint32_t dest = (instr >> 12) & 0xF;
+
+    uint32_t addr = cpu.get_register(base);
+
+    cpu.set_register(dest, cpu.read32(addr));
+    cpu.set_register(dest + 1, cpu.read32(addr + 4));
+
+    cpu.set_exclusive(addr, 8);
+}
+
+void arm_store_ex_doubleword(ARM_CPU &cpu, uint32_t instr)
+{
+    uint32_t base = (instr >> 16) & 0xF;
+    uint32_t dest = (instr >> 12) & 0xF;
+    uint32_t source = instr & 0xF;
+
+    uint32_t addr = cpu.get_register(base);
+
+    if (cpu.has_exclusive(addr) && cpu.has_exclusive(addr + 4))
+    {
+        cpu.write32(addr, cpu.get_register(source));
+        cpu.write32(addr + 4, cpu.get_register(source + 1));
+        cpu.set_register(dest, 0);
+    }
+    else
+        cpu.set_register(dest, 1);
+
+    cpu.clear_exclusive();
 }
 
 void arm_cop_transfer(ARM_CPU &cpu, uint32_t instr)

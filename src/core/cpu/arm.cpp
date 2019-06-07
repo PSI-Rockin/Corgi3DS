@@ -5,6 +5,9 @@
 #include "../common/common.hpp"
 #include "../emulator.hpp"
 
+uint64_t ARM_CPU::global_exclusive_start[4];
+uint64_t ARM_CPU::global_exclusive_end[4];
+
 uint32_t PSR_Flags::get()
 {
     uint32_t reg = 0;
@@ -39,10 +42,7 @@ void PSR_Flags::set(uint32_t value)
 
 ARM_CPU::ARM_CPU(Emulator* e, int id, CP15* cp15) : e(e), id(id), cp15(cp15)
 {
-    if (id == 9)
-        exception_base = 0xFFFF0000;
-    else
-        exception_base = 0;
+
 }
 
 std::string ARM_CPU::get_reg_name(int id)
@@ -79,9 +79,17 @@ void ARM_CPU::reset()
     CPSR.mode = PSR_SUPERVISOR;
     CPSR.fiq_disable = true;
     CPSR.irq_disable = true;
-    jp(exception_base, true);
+
+    if (id == 9)
+        jp(0xFFFF0000, true);
+    else
+        jp(0, true);
 
     can_disassemble = false;
+
+    tlb_map = cp15->get_tlb_mapping();
+    local_exclusive_start = 0;
+    local_exclusive_end = 0;
 }
 
 void ARM_CPU::run()
@@ -89,30 +97,34 @@ void ARM_CPU::run()
     if (halted)
         return;
 
-    //ARM11 entrypoint for tested NATIVE_FIRM - comment out to enable ARM11 FIRM execution
-    if (gpr[15] - 4 == 0x1FFAC034)
-        return;
-    if (CPSR.thumb)
+    try
     {
-        uint16_t instr = read16(gpr[15] - 2);
-        gpr[15] += 2;
-        if (can_disassemble)
+        if (CPSR.thumb)
         {
-            printf("[$%08X] $%04X  %s\n", gpr[15] - 4, instr, ARM_Disasm::disasm_thumb(*this, instr).c_str());
-            //print_state();
+            uint16_t instr = read_instr16(gpr[15] - 2);
+            gpr[15] += 2;
+            if (can_disassemble)
+            {
+                printf("[$%08X] $%04X  %s\n", gpr[15] - 4, instr, ARM_Disasm::disasm_thumb(*this, instr).c_str());
+                //print_state();
+            }
+            ARM_Interpreter::interpret_thumb(*this, instr);
         }
-        ARM_Interpreter::interpret_thumb(*this, instr);
+        else
+        {
+            uint32_t instr = read_instr32(gpr[15] - 4);
+            gpr[15] += 4;
+            if (can_disassemble)
+            {
+                printf("[$%08X] $%08X  %s\n", gpr[15] - 8, instr, ARM_Disasm::disasm_arm(*this, instr).c_str());
+                //print_state();
+            }
+            ARM_Interpreter::interpret_arm(*this, instr);
+        }
     }
-    else
+    catch (EmuException::ARMDataAbort& a)
     {
-        uint32_t instr = read32(gpr[15] - 4);
-        gpr[15] += 4;
-        if (can_disassemble)
-        {
-            printf("[$%08X] $%08X  %s\n", gpr[15] - 8, instr, ARM_Disasm::disasm_arm(*this, instr).c_str());
-            //print_state();
-        }
-        ARM_Interpreter::interpret_arm(*this, instr);
+        data_abort(a.vaddr);
     }
 
     if (int_pending)
@@ -134,31 +146,8 @@ void ARM_CPU::print_state()
 
 void ARM_CPU::jp(uint32_t addr, bool change_thumb_state)
 {
-    //if (id == 9)
-        //printf("jp: $%08X\n", addr);
-    //if (addr == 0x1FFAC034)
+    //if (id == 11 && addr == 0xFFF000FC)
         //can_disassemble = true;
-    //if (addr == 0x0801B01C)
-        //can_disassemble = true;
-    //if (id == 9)
-        //printf("JP: $%08X\n", addr);
-    if (addr == 0x0801B280)
-    {
-        gpr[3] = 1;
-        addr += 4;
-        print_state();
-        //exit(1);
-    }
-    if (addr == 0x0801B29C)
-    {
-        gpr[2] = 1;
-        addr += 4;
-    }
-    if (addr == 0 && id == 9)
-    {
-        print_state();
-        exit(1);
-    }
     gpr[15] = addr;
 
     if (change_thumb_state)
@@ -176,10 +165,34 @@ void ARM_CPU::jp(uint32_t addr, bool change_thumb_state)
     }
 }
 
+void ARM_CPU::data_abort(uint32_t addr)
+{
+    EmuException::die("[ARM%d] Data abort at vaddr $%08X", id, addr);
+
+    can_disassemble = true;
+
+    uint32_t value = CPSR.get();
+    SPSR[PSR_ABORT].set(value);
+    LR_abt = gpr[15];
+
+    update_reg_mode(PSR_ABORT);
+    CPSR.mode = PSR_ABORT;
+    CPSR.irq_disable = true;
+
+    if (cp15->has_high_exceptions())
+        jp(0xFFFF0000 + 0x10, true);
+    else
+        jp(0x10, true);
+}
+
 void ARM_CPU::swi()
 {
     uint8_t op = read32(gpr[15] - 8) & 0xFF;
-    printf("SWI $%02X!\n", op);
+
+    if (id == 9)
+        printf("SWI $%02X!\n", op);
+    else
+        printf("SVC $%02X!\n", op);
     if (op == 0x3C)
     {
         EmuException::die("[ARM%d] svcBreak called!", id);
@@ -196,13 +209,17 @@ void ARM_CPU::swi()
     update_reg_mode(PSR_SUPERVISOR);
     CPSR.mode = PSR_SUPERVISOR;
     CPSR.irq_disable = true;
-    jp(exception_base + 0x08, true);
+
+    if (cp15->has_high_exceptions())
+        jp(0xFFFF0000 + 0x08, true);
+    else
+        jp(0x08, true);
 }
 
 void ARM_CPU::int_check()
 {
     //printf("[ARM%d] Interrupt check\n", id);
-    if (!CPSR.irq_disable && int_pending)
+    if (!CPSR.irq_disable)
     {
         printf("[ARM%d] Interrupt!\n", id);
         print_state();
@@ -215,7 +232,7 @@ void ARM_CPU::int_check()
         CPSR.mode = PSR_IRQ;
         CPSR.irq_disable = true;
 
-        if (id == 9)
+        if (cp15->has_high_exceptions())
             jp(0xFFFF0000 + 0x18, true);
         else
             jp(0x18, true);
@@ -224,16 +241,22 @@ void ARM_CPU::int_check()
 
 void ARM_CPU::set_int_signal(bool pending)
 {
-    int_pending = pending;
-    if (int_pending)
+    if (!int_pending && pending)
+    {
         unhalt();
-    int_check();
+        int_check();
+    }
+    int_pending = pending;
+    printf("[ARM%d] Set int signal: %d\n", id, pending);
 }
 
 void ARM_CPU::halt()
 {
-    printf("[ARM%d] Halting...\n", id);
-    halted = true;
+    if (!int_pending)
+    {
+        printf("[ARM%d] Halting...\n", id);
+        halted = true;
+    }
 }
 
 void ARM_CPU::unhalt()
@@ -399,109 +422,214 @@ bool ARM_CPU::meets_condition(int cond)
     }
 }
 
+uint16_t ARM_CPU::read_instr16(uint32_t addr)
+{
+    uint64_t mem = (uint64_t)tlb_map[addr / 4096];
+    if (!(mem & (1UL << 60UL)))
+        EmuException::die("[ARM%d] Prefetch abort at vaddr $%08X", id, addr);
+    if (!(mem & (1UL << 63UL)))
+    {
+        mem &= ~(0xFUL << 60UL);
+        uint8_t* ptr = (uint8_t*)mem;
+        return *(uint16_t*)&ptr[addr & 0xFFF];
+    }
+    else
+        addr = (mem & 0xFFFFF000) + (addr & 0xFFF);
+    if (id == 9)
+        return e->arm9_read16(addr);
+    return e->arm11_read16(id - 11, addr);
+}
+
+uint32_t ARM_CPU::read_instr32(uint32_t addr)
+{
+    uint64_t mem = (uint64_t)tlb_map[addr / 4096];
+    if (!(mem & (1UL << 60UL)))
+        EmuException::die("[ARM%d] Prefetch abort at vaddr $%08X", id, addr);
+    if (!(mem & (1UL << 63UL)))
+    {
+        mem &= ~(0xFUL << 60UL);
+        uint8_t* ptr = (uint8_t*)mem;
+        return *(uint32_t*)&ptr[addr & 0xFFF];
+    }
+    else
+        addr = (mem & 0xFFFFF000) + (addr & 0xFFF);
+    if (id == 9)
+        return e->arm9_read32(addr);
+    return e->arm11_read32(id - 11, addr);
+}
+
 uint8_t ARM_CPU::read8(uint32_t addr)
 {
-    if (cp15)
+    if ((addr & 0xFFF00000) == 0xDFF00000)
+        printf("Read8 DSP $%08X\n", addr);
+    uint64_t mem = (uint64_t)tlb_map[addr / 4096];
+    if (!(mem & (1UL << 62UL)))
+        throw EmuException::ARMDataAbort(addr);
+    if (!(mem & (1UL << 63UL)))
     {
-        if (addr < cp15->itcm_size)
-            return cp15->ITCM[addr & 0x7FFF];
-        if (addr >= cp15->dtcm_base && addr < cp15->dtcm_base + cp15->dtcm_size)
-            return cp15->DTCM[addr & 0x3FFF];
+        mem &= ~(0xFUL << 60UL);
+        uint8_t* ptr = (uint8_t*)mem;
+        return ptr[addr & 0xFFF];
     }
+    else
+        addr = (mem & 0xFFFFF000) + (addr & 0xFFF);
     if (id == 9)
         return e->arm9_read8(addr);
-    return e->arm11_read8(addr);
+    return e->arm11_read8(id - 11, addr);
 }
 
 uint16_t ARM_CPU::read16(uint32_t addr)
 {
-    if (cp15)
+    if ((addr & 0xFFF00000) == 0xDFF00000)
+        printf("Read8 DSP $%08X\n", addr);
+    uint64_t mem = (uint64_t)tlb_map[addr / 4096];
+    if (!(mem & (1UL << 62UL)))
+        throw EmuException::ARMDataAbort(addr);
+    if (!(mem & (1UL << 63UL)))
     {
-        if (addr < cp15->itcm_size)
-            return *(uint16_t*)&cp15->ITCM[addr & 0x7FFF];
-        if (addr >= cp15->dtcm_base && addr < cp15->dtcm_base + cp15->dtcm_size)
-            return *(uint16_t*)&cp15->DTCM[addr & 0x3FFF];
+        mem &= ~(0xFUL << 60UL);
+        uint8_t* ptr = (uint8_t*)mem;
+        return *(uint16_t*)&ptr[addr & 0xFFF];
     }
+    else
+        addr = (mem & 0xFFFFF000) + (addr & 0xFFF);
     if (id == 9)
         return e->arm9_read16(addr);
-    return e->arm11_read16(addr);
+    return e->arm11_read16(id - 11, addr);
 }
 
 uint32_t ARM_CPU::read32(uint32_t addr)
 {
-    if (cp15)
+    if ((addr & 0xFFF00000) == 0xDFF00000)
+        printf("Read8 DSP $%08X\n", addr);
+    uint64_t mem = (uint64_t)tlb_map[addr / 4096];
+    if (!(mem & (1UL << 62UL)))
+        throw EmuException::ARMDataAbort(addr);
+    if (!(mem & (1UL << 63UL)))
     {
-        if (addr < cp15->itcm_size)
-            return *(uint32_t*)&cp15->ITCM[addr & 0x7FFF];
-        if (addr >= cp15->dtcm_base && addr < cp15->dtcm_base + cp15->dtcm_size)
-            return *(uint32_t*)&cp15->DTCM[addr & 0x3FFF];
+        mem &= ~(0xFUL << 60UL);
+        uint8_t* ptr = (uint8_t*)mem;
+        return *(uint32_t*)&ptr[addr & 0xFFF];
     }
+    else
+        addr = (mem & 0xFFFFF000) + (addr & 0xFFF);
     if (id == 9)
         return e->arm9_read32(addr);
-    return e->arm11_read32(addr);
+    return e->arm11_read32(id - 11, addr);
 }
 
 void ARM_CPU::write8(uint32_t addr, uint8_t value)
 {
-    if (cp15)
+    uint64_t mem = (uint64_t)tlb_map[addr / 4096];
+    if (!(mem & (1UL << 61UL)))
+        throw EmuException::ARMDataAbort(addr);
+    if (!(mem & (1UL << 63UL)))
     {
-        if (addr < cp15->itcm_size)
-        {
-            cp15->ITCM[addr & 0x7FFF] = value;
-            return;
-        }
-        if (addr >= cp15->dtcm_base && addr < cp15->dtcm_base + cp15->dtcm_size)
-        {
-            cp15->DTCM[addr & 0x3FFF] = value;
-            return;
-        }
+        mem &= ~(0xFUL << 60UL);
+        uint8_t* ptr = (uint8_t*)mem;
+        ptr[addr & 0xFFF] = value;
+        return;
     }
+    else
+        addr = (mem & 0xFFFFF000) + (addr & 0xFFF);
     if (id == 9)
         e->arm9_write8(addr, value);
     else
-        e->arm11_write8(addr, value);
+        e->arm11_write8(id - 11, addr, value);
 }
 
 void ARM_CPU::write16(uint32_t addr, uint16_t value)
 {
-    if (cp15)
+    uint64_t mem = (uint64_t)tlb_map[addr / 4096];
+    if (!(mem & (1UL << 61UL)))
+        throw EmuException::ARMDataAbort(addr);
+    if (!(mem & (1UL << 63UL)))
     {
-        if (addr < cp15->itcm_size)
-        {
-            *(uint16_t*)&cp15->ITCM[addr & 0x7FFF] = value;
-            return;
-        }
-        if (addr >= cp15->dtcm_base && addr < cp15->dtcm_base + cp15->dtcm_size)
-        {
-            *(uint16_t*)&cp15->DTCM[addr & 0x3FFF] = value;
-            return;
-        }
+        mem &= ~(0xFUL << 60UL);
+        uint8_t* ptr = (uint8_t*)mem;
+        *(uint16_t*)&ptr[addr & 0xFFF] = value;
+        return;
     }
+    else
+        addr = (mem & 0xFFFFF000) + (addr & 0xFFF);
     if (id == 9)
         e->arm9_write16(addr, value);
     else
-        e->arm11_write16(addr, value);
+        e->arm11_write16(id - 11, addr, value);
 }
 
 void ARM_CPU::write32(uint32_t addr, uint32_t value)
 {
-    if (cp15)
+    uint64_t mem = (uint64_t)tlb_map[addr / 4096];
+    if (!(mem & (1UL << 61UL)))
+        throw EmuException::ARMDataAbort(addr);
+    if (!(mem & (1UL << 63UL)))
     {
-        if (addr < cp15->itcm_size)
-        {
-            *(uint32_t*)&cp15->ITCM[addr & 0x7FFF] = value;
-            return;
-        }
-        if (addr >= cp15->dtcm_base && addr < cp15->dtcm_base + cp15->dtcm_size)
-        {
-            *(uint32_t*)&cp15->DTCM[addr & 0x3FFF] = value;
-            return;
-        }
+        mem &= ~(0xFUL << 60UL);
+        uint8_t* ptr = (uint8_t*)mem;
+        *(uint32_t*)&ptr[addr & 0xFFF] = value;
+        return;
     }
+    else
+        addr = (mem & 0xFFFFF000) + (addr & 0xFFF);
     if (id == 9)
         e->arm9_write32(addr, value);
     else
-        e->arm11_write32(addr, value);
+        e->arm11_write32(id - 11, addr, value);
+}
+
+bool ARM_CPU::has_exclusive(uint32_t addr)
+{
+    uint64_t paddr = (uint64_t)tlb_map[addr / 4096] + (addr & 0xFFF);
+    paddr &= ~(0xFFUL << 56UL);
+
+    if (paddr < local_exclusive_start || paddr > local_exclusive_end)
+        return false;
+
+    int core = id - 11;
+
+    if (paddr < global_exclusive_start[core] || paddr > global_exclusive_end[core])
+        return false;
+
+    return true;
+}
+
+void ARM_CPU::set_exclusive(uint32_t addr, uint32_t size)
+{
+    uint64_t paddr = (uint64_t)tlb_map[addr / 4096] + (addr & 0xFFF);
+
+    paddr &= ~(0xFFUL << 56UL);
+    local_exclusive_start = paddr;
+    local_exclusive_end = paddr + size;
+
+    global_exclusive_start[id - 11] = local_exclusive_start;
+    global_exclusive_end[id - 11] = local_exclusive_end;
+}
+
+void ARM_CPU::clear_global_exclusives(uint32_t addr)
+{
+    if (id < 11)
+        return;
+    uint64_t paddr = (uint64_t)tlb_map[addr / 4096] + (addr & 0xFFF);
+
+    paddr &= ~(0xFFUL << 56UL);
+
+    for (int i = 0; i < 4; i++)
+    {
+        if (global_exclusive_start[i] <= paddr && paddr < global_exclusive_end[i])
+        {
+            global_exclusive_start[i] = 0;
+            global_exclusive_end[i] = 0;
+        }
+    }
+}
+
+void ARM_CPU::clear_exclusive()
+{
+    local_exclusive_start = 0;
+    local_exclusive_end = 0;
+    global_exclusive_start[id - 11] = 0;
+    global_exclusive_end[id - 11] = 0;
 }
 
 void ARM_CPU::andd(int destination, int source, int operand, bool set_condition_codes)
@@ -733,6 +861,8 @@ void ARM_CPU::msr(uint32_t instr)
 
 void ARM_CPU::cps(uint32_t instr)
 {
+    if (CPSR.mode == PSR_USER)
+        return;
     PSR_MODE psr_mode = (PSR_MODE)(instr & 0x1F);
     bool f = (instr >> 6) & 0x1;
     bool i = (instr >> 7) & 0x1;
@@ -887,9 +1017,10 @@ void ARM_CPU::mcr(int coprocessor_id, int operation_mode,
     switch (coprocessor_id)
     {
         case 15:
-            if (!cp15)
-                return;
             cp15->mcr(operation_mode, CP_reg, coprocessor_info, coprocessor_operand, value);
+
+            tlb_map = cp15->get_tlb_mapping();
+            break;
     }
 }
 

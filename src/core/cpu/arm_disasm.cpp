@@ -13,14 +13,29 @@ ARM_INSTR decode_arm(uint32_t instr)
     if ((instr & 0xFE500F00) == 0xF8100A00)
         return ARM_RFE;
 
+    if (instr == 0xF57FF01F)
+        return ARM_CLREX;
+
     if ((instr & 0x0F000000) == 0x0A000000)
         return ARM_B;
 
     if ((instr & 0x0F000000) == 0x0B000000)
         return ARM_BL;
 
+    if ((instr & 0x0FFFFFFF) == 0x0320F000)
+        return ARM_NOP;
+
+    if ((instr & 0x0FFFFFFF) == 0x0320F001)
+        return ARM_YIELD;
+
+    if ((instr & 0x0FFFFFFF) == 0x0320F002)
+        return ARM_WFE;
+
     if ((instr & 0x0FFFFFFF) == 0x0320F003)
         return ARM_WFI;
+
+    if ((instr & 0x0FFFFFFF) == 0x0320F004)
+        return ARM_SEV;
 
     if (((instr >> 4) & 0x0FFFFFF) == 0x12FFF1)
         return ARM_BX;
@@ -50,6 +65,12 @@ ARM_INSTR decode_arm(uint32_t instr)
     if ((instr & 0xFFF000F0) == 0xE1200070)
         return ARM_BKPT;
 
+    if ((instr & 0x0FFF00F0) == 0x06AF0070)
+        return ARM_SXTB;
+
+    if ((instr & 0x0FFF00F0) == 0x06BF0070)
+        return ARM_SXTH;
+
     if ((instr & 0x0FFF00F0) == 0x06EF0070)
         return ARM_UXTB;
 
@@ -58,6 +79,30 @@ ARM_INSTR decode_arm(uint32_t instr)
 
     if ((instr & 0xFD70F000) == 0xF550F000)
         return ARM_PLD;
+
+    if ((instr & 0x0FF00FFF) == 0x01D00F9F)
+        return ARM_LOAD_EX_BYTE;
+
+    if ((instr & 0x0FF00FF0) == 0x01C00F90)
+        return ARM_STORE_EX_BYTE;
+
+    if ((instr & 0x0FF00FFF) == 0x01F00F9F)
+        return ARM_LOAD_EX_HALFWORD;
+
+    if ((instr & 0x0FF00FF0) == 0x01E00F90)
+        return ARM_STORE_EX_HALFWORD;
+
+    if ((instr & 0x0FF00FFF) == 0x01900F9F)
+        return ARM_LOAD_EX_WORD;
+
+    if ((instr & 0x0FF00FF0) == 0x01800F90)
+        return ARM_STORE_EX_WORD;
+
+    if ((instr & 0x0FF00FFF) == 0x01B00F9F)
+        return ARM_LOAD_EX_DOUBLEWORD;
+
+    if ((instr & 0x0FF00FF0) == 0x01A00F90)
+        return ARM_STORE_EX_DOUBLEWORD;
 
     if (((instr >> 26) & 0x3) == 0)
     {
@@ -201,6 +246,10 @@ string disasm_arm(ARM_CPU& cpu, uint32_t instr)
             return arm_swi(cpu, instr);
         case ARM_CLZ:
             return arm_clz(instr);
+        case ARM_SXTB:
+            return arm_sxtb(instr);
+        case ARM_SXTH:
+            return arm_sxth(instr);
         case ARM_UXTB:
             return arm_uxtb(instr);
         case ARM_UXTH:
@@ -233,12 +282,34 @@ string disasm_arm(ARM_CPU& cpu, uint32_t instr)
             return arm_load_store_block(instr);
         case ARM_COP_REG_TRANSFER:
             return arm_cop_transfer(instr);
+        case ARM_LOAD_EX_BYTE:
+        case ARM_STORE_EX_BYTE:
+            return arm_load_store_ex_byte(instr);
+        case ARM_LOAD_EX_HALFWORD:
+        case ARM_STORE_EX_HALFWORD:
+            return arm_load_store_ex_halfword(instr);
+        case ARM_LOAD_EX_WORD:
+        case ARM_STORE_EX_WORD:
+            return arm_load_store_ex_word(instr);
+        case ARM_LOAD_EX_DOUBLEWORD:
+        case ARM_STORE_EX_DOUBLEWORD:
+            return arm_load_store_ex_doubleword(instr);
+        case ARM_NOP:
+            return "nop {0}";
+        case ARM_YIELD:
+            return "yield";
+        case ARM_WFE:
+            return "wfe";
         case ARM_WFI:
             return "wfi";
+        case ARM_SEV:
+            return "sev";
         case ARM_SRS:
             return arm_srs(instr);
         case ARM_RFE:
             return arm_rfe(instr);
+        case ARM_CLREX:
+            return "clrex";
         default:
             return "undefined";
     }
@@ -404,6 +475,36 @@ string arm_clz(uint32_t instr)
     uint32_t destination = (instr >> 12) & 0xF;
 
     output << "clz " << ARM_CPU::get_reg_name(destination) << ", " << ARM_CPU::get_reg_name(source);
+    return output.str();
+}
+
+string arm_sxtb(uint32_t instr)
+{
+    stringstream output;
+    int source = instr & 0xF;
+    int rot = (instr >> 10) & 0x3;
+    int dest = (instr >> 12) & 0xF;
+
+    output << "sxtb " << ARM_CPU::get_reg_name(dest) << ", " << ARM_CPU::get_reg_name(source);
+
+    if (rot)
+        output << ", ror #" << std::dec << rot * 8;
+
+    return output.str();
+}
+
+string arm_sxth(uint32_t instr)
+{
+    stringstream output;
+    int source = instr & 0xF;
+    int rot = (instr >> 10) & 0x3;
+    int dest = (instr >> 12) & 0xF;
+
+    output << "sxth " << ARM_CPU::get_reg_name(dest) << ", " << ARM_CPU::get_reg_name(source);
+
+    if (rot)
+        output << ", ror #" << std::dec << rot * 8;
+
     return output.str();
 }
 
@@ -974,6 +1075,98 @@ string arm_load_store_doubleword(uint32_t instr)
         output << "!";
     if (!pre_indexing)
         output << offset_str.str();
+
+    return output.str();
+}
+
+string arm_load_store_ex_byte(uint32_t instr)
+{
+    stringstream output;
+    uint32_t base = (instr >> 16) & 0xF;
+    uint32_t reg = (instr >> 12) & 0xF;
+    uint32_t reg2 = instr & 0xF;
+    bool load = (instr & (1 << 20)) != 0;
+
+    if (load)
+        output << "ldrexb";
+    else
+        output << "strexb";
+
+    output << cond_name(instr >> 28) << " ";
+    output << ARM_CPU::get_reg_name(reg) << ", ";
+
+    if (!load)
+        output << ARM_CPU::get_reg_name(reg2) << ", ";
+    output << "[" << ARM_CPU::get_reg_name(base) << "]";
+
+    return output.str();
+}
+
+string arm_load_store_ex_halfword(uint32_t instr)
+{
+    stringstream output;
+    uint32_t base = (instr >> 16) & 0xF;
+    uint32_t reg = (instr >> 12) & 0xF;
+    uint32_t reg2 = instr & 0xF;
+    bool load = (instr & (1 << 20)) != 0;
+
+    if (load)
+        output << "ldrexh";
+    else
+        output << "strexh";
+
+    output << cond_name(instr >> 28) << " ";
+    output << ARM_CPU::get_reg_name(reg) << ", ";
+
+    if (!load)
+        output << ARM_CPU::get_reg_name(reg2) << ", ";
+    output << "[" << ARM_CPU::get_reg_name(base) << "]";
+
+    return output.str();
+}
+
+string arm_load_store_ex_word(uint32_t instr)
+{
+    stringstream output;
+    uint32_t base = (instr >> 16) & 0xF;
+    uint32_t reg = (instr >> 12) & 0xF;
+    uint32_t reg2 = instr & 0xF;
+    bool load = (instr & (1 << 20)) != 0;
+
+    if (load)
+        output << "ldrex";
+    else
+        output << "strex";
+
+    output << cond_name(instr >> 28) << " ";
+    output << ARM_CPU::get_reg_name(reg) << ", ";
+
+    if (!load)
+        output << ARM_CPU::get_reg_name(reg2) << ", ";
+    output << "[" << ARM_CPU::get_reg_name(base) << "]";
+
+    return output.str();
+}
+
+string arm_load_store_ex_doubleword(uint32_t instr)
+{
+    stringstream output;
+    uint32_t base = (instr >> 16) & 0xF;
+    uint32_t reg = (instr >> 12) & 0xF;
+    uint32_t reg2 = instr & 0xF;
+    bool load = (instr & (1 << 20)) != 0;
+
+    if (load)
+        output << "ldrexd";
+    else
+        output << "strexd";
+
+    output << cond_name(instr >> 28) << " ";
+    output << ARM_CPU::get_reg_name(reg) << ", ";
+
+    if (!load)
+        output << ARM_CPU::get_reg_name(reg2) << ", ";
+    output << "[" << ARM_CPU::get_reg_name(base) << "]";
 
     return output.str();
 }

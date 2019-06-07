@@ -376,6 +376,7 @@ void thumb_store_imm(ARM_CPU &cpu, uint16_t instr)
         address += offset;
         //cpu.add_n16_data(address, 1);
         cpu.write8(address, cpu.get_register(source) & 0xFF);
+        cpu.clear_global_exclusives(address);
     }
     else
     {
@@ -383,6 +384,7 @@ void thumb_store_imm(ARM_CPU &cpu, uint16_t instr)
         address += offset;
         //cpu.add_n32_data(address, 1);
         cpu.write32(address, cpu.get_register(source));
+        cpu.clear_global_exclusives(address);
     }
 }
 
@@ -429,11 +431,13 @@ void thumb_store_reg(ARM_CPU &cpu, uint16_t instr)
     {
         //cpu.add_n16_data(address, 1);
         cpu.write8(address, source_contents & 0xFF);
+        cpu.clear_global_exclusives(address);
     }
     else
     {
         //cpu.add_n32_data(address, 1);
         cpu.write32(address, source_contents);
+        cpu.clear_global_exclusives(address);
     }
 }
 
@@ -460,6 +464,7 @@ void thumb_store_halfword(ARM_CPU &cpu, uint16_t instr)
 
     //cpu.add_n16_data(address, 1);
     cpu.write16(address, value);
+    cpu.clear_global_exclusives(address);
 }
 
 void thumb_load_store_signed(ARM_CPU &cpu, uint16_t instr)
@@ -476,6 +481,7 @@ void thumb_load_store_signed(ARM_CPU &cpu, uint16_t instr)
     {
         case 0:
             cpu.write16(address, cpu.get_register(destination) & 0xFFFF);
+            cpu.clear_global_exclusives(address);
             //cpu.add_n32_data(address, 1);
             break;
         case 1:
@@ -550,6 +556,7 @@ void thumb_store_block(ARM_CPU &cpu, uint16_t instr)
         {
             regs++;
             cpu.write32(address, cpu.get_register(reg));
+            cpu.clear_global_exclusives(address);
             address += 4;
         }
     }
@@ -571,6 +578,7 @@ void thumb_push(ARM_CPU &cpu, uint16_t instr)
         regs++;
         stack_pointer -= 4;
         cpu.write32(stack_pointer, cpu.get_register(REG_LR));
+        cpu.clear_global_exclusives(stack_pointer);
     }
 
     for (int i = 7; i >= 0; i--)
@@ -581,6 +589,7 @@ void thumb_push(ARM_CPU &cpu, uint16_t instr)
             regs++;
             stack_pointer -= 4;
             cpu.write32(stack_pointer, cpu.get_register(i));
+            cpu.clear_global_exclusives(stack_pointer);
         }
     }
 
@@ -672,6 +681,7 @@ void thumb_sp_rel_store(ARM_CPU &cpu, uint16_t instr)
 
     //cpu.add_n32_data(address, 1);
     cpu.write32(address, cpu.get_register(source));
+    cpu.clear_global_exclusives(address);
 }
 
 void thumb_offset_sp(ARM_CPU &cpu, uint16_t instr)

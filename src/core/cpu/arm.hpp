@@ -52,7 +52,7 @@ class ARM_CPU
         bool halted;
         bool can_disassemble;
         bool int_pending;
-        uint32_t exception_base;
+        uint64_t local_exclusive_start, local_exclusive_end;
 
         CP15* cp15;
 
@@ -61,7 +61,10 @@ class ARM_CPU
         uint32_t LR_und, LR_irq, LR_svc, LR_fiq, LR_abt;
 
         PSR_Flags CPSR, SPSR[0x20];
+
+        uint8_t** tlb_map;
     public:
+        static uint64_t global_exclusive_start[4], global_exclusive_end[4];
         ARM_CPU(Emulator* e, int id, CP15* cp15);
 
         static std::string get_reg_name(int id);
@@ -75,16 +78,26 @@ class ARM_CPU
         uint32_t get_PC();
         PSR_Flags* get_CPSR();
 
+        uint16_t read_instr16(uint32_t addr);
+        uint32_t read_instr32(uint32_t addr);
+
         uint8_t read8(uint32_t addr);
         uint16_t read16(uint32_t addr);
         uint32_t read32(uint32_t addr);
+
         void write8(uint32_t addr, uint8_t value);
         void write16(uint32_t addr, uint16_t value);
         void write32(uint32_t addr, uint32_t value);
 
+        bool has_exclusive(uint32_t addr);
+        void set_exclusive(uint32_t addr, uint32_t size);
+        void clear_global_exclusives(uint32_t addr);
+        void clear_exclusive();
+
         uint32_t get_register(int id);
         void set_register(int id, uint32_t value);
 
+        void data_abort(uint32_t addr);
         void swi();
         void int_check();
         void set_int_signal(bool pending);

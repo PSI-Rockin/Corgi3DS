@@ -4,6 +4,9 @@
 namespace EmuException
 {
 
+ARMDataAbort::ARMDataAbort(uint32_t vaddr) : std::runtime_error("ARM data abort"), vaddr(vaddr)
+{}
+
 void die(const char* format, ...)
 {
     //Display a message box and forcibly terminate emulation

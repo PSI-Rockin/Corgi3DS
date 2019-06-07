@@ -152,7 +152,7 @@ void SHA::write_fifo(uint32_t value)
         std::queue<uint32_t> empty;
         read_fifo.swap(empty);
     }
-    printf("[SHA] Write FIFO: $%08X\n", value);
+    //printf("[SHA] Write FIFO: $%08X\n", value);
     in_fifo.push(value);
     read_fifo.push(value);
     message_len++;

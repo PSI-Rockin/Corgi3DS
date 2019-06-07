@@ -14,6 +14,8 @@ enum ARM_INSTR
     ARM_CLZ,
     ARM_SATURATED_OP,
     ARM_BKPT,
+    ARM_SXTB,
+    ARM_SXTH,
     ARM_UXTB,
     ARM_UXTH,
     ARM_DATA_PROCESSING,
@@ -35,14 +37,28 @@ enum ARM_INSTR
     ARM_STORE_BLOCK,
     ARM_LOAD_BLOCK,
 
+    ARM_LOAD_EX_BYTE,
+    ARM_STORE_EX_BYTE,
+    ARM_LOAD_EX_HALFWORD,
+    ARM_STORE_EX_HALFWORD,
+    ARM_LOAD_EX_WORD,
+    ARM_STORE_EX_WORD,
+    ARM_LOAD_EX_DOUBLEWORD,
+    ARM_STORE_EX_DOUBLEWORD,
+
     ARM_PLD,
 
     ARM_COP_REG_TRANSFER,
     ARM_COP_DATA_OP,
 
+    ARM_NOP,
+    ARM_YIELD,
+    ARM_WFE,
     ARM_WFI,
+    ARM_SEV,
     ARM_SRS,
-    ARM_RFE
+    ARM_RFE,
+    ARM_CLREX
 };
 
 enum THUMB_INSTR
@@ -101,6 +117,8 @@ namespace ARM_Disasm
     std::string arm_bx(uint32_t instr);
     std::string arm_swi(ARM_CPU& cpu, uint32_t instr);
     std::string arm_clz(uint32_t instr);
+    std::string arm_sxtb(uint32_t instr);
+    std::string arm_sxth(uint32_t instr);
     std::string arm_uxtb(uint32_t instr);
     std::string arm_uxth(uint32_t instr);
     std::string arm_data_processing(uint32_t instr);
@@ -113,6 +131,10 @@ namespace ARM_Disasm
     std::string arm_load_store_halfword(uint32_t instr);
     std::string arm_load_signed(uint32_t instr);
     std::string arm_load_store_doubleword(uint32_t instr);
+    std::string arm_load_store_ex_byte(uint32_t instr);
+    std::string arm_load_store_ex_halfword(uint32_t instr);
+    std::string arm_load_store_ex_word(uint32_t instr);
+    std::string arm_load_store_ex_doubleword(uint32_t instr);
     std::string arm_load_store_block(uint32_t instr);
     std::string arm_cop_transfer(uint32_t instr);
 

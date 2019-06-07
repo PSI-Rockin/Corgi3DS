@@ -184,13 +184,13 @@ void AES::crypt_check()
             if (!AES_CNT.out_big_endian)
                 value = bswp32(value);
 
-            printf("Output FIFO: $%08X\n", value);
+            //printf("Output FIFO: $%08X\n", value);
             output_fifo.push(value);
         }
 
         block_count--;
 
-        printf("Blocks left: %d\n", block_count);
+        //printf("Blocks left: %d\n", block_count);
 
         if (!block_count)
         {
@@ -226,21 +226,6 @@ void AES::crypt_ctr()
         input_fifo.pop();
     }
 
-    /*printf("Input: ");
-    for (int i = 0; i < 16; i++)
-        printf("%02X ", crypt_results[i]);
-    printf("\n");
-
-    printf("Key: ");
-    for (int i = 0; i < 16; i++)
-        printf("%02X ", cur_key->normal[i]);
-    printf("\n");
-
-    printf("IV: ");
-    for (int i = 0; i < 16; i++)
-        printf("%02X ", AES_CTR[i]);
-    printf("\n");*/
-
     AES_CTR_xcrypt_buffer(&lib_aes_ctx, (uint8_t*)crypt_results, 16);
 }
 
@@ -253,27 +238,7 @@ void AES::decrypt_cbc()
         input_fifo.pop();
     }
 
-    printf("Input: ");
-    for (int i = 0; i < 16; i++)
-        printf("%02X ", crypt_results[i]);
-    printf("\n");
-
-    printf("Key: ");
-    for (int i = 0; i < 16; i++)
-        printf("%02X ", cur_key->normal[i]);
-    printf("\n");
-
-    printf("IV: ");
-    for (int i = 0; i < 16; i++)
-        printf("%02X ", AES_CTR[i]);
-    printf("\n");
-
     AES_CBC_decrypt_buffer(&lib_aes_ctx, (uint8_t*)crypt_results, 16);
-
-    printf("Output: ");
-    for (int i = 0; i < 16; i++)
-        printf("%02X ", crypt_results[i]);
-    printf("\n");
 }
 
 void AES::encrypt_cbc()
@@ -365,7 +330,7 @@ void AES::write32(uint32_t addr, uint32_t value)
 {
     if (addr >= 0x10009020 && addr < 0x10009030)
     {
-        printf("[AES] Write CTR $%08X: $%08X\n", addr, value);
+        //printf("[AES] Write CTR $%08X: $%08X\n", addr, value);
 
         //The CTR word order cannot be reversed
         bool temp_order = AES_CNT.in_word_order;
@@ -443,7 +408,7 @@ void AES::write32(uint32_t addr, uint32_t value)
             block_count = (value >> 16);
             return;
         case 0x10009008:
-            printf("[AES] Write WRFIFO: $%08X\n", value);
+            //printf("[AES] Write WRFIFO: $%08X\n", value);
             write_input_fifo(value);
             return;
         case 0x10009100:

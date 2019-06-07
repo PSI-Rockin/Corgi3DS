@@ -13,6 +13,7 @@
 
 #include "cpu/arm.hpp"
 #include "cpu/cp15.hpp"
+#include "cpu/mmu.hpp"
 
 #include "i2c.hpp"
 #include "pxi.hpp"
@@ -22,8 +23,6 @@ class Emulator
 {
     private:
         //ROMs
-        uint8_t* boot9;
-        uint8_t* boot11;
         uint8_t* otp;
         uint8_t otp_free[256], otp_locked[256];
         uint8_t boot9_free[1024 * 64], boot11_free[1024 * 64];
@@ -34,9 +33,11 @@ class Emulator
         uint8_t* arm9_RAM;
         uint8_t* axi_RAM;
         uint8_t* fcram;
+        uint8_t* dsp_mem;
 
-        ARM_CPU arm9, arm11;
+        ARM_CPU arm9, appcore, syscore;
         CP15 arm9_cp15, app_cp15, sys_cp15;
+        MMU arm9_pu, app_mmu, sys_mmu;
         AES aes;
         DMA9 dma9;
         EMMC emmc;
@@ -74,12 +75,12 @@ class Emulator
         void arm9_write16(uint32_t addr, uint16_t value);
         void arm9_write32(uint32_t addr, uint32_t value);
 
-        uint8_t arm11_read8(uint32_t addr);
-        uint16_t arm11_read16(uint32_t addr);
-        uint32_t arm11_read32(uint32_t addr);
-        void arm11_write8(uint32_t addr, uint8_t value);
-        void arm11_write16(uint32_t addr, uint16_t value);
-        void arm11_write32(uint32_t addr, uint32_t value);
+        uint8_t arm11_read8(int core, uint32_t addr);
+        uint16_t arm11_read16(int core, uint32_t addr);
+        uint32_t arm11_read32(int core, uint32_t addr);
+        void arm11_write8(int core, uint32_t addr, uint8_t value);
+        void arm11_write16(int core, uint32_t addr, uint16_t value);
+        void arm11_write32(int core, uint32_t addr, uint32_t value);
 
         uint8_t* get_top_buffer();
         uint8_t* get_bottom_buffer();
