@@ -184,7 +184,7 @@ void AES::crypt_check()
             if (!AES_CNT.out_big_endian)
                 value = bswp32(value);
 
-            //printf("Output FIFO: $%08X\n", value);
+            printf("Output FIFO: $%08X\n", value);
             output_fifo.push(value);
         }
 

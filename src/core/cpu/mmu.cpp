@@ -7,6 +7,7 @@ MMU::MMU()
     user_mapping = nullptr;
     privileged_mapping = nullptr;
     direct_mapping = nullptr;
+    asid_mapping = nullptr;
 }
 
 MMU::~MMU()
@@ -14,6 +15,7 @@ MMU::~MMU()
     delete[] user_mapping;
     delete[] privileged_mapping;
     delete[] direct_mapping;
+    delete[] asid_mapping;
 }
 
 void MMU::reset()
@@ -24,6 +26,8 @@ void MMU::reset()
         privileged_mapping = new uint8_t*[1024 * 1024];
     if (!direct_mapping)
         direct_mapping = new uint8_t*[1024 * 1024];
+    if (!asid_mapping)
+        asid_mapping = new uint16_t[1024 * 1024];
 
     memset(user_mapping, 0, 1024 * 1024 * sizeof(uint8_t*));
     memset(privileged_mapping, 0, 1024 * 1024 * sizeof(uint8_t*));
@@ -34,6 +38,13 @@ void MMU::reset()
         addr |= 0xFUL << 60UL;
         direct_mapping[i] = (uint8_t*)addr;
     }
+
+    memset(asid_mapping, 0xFF, 1024 * 1024 * sizeof(uint16_t));
+
+    l1_table_base[0] = 0;
+    l1_table_base[1] = 0;
+    set_l1_table_control(0);
+    asid = 0;
 
     memset(pu_regions, 0, sizeof(pu_regions));
 }
@@ -81,11 +92,50 @@ uint8_t** MMU::get_user_mapping()
     return user_mapping;
 }
 
-void MMU::reload_tlb()
+void MMU::invalidate_tlb()
 {
-    uint32_t addr = l1_table_base[1], pc = 0;
-    printf("ARM11 mem map\n");
-    for (; addr < l1_table_base[1] + (1024 * 16); addr += 4)
+    memset(privileged_mapping, 0, 1024 * 1024 * sizeof(uint8_t*));
+    memset(user_mapping, 0, 1024 * 1024 * sizeof(uint8_t*));
+    memset(asid_mapping, 0xFF, 1024 * 1024 * sizeof(uint16_t));
+}
+
+void MMU::invalidate_tlb_by_asid(uint8_t value)
+{
+    for (int i = 0; i < 1024 * 1024; i++)
+    {
+        if (asid_mapping[i] == value)
+        {
+            asid_mapping[i] = 0xFFFF;
+            privileged_mapping[i] = nullptr;
+            user_mapping[i] = nullptr;
+        }
+    }
+}
+
+void MMU::reload_tlb_by_table(int index)
+{
+    if (!l1_table_base[index])
+        return;
+
+    uint32_t addr = l1_table_base[index];
+    uint32_t size;
+    uint32_t pc;
+
+    if (index == 0)
+    {
+        size = l1_table_cutoff;
+        pc = 0;
+    }
+    else
+    {
+        size = 1024 * 16;
+        addr += l1_table_cutoff;
+        pc = l1_table_cutoff * 1024 * 256;
+    }
+
+    printf("Reloading TLB from $%08X... (size: $%08X)\n", addr, size);
+
+    while (addr < l1_table_base[index] + size)
     {
         uint64_t mem = (uint64_t)direct_mapping[addr / 4096];
         mem &= ~(0xFUL << 60UL);
@@ -93,13 +143,16 @@ void MMU::reload_tlb()
         uint32_t entry = *(uint32_t*)&ptr[addr & 0xFFF];
 
         uint32_t type = entry & 0x3;
-        printf("[$%08X] $%08X - ", pc, entry);
+        //printf("[$%08X] $%08X - ", pc, entry);
         if (type == 0 || type == 3)
         {
-            printf("Unmapped\n");
+            //printf("Unmapped\n");
 
             for (int j = 0; j < 256; j++)
+            {
                 privileged_mapping[(pc / 4096) + j] = nullptr;
+                user_mapping[(pc / 4096) + j] = nullptr;
+            }
             pc += 1024 * 1024;
         }
         else if (type == 2)
@@ -110,23 +163,9 @@ void MMU::reload_tlb()
             if (entry & (1 << 18))
             {
                 paddr = entry & 0xFF000000;
-                printf("Supersection $%08X (XN=%d) (APX=%d)\n", paddr, exec_never, apx);
+                //printf("Supersection $%08X (XN=%d) (APX=%d)\n", paddr, exec_never, apx);
 
-                int priv_perm = get_privileged_apx_perms(apx);
-                if (exec_never)
-                    priv_perm &= ~0x1;
-
-                for (int j = 0; j < 256 * 16; j++)
-                {
-                    uint64_t mapping = (uint64_t)direct_mapping[(paddr / 4096) + j];
-
-                    //Strip permission bits off
-                    mapping &= ~(0x7UL << 60UL);
-
-                    uint64_t perm = priv_perm;
-                    perm <<= 60;
-                    privileged_mapping[(pc / 4096) + j] = (uint8_t*)(mapping | perm);
-                }
+                remap_mmu_region(pc, 1024 * 1024 * 16, paddr, apx, exec_never, false);
 
                 pc += 1024 * 1024 * 16;
                 addr += 64 - 4;
@@ -135,66 +174,46 @@ void MMU::reload_tlb()
             {
                 if (entry & (1 << 15))
                     apx |= 1 << 2;
+                bool nonglobal = entry & (1 << 17);
                 paddr = entry & 0xFFF00000;
-                printf("Section $%08X (XN=%d) (APX=%d)\n", paddr, exec_never, apx);
+                //printf("Section $%08X (XN=%d) (APX=%d) (nG=%d)\n", paddr, exec_never, apx, nonglobal);
 
-                int priv_perm = get_privileged_apx_perms(apx);
-                if (exec_never)
-                    priv_perm &= ~0x1;
-                for (int j = 0; j < 256; j++)
-                {
-                    uint64_t mapping = (uint64_t)direct_mapping[(paddr / 4096) + j];
-
-                    //Strip permission bits off
-                    mapping &= ~(0x7UL << 60UL);
-
-                    uint64_t perm = priv_perm;
-                    perm <<= 60;
-                    privileged_mapping[(pc / 4096) + j] = (uint8_t*)(mapping | perm);
-                }
+                remap_mmu_region(pc, 1024 * 1024, paddr, apx, exec_never, nonglobal);
                 pc += 1024 * 1024;
             }
         }
         else
         {
-            printf("L2 table\n");
             uint32_t l2_addr = entry & ~0x3FF;
+            //printf("L2 table at $%08X\n", l2_addr);
             for (int i = 0; i < 1024; i += 4)
             {
                 uint64_t l2_mem = (uint64_t)direct_mapping[(l2_addr + i) / 4096];
                 l2_mem &= ~(0xFUL << 60UL);
                 uint8_t* l2_ptr = (uint8_t*)l2_mem;
                 uint32_t l2_entry = *(uint32_t*)&l2_ptr[(l2_addr + i) & 0xFFF];
-                printf("[$%08X] $%08X - ", pc, l2_entry);
+                //printf("[$%08X] $%08X - ", pc, l2_entry);
 
                 uint32_t type = l2_entry & 0x3;
                 uint8_t apx = (l2_entry >> 4) & 0x3;
                 if (l2_entry & (1 << 9))
                     apx |= 1 << 2;
 
-                int priv_perm = get_privileged_apx_perms(apx);
+                bool nonglobal = l2_entry & (1 << 11);
+
                 if (!type)
                 {
-                    printf("Unmapped\n");
-                    privileged_mapping[(pc / 4096)] = nullptr;
+                    //printf("Unmapped\n");
+                    privileged_mapping[pc / 4096] = nullptr;
+                    user_mapping[pc / 4096] = nullptr;
                     pc += 1024 * 4;
                 }
                 else if (type == 1)
                 {
                     uint32_t paddr = l2_entry & 0xFFFF0000;
-                    printf("64 KB $%08X (APX=%d)\n", paddr, apx);
+                    //printf("64 KB $%08X (APX=%d) (nG=%d)\n", paddr, apx, nonglobal);
 
-                    for (int j = 0; j < 16; j++)
-                    {
-                        uint64_t mapping = (uint64_t)direct_mapping[(paddr / 4096) + j];
-
-                        //Strip permission bits off
-                        mapping &= ~(0x7UL << 60UL);
-
-                        uint64_t perm = priv_perm;
-                        perm <<= 60;
-                        privileged_mapping[(pc / 4096) + j] = (uint8_t*)(mapping | perm);
-                    }
+                    remap_mmu_region(pc, 1024 * 64, paddr, apx, false, nonglobal);
 
                     pc += 1024 * 64;
                     i += 60;
@@ -203,26 +222,79 @@ void MMU::reload_tlb()
                 {
                     uint32_t paddr = l2_entry & ~0xFFF;
                     bool exec_never = (l2_entry & 0x1) != 0;
-                    printf("4 KB $%08X (XN=%d) (APX=%d)\n", paddr, exec_never, apx);
-                    uint64_t mapping = (uint64_t)direct_mapping[paddr / 4096];
-
-                    //Strip permission bits off
-                    mapping &= ~(0x7UL << 60UL);
-
-                    uint64_t perm = priv_perm;
-                    perm <<= 60;
-                    privileged_mapping[pc / 4096] = (uint8_t*)(mapping | perm);
+                    //printf("4 KB $%08X (XN=%d) (APX=%d) (nG=%d)\n", paddr, exec_never, apx, nonglobal);
+                    remap_mmu_region(pc, 1024 * 4, paddr, apx, exec_never, nonglobal);
                     pc += 1024 * 4;
                 }
             }
         }
+        addr += 4;
     }
+}
+
+void MMU::reload_tlb()
+{
+    reload_tlb_by_table(0);
+    reload_tlb_by_table(1);
+}
+
+void MMU::remap_mmu_region(uint32_t base, uint32_t size, uint64_t paddr,
+                           uint8_t apx, bool exec_never, bool nonglobal)
+{
+    base /= 4096;
+    size /= 4096;
+    paddr /= 4096;
+
+    uint64_t priv_perm = get_privileged_apx_perms(apx);
+    if (exec_never)
+        priv_perm &= ~0x1;
+
+    priv_perm <<= 60UL;
+
+    for (unsigned int i = 0; i < size; i++)
+    {
+        uint64_t mapping = (uint64_t)direct_mapping[paddr + i];
+
+        //Strip permission bits off
+        mapping &= ~(0x7UL << 60UL);
+
+        privileged_mapping[base + i] = (uint8_t*)(mapping | priv_perm);
+
+        if (nonglobal)
+            asid_mapping[base + i] = asid;
+        else
+            asid_mapping[base + i] = 0xFFFF;
+    }
+}
+
+uint32_t MMU::get_l1_table_control()
+{
+    return l1_table_control;
 }
 
 void MMU::set_l1_table_base(int index, uint32_t value)
 {
     printf("[MMU] Set translation table%d base: $%08X\n", index, value);
-    l1_table_base[index] = value;
+    uint32_t mask = 0x3FFF;
+    mask >>= l1_table_control;
+    l1_table_base[index] = value & ~mask;
+    invalidate_tlb();
+}
+
+void MMU::set_l1_table_control(uint32_t value)
+{
+    //If control is 0, translation table 0 will cover all of memory.
+    printf("[MMU] Set control: $%08X\n", value);
+    l1_table_control = value;
+    l1_table_cutoff = 1UL << 32UL;
+    l1_table_cutoff >>= value & 0x7;
+    l1_table_cutoff /= (1024 * 256);
+}
+
+void MMU::set_asid(uint32_t value)
+{
+    printf("[MMU] Set ASID: $%08X\n", value);
+    asid = value & 0xFF;
 }
 
 void MMU::set_pu_permissions_ex(bool is_data, uint32_t value)
@@ -267,6 +339,8 @@ void MMU::set_pu_region(int index, uint32_t value)
     pu_regions[index].enabled = value & 0x1;
     pu_regions[index].size = 2 << ((value >> 1) & 0x1F);
     pu_regions[index].base = (value >> 12) * 4096;
+
+    printf("Size: $%08X Base: $%08X\n", pu_regions[index].size, pu_regions[index].base);
 
     unmap_pu_region(index);
     if (pu_regions[index].enabled)
@@ -330,6 +404,9 @@ void MMU::remap_pu_region(int index)
         //Strip RWX permissions from the address
         addr &= ~(0x7UL << 60UL);
 
+        if (start == 0x08028000 / 4096)
+            printf("Perm: %d\n", pu_regions[index].instr_privileged_perm);
+
         uint64_t privileged_addr = addr, user_addr = addr;
 
         privileged_addr |= (uint64_t)(pu_regions[index].instr_privileged_perm) << 60UL;
@@ -342,6 +419,16 @@ void MMU::remap_pu_region(int index)
         user_mapping[start] = (uint8_t*)user_addr;
 
         start++;
+    }
+}
+
+void MMU::reload_pu()
+{
+    for (int i = 0; i < 8; i++)
+    {
+        unmap_pu_region(i);
+        if (pu_regions[i].enabled)
+            remap_pu_region(i);
     }
 }
 

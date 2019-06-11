@@ -32,6 +32,17 @@ void CP15::reset(bool has_tcm)
     }
 }
 
+void CP15::reload_tlb()
+{
+    if (mmu_enabled)
+    {
+        if (id != 9)
+            mmu->reload_tlb();
+        else
+            mmu->reload_pu();
+    }
+}
+
 uint8_t** CP15::get_tlb_mapping()
 {
     if (!mmu_enabled)
@@ -55,7 +66,19 @@ uint32_t CP15::mrc(int operation_mode, int CP_reg, int coprocessor_info, int cop
             printf("[CP15_%d] Read CPU id\n", id);
             return id;
         case 0x100:
-            return mmu_enabled;
+        {
+            uint32_t reg = mmu_enabled;
+            reg |= high_exception_vector << 13;
+            return reg;
+        }
+        case 0x202:
+            if (id != 9)
+                return mmu->get_l1_table_control();
+            return 0;
+        case 0xD02:
+        case 0xD03:
+        case 0xD04:
+            return thread_regs[op - 0xD02];
         default:
             printf("[CP15_%d] Unrecognized MRC op $%04X\n", id, op);
             return 0;
@@ -71,18 +94,22 @@ void CP15::mcr(int operation_mode, int CP_reg, int coprocessor_info, int coproce
     switch (op)
     {
         case 0x100:
-            if (id != 9 && (value & 0x1))
-                mmu->reload_tlb();
+            if (value & 0x1)
+                reload_tlb();
             mmu_enabled = value & 0x1;
             high_exception_vector = value & (1 << 13);
             break;
         case 0x200:
             if (id != 9)
-                mmu->set_l1_table_base(0, value & ~0x3FFF);
+                mmu->set_l1_table_base(0, value);
             break;
         case 0x201:
             if (id != 9)
-                mmu->set_l1_table_base(1, value & ~0x3FFF);
+                mmu->set_l1_table_base(1, value);
+            break;
+        case 0x202:
+            if (id != 9)
+                mmu->set_l1_table_control(value);
             break;
         case 0x502:
             if (id == 9)
@@ -106,13 +133,36 @@ void CP15::mcr(int operation_mode, int CP_reg, int coprocessor_info, int coproce
         case 0x704:
             cpu->halt();
             break;
+        case 0x761:
+        case 0x7A1:
         case 0x7A4:
+        case 0x7A5:
             break;
         case 0x7E1:
             break;
         case 0x870:
-            if (id != 9 && mmu_enabled)
-                mmu->reload_tlb();
+            if (id != 9)
+            {
+                printf("[CP15_%d] TLB invalidate\n", id);
+                mmu->invalidate_tlb();
+            }
+            break;
+        case 0x872:
+            if (id != 9)
+            {
+                printf("[CP15_%d] TLB invalidate by ASID: $%08X\n", id, value);
+                mmu->invalidate_tlb_by_asid(value & 0xFF);
+            }
+            break;
+        case 0xD01:
+            if (id != 9)
+                mmu->set_asid(value);
+            break;
+        case 0xD02:
+        case 0xD03:
+        case 0xD04:
+            printf("[CP15_%d] Write thread reg%d: $%08X\n", id, op - 0xD02, value);
+            thread_regs[op - 0xD02] = value;
             break;
         default:
             printf("[CP15_%d] Unrecognized MCR op $%04X ($%08X)\n", id, op, value);

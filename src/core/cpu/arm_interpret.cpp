@@ -76,6 +76,9 @@ void interpret_arm(ARM_CPU &cpu, uint32_t instr)
         case ARM_MULTIPLY_LONG:
             arm_mul_long(cpu, instr);
             break;
+        case ARM_UQSUB8:
+            arm_uqsub8(cpu, instr);
+            break;
         case ARM_LOAD_BYTE:
             arm_load_byte(cpu, instr);
             break;
@@ -150,6 +153,9 @@ void interpret_arm(ARM_CPU &cpu, uint32_t instr)
             break;
         case ARM_CLREX:
             cpu.clear_exclusive();
+            break;
+        case ARM_BKPT:
+            cpu.prefetch_abort();
             break;
         default:
             EmuException::die("[ARM_Interpreter] Undefined instr $%08X\n", instr);
@@ -351,7 +357,7 @@ void arm_data_processing(ARM_CPU &cpu, uint32_t instr)
                     second_operand = cpu.asr_32(second_operand, set_carry);
                 break;
             case 3: //Rotate right
-                if (shift == 0)
+                if (shift == 0 && !(instr & (1 << 4)))
                     second_operand = cpu.rrx(second_operand, set_carry);
                 else
                     second_operand = cpu.rotr32(second_operand, shift, set_carry);
@@ -630,6 +636,32 @@ uint32_t load_store_shift_reg(ARM_CPU& cpu, uint32_t instr)
     return reg;
 }
 
+void arm_uqsub8(ARM_CPU &cpu, uint32_t instr)
+{
+    int reg1 = (instr >> 16) & 0xF;
+    int dest = (instr >> 12) & 0xF;
+    int reg2 = instr & 0xF;
+
+    uint32_t source1 = cpu.get_register(reg1);
+    uint32_t source2 = cpu.get_register(reg2);
+
+    uint32_t dest_word = 0;
+    uint32_t result;
+
+    for (int i = 0; i < 4; i++)
+    {
+        result = source1 & 0xFF;
+        result -= source2 & 0xFF;
+        if (result > 0xFF)
+            result = 0;
+        dest_word |= result << (i * 8);
+        source1 >>= 8;
+        source2 >>= 8;
+    }
+
+    cpu.set_register(dest, dest_word);
+}
+
 void arm_load_byte(ARM_CPU &cpu, uint32_t instr)
 {
     uint32_t base = (instr >> 16) & 0xF;
@@ -753,10 +785,20 @@ void arm_load_word(ARM_CPU &cpu, uint32_t instr)
         if (is_writing_back)
             cpu.set_register(base, address);
 
-        //TODO: What does ARM11 do on unaligned access?
+        uint32_t word;
+
+        //Split unaligned accesses into two reads to prevent issues if physical pages are not contiguous
         if (cpu.get_id() != 9 && (address & 0x3))
-            EmuException::die("ARM11 unaligned read32");
-        uint32_t word = cpu.rotr32(cpu.read32(address & ~0x3), (address & 0x3) * 8, false);
+        {
+            uint32_t word1 = cpu.read32(address & ~0x3);
+            uint32_t word2 = cpu.read32((address + 4) & ~0x3);
+            int low_bits = address & 0x3;
+
+            word = word1 >> (low_bits * 8);
+            word |= word2 << ((4 - low_bits) * 8);
+        }
+        else
+            word = cpu.rotr32(cpu.read32(address & ~0x3), (address & 0x3) * 8, false);
 
         if (destination == REG_PC)
             cpu.jp(word, true);
@@ -765,9 +807,18 @@ void arm_load_word(ARM_CPU &cpu, uint32_t instr)
     }
     else
     {
+        uint32_t word;
         if (cpu.get_id() != 9 && (address & 0x3))
-            EmuException::die("ARM11 unaligned read32");
-        uint32_t word = cpu.rotr32(cpu.read32(address & ~0x3), (address & 0x3) * 8, false);
+        {
+            uint32_t word1 = cpu.read32(address & ~0x3);
+            uint32_t word2 = cpu.read32((address + 4) & ~0x3);
+            int low_bits = address & 0x3;
+
+            word = word1 >> (low_bits * 8);
+            word |= word2 << ((4 - low_bits) * 8);
+        }
+        else
+            word = cpu.rotr32(cpu.read32(address & ~0x3), (address & 0x3) * 8, false);
 
         if (destination == REG_PC)
             cpu.jp(word, true);

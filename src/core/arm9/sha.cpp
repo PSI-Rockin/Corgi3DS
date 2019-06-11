@@ -90,7 +90,7 @@ uint32_t SHA::read32(uint32_t addr)
     if (addr >= 0x1000A080 && addr < 0x1000A0C0)
     {
         uint32_t value = read_fifo.front();
-        //printf("[SHA] Read FIFO: $%08X\n", value);
+        printf("[SHA] Read FIFO: $%08X\n", value);
         read_fifo.pop();
         if (!read_fifo.size())
         {
@@ -161,6 +161,7 @@ void SHA::write_fifo(uint32_t value)
         dma9->set_xdma_req(XDMA_SHA);
         dma9->set_ndma_req(NDMA_SHA_OUT);
         dma9->clear_ndma_req(NDMA_AES2);
+
         do_hash(false);
         SHA_CNT.fifo_enable = true;
     }
@@ -170,6 +171,7 @@ void SHA::write_fifo(uint32_t value)
 
 void SHA::do_hash(bool final_round)
 {
+    printf("[SHA] Do hash\n");
     switch (SHA_CNT.mode)
     {
         case 0x0:

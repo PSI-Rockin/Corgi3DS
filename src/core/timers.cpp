@@ -194,7 +194,7 @@ uint32_t Timers::arm11_get_load(int id)
 uint32_t Timers::arm11_get_counter(int id)
 {
     printf("[Timers] Read ARM11 timer%d counter: $%08X\n", id, arm11_timers[id].counter);
-    return arm11_timers[id].counter - 1;
+    return arm11_timers[id].counter;
 }
 
 uint32_t Timers::arm11_get_control(int id)

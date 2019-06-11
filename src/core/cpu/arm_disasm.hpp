@@ -37,6 +37,8 @@ enum ARM_INSTR
     ARM_STORE_BLOCK,
     ARM_LOAD_BLOCK,
 
+    ARM_UQSUB8,
+
     ARM_LOAD_EX_BYTE,
     ARM_STORE_EX_BYTE,
     ARM_LOAD_EX_HALFWORD,
@@ -127,6 +129,8 @@ namespace ARM_Disasm
     std::string arm_mul_long(uint32_t instr);
     std::string arm_mrs(uint32_t instr);
     std::string arm_msr(uint32_t instr);
+    std::string arm_signed_parallel_alu(uint32_t instr);
+    std::string arm_unsigned_parallel_alu(uint32_t instr);
     std::string arm_load_store(ARM_CPU& cpu, uint32_t instr);
     std::string arm_load_store_halfword(uint32_t instr);
     std::string arm_load_signed(uint32_t instr);

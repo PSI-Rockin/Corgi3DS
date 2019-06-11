@@ -480,6 +480,8 @@ void thumb_load_store_signed(ARM_CPU &cpu, uint16_t instr)
     switch (opcode)
     {
         case 0:
+            if (cpu.get_id() == 9)
+                address &= ~0x1;
             cpu.write16(address, cpu.get_register(destination) & 0xFFFF);
             cpu.clear_global_exclusives(address);
             //cpu.add_n32_data(address, 1);
@@ -494,12 +496,16 @@ void thumb_load_store_signed(ARM_CPU &cpu, uint16_t instr)
         }
             break;
         case 2:
+            if (cpu.get_id() == 9)
+                address &= ~0x1;
             cpu.set_register(destination, cpu.read16(address));
             //cpu.add_n16_data(address, 1);
             //cpu.add_internal_cycles(1);
             break;
         case 3:
         {
+            if (cpu.get_id() == 9)
+                address &= ~0x1;
             uint32_t extended_halfword = cpu.read16(address);
             extended_halfword = (int32_t)(int16_t)extended_halfword;
             cpu.set_register(destination, extended_halfword);

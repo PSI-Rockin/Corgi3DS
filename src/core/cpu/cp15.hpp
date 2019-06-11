@@ -14,6 +14,8 @@ class CP15
 
         bool mmu_enabled;
         bool high_exception_vector;
+
+        uint32_t thread_regs[3];
     public:
         uint8_t ITCM[1024 * 32], DTCM[1024 * 16];
 
@@ -22,6 +24,7 @@ class CP15
         CP15(int id, ARM_CPU* cpu, MMU* mmu);
 
         void reset(bool has_tcm);
+        void reload_tlb();
 
         uint8_t** get_tlb_mapping();
 

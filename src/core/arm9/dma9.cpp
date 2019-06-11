@@ -21,6 +21,8 @@ void DMA9::reset()
     xdma_param_count = 0;
     xdma_params_needed = 0;
 
+    global_ndma_ctrl = 0;
+
     pending_ndma_reqs[NDMA_SHA_IN] = true;
 }
 
@@ -130,6 +132,7 @@ void DMA9::run_ndma(int chan)
     for (int i = 0; i < block_size; i++)
     {
         uint32_t word = e->arm9_read32(ndma_chan[chan].int_src + (i * src_multiplier));
+        printf("[NDMA%d] Write $%08X: $%08X\n", chan, ndma_chan[chan].int_dest + (i * dest_multiplier), word);
         e->arm9_write32(ndma_chan[chan].int_dest + (i * dest_multiplier), word);
     }
 
@@ -143,8 +146,8 @@ void DMA9::run_ndma(int chan)
     if (ndma_chan[chan].imm_mode)
     {
         ndma_chan[chan].busy = false;
+        printf("[NDMA] Chan%d finished!\n", chan);
 
-        //TODO: IRQs
         if (ndma_chan[chan].irq_enable)
             int9->assert_irq(chan);
     }
@@ -155,7 +158,6 @@ void DMA9::run_ndma(int chan)
         {
             ndma_chan[chan].busy = false;
             printf("[NDMA] Chan%d finished!\n", chan);
-            //TODO: IRQs
 
             if (ndma_chan[chan].irq_enable)
                 int9->assert_irq(chan);
@@ -166,6 +168,8 @@ void DMA9::run_ndma(int chan)
 uint32_t DMA9::read32_ndma(uint32_t addr)
 {
     addr &= 0xFF;
+    if (addr == 0)
+        return global_ndma_ctrl;
     if (addr >= 0x4)
     {
         int index = (addr - 4) / 0x1C;
@@ -232,6 +236,13 @@ uint32_t DMA9::read32_xdma(uint32_t addr)
 void DMA9::write32_ndma(uint32_t addr, uint32_t value)
 {
     addr &= 0xFF;
+
+    if (addr == 0x0)
+    {
+        printf("[NDMA] Write global control: $%08X\n", value);
+        global_ndma_ctrl = value;
+        return;
+    }
 
     if (addr >= 0x4)
     {

@@ -98,6 +98,7 @@ class ARM_CPU
         void set_register(int id, uint32_t value);
 
         void data_abort(uint32_t addr);
+        void prefetch_abort();
         void swi();
         void int_check();
         void set_int_signal(bool pending);

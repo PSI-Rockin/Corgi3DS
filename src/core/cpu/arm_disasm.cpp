@@ -104,6 +104,17 @@ ARM_INSTR decode_arm(uint32_t instr)
     if ((instr & 0x0FF00FF0) == 0x01A00F90)
         return ARM_STORE_EX_DOUBLEWORD;
 
+    if ((instr & 0x0FF00F00) == 0x06600F00)
+    {
+        switch (instr & 0xF0)
+        {
+            case 0xF0:
+                return ARM_UQSUB8;
+            default:
+                return ARM_UNDEFINED;
+        }
+    }
+
     if (((instr >> 26) & 0x3) == 0)
     {
         if ((instr & (1 << 25)) == 0)
@@ -280,6 +291,8 @@ string disasm_arm(ARM_CPU& cpu, uint32_t instr)
         case ARM_LOAD_BLOCK:
         case ARM_STORE_BLOCK:
             return arm_load_store_block(instr);
+        case ARM_UQSUB8:
+            return arm_unsigned_parallel_alu(instr);
         case ARM_COP_REG_TRANSFER:
             return arm_cop_transfer(instr);
         case ARM_LOAD_EX_BYTE:
@@ -1237,6 +1250,30 @@ string arm_load_store_block(uint32_t instr)
 
     if (load_PSR)
         output << "^";
+    return output.str();
+}
+
+string arm_unsigned_parallel_alu(uint32_t instr)
+{
+    stringstream output;
+
+    int reg1 = (instr >> 16) & 0xF;
+    int dest = (instr >> 12) & 0xF;
+    int reg2 = instr & 0xF;
+
+    switch (instr & 0xF0)
+    {
+        case 0xF0:
+            output << "uqsub8";
+            break;
+        default:
+            return "undefined";
+    }
+
+    output << cond_name(instr >> 28) << " ";
+    output << ARM_CPU::get_reg_name(dest) << ", " << ARM_CPU::get_reg_name(reg1) << ", " <<
+              ARM_CPU::get_reg_name(reg2);
+
     return output.str();
 }
 

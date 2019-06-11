@@ -94,6 +94,8 @@ class DMA9
         Emulator* e;
         Interrupt9* int9;
 
+        uint32_t global_ndma_ctrl;
+
         bool pending_ndma_reqs[16];
         bool pending_xdma_reqs[32];
 

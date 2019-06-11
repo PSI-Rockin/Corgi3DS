@@ -33,7 +33,7 @@ void MPCore_PMR::assert_hw_irq(int id)
 
 void MPCore_PMR::assert_private_irq(int id, int core)
 {
-    private_int_pending[0] |= 1 << id;
+    private_int_pending[core] |= 1 << id;
     global_int_pending[0] |= 1 << id;
 
     printf("[PMR] Set Core%d IRQ: $%02X\n", core, id);
@@ -98,6 +98,8 @@ uint32_t MPCore_PMR::read32(int core, uint32_t addr)
         return global_int_pending[(addr / 4) & 0x7];
     switch (addr)
     {
+        case 0x17E00004:
+            return 2; //number of CPUs. 4 for N3DS
         case 0x17E0010C:
             return irq_cause[core];
         case 0x17E00118:

@@ -43,12 +43,25 @@ class MMU
         //Follows the same rules as above, except permissions are set to RWX.
         uint8_t** direct_mapping;
 
+        //List of ASIDs - set to 0xFFFF if the page is marked as global
+        //This is safe as the maximum ASID is 0xFF
+        uint16_t* asid_mapping;
+
+        //Current ASID
+        uint8_t asid;
+
         uint32_t l1_table_base[2];
+        uint64_t l1_table_cutoff;
+        uint32_t l1_table_control;
 
         PU_Region pu_regions[8];
 
         void unmap_pu_region(int index);
         void remap_pu_region(int index);
+
+        void reload_tlb_by_table(int index);
+        void remap_mmu_region(uint32_t base, uint32_t size, uint64_t paddr,
+                              uint8_t apx, bool exec_never, bool nonglobal);
 
         MMU_Perm get_user_apx_perms(uint8_t apx);
         MMU_Perm get_privileged_apx_perms(uint8_t apx);
@@ -64,8 +77,15 @@ class MMU
         uint8_t** get_privileged_mapping();
         uint8_t** get_direct_mapping();
 
+        void invalidate_tlb();
+        void invalidate_tlb_by_asid(uint8_t value);
         void reload_tlb();
+        void reload_pu();
+
+        uint32_t get_l1_table_control();
         void set_l1_table_base(int index, uint32_t value);
+        void set_l1_table_control(uint32_t value);
+        void set_asid(uint32_t value);
 
         void set_pu_permissions_ex(bool is_data, uint32_t value);
         void set_pu_region(int index, uint32_t value);

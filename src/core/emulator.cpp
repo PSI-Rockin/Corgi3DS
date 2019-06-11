@@ -102,7 +102,7 @@ void Emulator::run()
     static int frames = 0;
     i2c.update_time();
     printf("FRAME %d\n", frames);
-    //syscore.set_disassembly(frames == 22);
+    //arm9.set_disassembly(frames == 64);
     for (int i = 0; i < 50000; i++)
     {
         for (int j = 0; j < 16; j++)
@@ -239,6 +239,13 @@ uint16_t Emulator::arm9_read16(uint32_t addr)
 
     if (addr >= 0x10006000 && addr < 0x10007000)
         return emmc.read16(addr);
+
+    //PRNG - TODO
+    if (addr >= 0x10011000 && addr < 0x10012000)
+    {
+        printf("[ARM9] Read16 PRNG\n");
+        return addr & 0xFFFF;
+    }
 
     if (addr >= 0x10160000 && addr < 0x10161000)
     {
@@ -546,6 +553,12 @@ void Emulator::arm9_write32(uint32_t addr, uint32_t value)
         return;
     }
 
+    if (addr >= 0x20000000 && addr < 0x28000000)
+    {
+        *(uint32_t*)&fcram[addr & 0x07FFFFFF] = value;
+        return;
+    }
+
     switch (addr)
     {
         case 0x10000020:
@@ -592,7 +605,10 @@ uint8_t Emulator::arm11_read8(int core, uint32_t addr)
         case 0x10141220:
             return 0; //Enable FCRAM?
         case 0x10163000:
-            return pxi.read_sync11() & 0xFF;
+        case 0x10163001:
+        case 0x10163002:
+        case 0x10163003:
+            return (pxi.read_sync11() >> ((addr & 0x3) * 8)) & 0xFF;
     }
     EmuException::die("[ARM11] Invalid read8 $%08X\n", addr);
     return 0;
@@ -674,6 +690,8 @@ void Emulator::arm11_write8(int core, uint32_t addr, uint8_t value)
 
     switch (addr)
     {
+        case 0x1014010C:
+            return;
         case 0x10141204:
             return;
         case 0x10141208:
@@ -757,6 +775,11 @@ void Emulator::arm11_write32(int core, uint32_t addr, uint32_t value)
             return;
         case 0x10163000:
             pxi.write_sync11(value);
+            return;
+        case 0x10163008:
+            if (value == 0x10a9b8)
+                arm9.set_disassembly(true);
+            pxi.send_to_9(value);
             return;
         case 0x10202014:
             return;

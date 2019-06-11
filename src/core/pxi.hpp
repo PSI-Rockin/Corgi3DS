@@ -27,21 +27,18 @@ class PXI
         Interrupt9* int9;
         PXI_SYNC sync9, sync11;
 
+        std::ofstream log;
+
         PXI_CNT cnt9, cnt11;
 
         std::queue<uint32_t> recv9, recv11;
 
         uint32_t last_recv9, last_recv11;
-
-        bool is_hle;
     public:
         PXI(MPCore_PMR* mpcore, Interrupt9* int9);
+        ~PXI();
 
         void reset();
-        void activate_hle();
-        void run_hle11();
-
-        bool get_hle();
 
         uint32_t read_sync9();
         uint32_t read_sync11();
@@ -58,10 +55,5 @@ class PXI
         void send_to_9(uint32_t value);
         void send_to_11(uint32_t value);
 };
-
-inline bool PXI::get_hle()
-{
-    return is_hle;
-}
 
 #endif // PXI_HPP
