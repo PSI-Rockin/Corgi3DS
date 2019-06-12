@@ -63,6 +63,9 @@ class ARM_CPU
         PSR_Flags CPSR, SPSR[0x20];
 
         uint8_t** tlb_map;
+        uint8_t* instr_ptr;
+
+        void fetch_new_instr_ptr(uint32_t addr);
     public:
         static uint64_t global_exclusive_start[4], global_exclusive_end[4];
         ARM_CPU(Emulator* e, int id, CP15* cp15);
@@ -70,7 +73,7 @@ class ARM_CPU
         static std::string get_reg_name(int id);
 
         void reset();
-        void run();
+        void run(int cycles);
         void print_state();
         int get_id();
 

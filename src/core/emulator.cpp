@@ -103,15 +103,12 @@ void Emulator::run()
     i2c.update_time();
     printf("FRAME %d\n", frames);
     //arm9.set_disassembly(frames == 64);
-    for (int i = 0; i < 50000; i++)
+    for (int i = 0; i < 1000000; i++)
     {
-        for (int j = 0; j < 16; j++)
-        {
-            arm9.run();
-            appcore.run();
-            syscore.run();
-            timers.run();
-        }
+        arm9.run(1);
+        appcore.run(2);
+        syscore.run(2);
+        timers.run();
         dma9.process_ndma_reqs();
         dma9.run_xdma();
     }

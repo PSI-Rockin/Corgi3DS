@@ -80,6 +80,8 @@ void ARM_CPU::reset()
     CPSR.fiq_disable = true;
     CPSR.irq_disable = true;
 
+    tlb_map = cp15->get_tlb_mapping();
+
     if (id == 9)
         jp(0xFFFF0000, true);
     else
@@ -87,39 +89,45 @@ void ARM_CPU::reset()
 
     can_disassemble = false;
 
-    tlb_map = cp15->get_tlb_mapping();
     local_exclusive_start = 0;
     local_exclusive_end = 0;
 }
 
-void ARM_CPU::run()
+void ARM_CPU::run(int cycles)
 {
     if (halted)
         return;
 
     try
     {
-        if (CPSR.thumb)
+        for (int i = 0; i < cycles; i++)
         {
-            uint16_t instr = read_instr16(gpr[15] - 2);
-            gpr[15] += 2;
-            if (can_disassemble)
+            if (CPSR.thumb)
             {
-                printf("[$%08X] $%04X  %s\n", gpr[15] - 4, instr, ARM_Disasm::disasm_thumb(*this, instr).c_str());
-                //print_state();
+                uint16_t instr = *(uint16_t*)&instr_ptr[(gpr[15] - 2) & 0xFFF];
+                gpr[15] += 2;
+                if (((gpr[15] - 2) & 0xFFF) == 0)
+                    fetch_new_instr_ptr(gpr[15] - 2);
+                if (can_disassemble)
+                {
+                    printf("[$%08X] $%04X  %s\n", gpr[15] - 4, instr, ARM_Disasm::disasm_thumb(*this, instr).c_str());
+                    //print_state();
+                }
+                ARM_Interpreter::interpret_thumb(*this, instr);
             }
-            ARM_Interpreter::interpret_thumb(*this, instr);
-        }
-        else
-        {
-            uint32_t instr = read_instr32(gpr[15] - 4);
-            gpr[15] += 4;
-            if (can_disassemble)
+            else
             {
-                printf("[$%08X] $%08X  %s\n", gpr[15] - 8, instr, ARM_Disasm::disasm_arm(*this, instr).c_str());
-                //print_state();
+                uint32_t instr = *(uint32_t*)&instr_ptr[(gpr[15] - 4) & 0xFFF];
+                gpr[15] += 4;
+                if (((gpr[15] - 4) & 0xFFF) == 0)
+                    fetch_new_instr_ptr(gpr[15] - 4);
+                if (can_disassemble)
+                {
+                    printf("[$%08X] $%08X  %s\n", gpr[15] - 8, instr, ARM_Disasm::disasm_arm(*this, instr).c_str());
+                    //print_state();
+                }
+                ARM_Interpreter::interpret_arm(*this, instr);
             }
-            ARM_Interpreter::interpret_arm(*this, instr);
         }
     }
     catch (EmuException::ARMDataAbort& a)
@@ -154,6 +162,7 @@ void ARM_CPU::jp(uint32_t addr, bool change_thumb_state)
     }
     //if (addr == 0x1000B5)
         //can_disassemble = true;
+    fetch_new_instr_ptr(addr);
     gpr[15] = addr;
 
     if (change_thumb_state)
@@ -485,6 +494,22 @@ uint32_t ARM_CPU::read_instr32(uint32_t addr)
     if (id == 9)
         return e->arm9_read32(addr);
     return e->arm11_read32(id - 11, addr);
+}
+
+void ARM_CPU::fetch_new_instr_ptr(uint32_t addr)
+{
+    uint64_t mem = (uint64_t)tlb_map[addr / 4096];
+    if (!(mem & (1UL << 60UL)))
+    {
+        cp15->reload_tlb();
+        mem = (uint64_t)tlb_map[addr / 4096];
+        if (!(mem & (1UL << 60UL)))
+            EmuException::die("[ARM%d] Prefetch abort at vaddr $%08X", id, addr);
+    }
+    if (mem & (1UL << 63UL))
+        EmuException::die("[ARM%d] PC points to MMIO $%08X", addr);
+    mem &= ~(0xFUL << 60UL);
+    instr_ptr = (uint8_t*)mem;
 }
 
 uint8_t ARM_CPU::read8(uint32_t addr)
