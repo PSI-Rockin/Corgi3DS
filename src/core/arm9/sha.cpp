@@ -106,11 +106,11 @@ uint32_t SHA::read32(uint32_t addr)
         case 0x1000A000:
             //reg |= SHA_CNT.busy;
             //reg |= SHA_CNT.final_round << 1;
-            reg |= SHA_CNT.irq0_enable << 2;
+            reg |= SHA_CNT.in_dma_enable << 2;
             reg |= SHA_CNT.out_big_endian << 3;
             reg |= SHA_CNT.mode << 4;
             reg |= SHA_CNT.fifo_enable << 9;
-            reg |= SHA_CNT.irq1_enable << 10;
+            reg |= SHA_CNT.out_dma_enable << 10;
             printf("[SHA] Read32 SHA_CNT: $%08X\n", reg);
             break;
         default:
@@ -131,10 +131,21 @@ void SHA::write32(uint32_t addr, uint32_t value)
         case 0x1000A000:
             printf("[SHA] Write32 SHA_CNT: $%08X\n", value);
             SHA_CNT.busy = value & 0x1;
-            SHA_CNT.irq0_enable = value & (1 << 2);
+            SHA_CNT.in_dma_enable = value & (1 << 2);
             SHA_CNT.out_big_endian = value & (1 << 3);
             SHA_CNT.mode = (value >> 4) & 0x3;
-            SHA_CNT.irq1_enable = value & (1 << 10);
+            SHA_CNT.out_dma_enable = value & (1 << 10);
+
+            if (!SHA_CNT.out_dma_enable)
+            {
+                dma9->clear_ndma_req(NDMA_SHA_OUT);
+                dma9->clear_xdma_req(XDMA_SHA);
+            }
+            else if (in_fifo.size() == 16)
+            {
+                dma9->set_ndma_req(NDMA_SHA_OUT);
+                dma9->set_xdma_req(XDMA_SHA);
+            }
 
             if (value & 0x1)
                 reset_hash();
@@ -149,6 +160,8 @@ void SHA::write_fifo(uint32_t value)
 {
     if (in_fifo.size() == 0)
     {
+        dma9->clear_ndma_req(NDMA_SHA_OUT);
+        dma9->clear_xdma_req(XDMA_SHA);
         std::queue<uint32_t> empty;
         read_fifo.swap(empty);
     }
@@ -158,8 +171,11 @@ void SHA::write_fifo(uint32_t value)
     message_len++;
     if (in_fifo.size() == 16)
     {
-        dma9->set_xdma_req(XDMA_SHA);
-        dma9->set_ndma_req(NDMA_SHA_OUT);
+        if (SHA_CNT.out_dma_enable)
+        {
+            dma9->set_xdma_req(XDMA_SHA);
+            dma9->set_ndma_req(NDMA_SHA_OUT);
+        }
         dma9->clear_ndma_req(NDMA_AES2);
 
         do_hash(false);

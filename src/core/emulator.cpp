@@ -18,7 +18,7 @@ Emulator::Emulator() :
     pxi(&mpcore_pmr, &int9),
     rsa(&int9),
     sha(&dma9),
-    timers(&int9, &mpcore_pmr)
+    timers(&int9, &mpcore_pmr, this)
 {
     arm9_RAM = nullptr;
     axi_RAM = nullptr;
@@ -95,6 +95,8 @@ void Emulator::reset(bool cold_boot)
     arm9_cp15.reset(true);
     sys_cp15.reset(false);
     app_cp15.reset(false);
+
+    scheduler.reset();
 }
 
 void Emulator::run()
@@ -103,14 +105,18 @@ void Emulator::run()
     i2c.update_time();
     printf("FRAME %d\n", frames);
     //arm9.set_disassembly(frames == 64);
-    for (int i = 0; i < 1000000; i++)
+    for (int i = 0; i < 4000000 / 2; i++)
     {
-        arm9.run(1);
-        appcore.run(2);
-        syscore.run(2);
+        scheduler.calculate_cycles_to_run();
+        int cycles11 = scheduler.get_cycles11_to_run();
+        int cycles9 = scheduler.get_cycles9_to_run();
+        appcore.run(cycles11);
+        syscore.run(cycles11);
+        arm9.run(cycles9);
         timers.run();
         dma9.process_ndma_reqs();
         dma9.run_xdma();
+        scheduler.process_events(this);
     }
     frames++;
     gpu.render_frame();
@@ -774,8 +780,8 @@ void Emulator::arm11_write32(int core, uint32_t addr, uint32_t value)
             pxi.write_sync11(value);
             return;
         case 0x10163008:
-            if (value == 0x10a9b8)
-                arm9.set_disassembly(true);
+            //if (value == 0x10a9b8)
+                //arm9.set_disassembly(true);
             pxi.send_to_9(value);
             return;
         case 0x10202014:

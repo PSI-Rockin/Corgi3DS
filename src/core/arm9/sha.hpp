@@ -7,11 +7,11 @@ struct SHA_CNT_REG
 {
     bool busy;
     bool final_round;
-    bool irq0_enable;
+    bool in_dma_enable;
     bool out_big_endian;
     uint8_t mode;
     bool fifo_enable;
-    bool irq1_enable;
+    bool out_dma_enable;
 };
 
 class DMA9;

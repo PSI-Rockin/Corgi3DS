@@ -28,12 +28,14 @@ struct Timer11
 
 class Interrupt9;
 class MPCore_PMR;
+class Emulator;
 
 class Timers
 {
     private:
         Interrupt9* int9;
         MPCore_PMR* pmr;
+        Emulator* e;
         Timer9 arm9_timers[4];
         Timer11 arm11_timers[8];
 
@@ -43,7 +45,7 @@ class Timers
 
         void handle_overflow(int index);
     public:
-        Timers(Interrupt9* int9, MPCore_PMR* pmr);
+        Timers(Interrupt9* int9, MPCore_PMR* pmr, Emulator* e);
 
         void reset();
         void run();

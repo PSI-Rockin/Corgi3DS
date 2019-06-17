@@ -34,7 +34,8 @@ SOURCES += src/qt/main.cpp \
     src/qt/emuwindow.cpp \
     src/core/i2c.cpp \
     src/core/common/exceptions.cpp \
-    src/core/cpu/mmu.cpp
+    src/core/cpu/mmu.cpp \
+    src/core/scheduler.cpp
 
 HEADERS += \
     src/core/emulator.hpp \
@@ -60,7 +61,8 @@ HEADERS += \
     src/core/i2c.hpp \
     src/core/common/common.hpp \
     src/core/common/exceptions.hpp \
-    src/core/cpu/mmu.hpp
+    src/core/cpu/mmu.hpp \
+    src/core/scheduler.hpp
 
 INCLUDEPATH += /usr/local/include
 

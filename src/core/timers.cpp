@@ -4,8 +4,9 @@
 #include "arm9/interrupt9.hpp"
 #include "arm11/mpcore_pmr.hpp"
 #include "timers.hpp"
+#include "emulator.hpp"
 
-Timers::Timers(Interrupt9* int9, MPCore_PMR* pmr) : int9(int9), pmr(pmr)
+Timers::Timers(Interrupt9* int9, MPCore_PMR* pmr, Emulator* e) : int9(int9), pmr(pmr), e(e)
 {
 
 }
@@ -143,13 +144,13 @@ uint16_t Timers::get_control(int index)
     uint16_t reg = 0;
     switch (arm9_timers[index].prescalar)
     {
-        case 64:
+        case 64 * 2:
             reg = 1;
             break;
-        case 256:
+        case 256 * 2:
             reg = 2;
             break;
-        case 1024:
+        case 1024 * 2:
             reg = 3;
             break;
     }
@@ -172,7 +173,8 @@ void Timers::set_control(int index, uint16_t value)
     const static int prescalar_values[] = {1, 64, 256, 1024};
     arm9_timers[index].clocks = 0;
 
-    arm9_timers[index].prescalar = prescalar_values[value & 0x3];
+    //Multiply prescalar by 2 because timers run at half the speed of the ARM9
+    arm9_timers[index].prescalar = prescalar_values[value & 0x3] << 1;
     arm9_timers[index].countup = value & (1 << 2);
     arm9_timers[index].overflow_irq = value & (1 << 6);
 

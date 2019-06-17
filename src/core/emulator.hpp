@@ -17,6 +17,7 @@
 
 #include "i2c.hpp"
 #include "pxi.hpp"
+#include "scheduler.hpp"
 #include "timers.hpp"
 
 class Emulator
@@ -47,6 +48,7 @@ class Emulator
         MPCore_PMR mpcore_pmr;
         PXI pxi;
         RSA rsa;
+        Scheduler scheduler;
         SHA sha;
         Timers timers;
 
