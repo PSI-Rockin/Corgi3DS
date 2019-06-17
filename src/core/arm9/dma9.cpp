@@ -14,7 +14,15 @@ void DMA9::reset()
     memset(pending_ndma_reqs, 0, sizeof(pending_ndma_reqs));
     memset(pending_xdma_reqs, 0, sizeof(pending_xdma_reqs));
     memset(ndma_chan, 0, sizeof(ndma_chan));
-    memset(xdma_chan, 0, sizeof(xdma_chan));
+
+    for (int i = 0; i < 8; i++)
+    {
+        xdma_chan[i].state = XDMA_Chan::Status::STOP;
+
+        //Empty the FIFO
+        std::queue<uint32_t> empty;
+        xdma_chan[i].fifo.swap(empty);
+    }
 
     xdma_command_set = false;
     xdma_command = 0;
@@ -22,8 +30,6 @@ void DMA9::reset()
     xdma_params_needed = 0;
 
     global_ndma_ctrl = 0;
-
-    pending_ndma_reqs[NDMA_SHA_IN] = true;
 }
 
 void DMA9::process_ndma_reqs()

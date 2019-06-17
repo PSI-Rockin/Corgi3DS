@@ -136,6 +136,11 @@ void SHA::write32(uint32_t addr, uint32_t value)
             SHA_CNT.mode = (value >> 4) & 0x3;
             SHA_CNT.out_dma_enable = value & (1 << 10);
 
+            if (!SHA_CNT.in_dma_enable)
+                dma9->clear_ndma_req(NDMA_SHA_IN);
+            else if (in_fifo.size() < 16)
+                dma9->set_ndma_req(NDMA_SHA_IN);
+
             if (!SHA_CNT.out_dma_enable)
             {
                 dma9->clear_ndma_req(NDMA_SHA_OUT);
