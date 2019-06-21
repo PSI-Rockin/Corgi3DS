@@ -22,7 +22,17 @@ namespace EmuException
         using std::runtime_error::runtime_error;
 
         public:
-            ARMDataAbort(uint32_t vaddr);
+            ARMDataAbort(uint32_t vaddr, bool is_write);
+            uint32_t vaddr;
+            bool is_write;
+    };
+
+    class ARMPrefetchAbort : public std::runtime_error
+    {
+        using std::runtime_error::runtime_error;
+
+        public:
+            ARMPrefetchAbort(uint32_t vaddr);
             uint32_t vaddr;
     };
 

@@ -88,6 +88,10 @@ void ARM_CPU::reset()
         jp(0, true);
 
     can_disassemble = false;
+    event_pending = false;
+    halted = false;
+    waiting_for_event = false;
+    int_pending = false;
 
     local_exclusive_start = 0;
     local_exclusive_end = 0;
@@ -105,9 +109,9 @@ void ARM_CPU::run(int cycles)
             if (CPSR.thumb)
             {
                 uint16_t instr = *(uint16_t*)&instr_ptr[(gpr[15] - 2) & 0xFFF];
+                if ((gpr[15] & 0xFFF) == 0)
+                    fetch_new_instr_ptr(gpr[15]);
                 gpr[15] += 2;
-                if (((gpr[15] - 2) & 0xFFF) == 0)
-                    fetch_new_instr_ptr(gpr[15] - 2);
                 if (can_disassemble)
                 {
                     printf("[$%08X] $%04X  %s\n", gpr[15] - 4, instr, ARM_Disasm::disasm_thumb(*this, instr).c_str());
@@ -118,9 +122,9 @@ void ARM_CPU::run(int cycles)
             else
             {
                 uint32_t instr = *(uint32_t*)&instr_ptr[(gpr[15] - 4) & 0xFFF];
+                if ((gpr[15] & 0xFFF) == 0)
+                    fetch_new_instr_ptr(gpr[15]);
                 gpr[15] += 4;
-                if (((gpr[15] - 4) & 0xFFF) == 0)
-                    fetch_new_instr_ptr(gpr[15] - 4);
                 if (can_disassemble)
                 {
                     printf("[$%08X] $%08X  %s\n", gpr[15] - 8, instr, ARM_Disasm::disasm_arm(*this, instr).c_str());
@@ -132,7 +136,11 @@ void ARM_CPU::run(int cycles)
     }
     catch (EmuException::ARMDataAbort& a)
     {
-        data_abort(a.vaddr);
+        data_abort(a.vaddr, a.is_write);
+    }
+    catch (EmuException::ARMPrefetchAbort& p)
+    {
+        prefetch_abort(p.vaddr);
     }
 
     if (int_pending)
@@ -154,16 +162,30 @@ void ARM_CPU::print_state()
 
 void ARM_CPU::jp(uint32_t addr, bool change_thumb_state)
 {
-    if (id != 9 && gpr[15] >= 0xFFF00000 && (addr >= 0x00100000 && addr < 0x10000000))
+    if (addr == 0xC000FEA0)
+        print_state();
+    if (addr == 0xC00B8A20)
+    {
+        uint32_t str_ptr = gpr[0] + 2;
+        printf("[ARM%d] PRINTK: ", id);
+        while (true)
+        {
+            uint8_t ch = read8(str_ptr);
+            if (!ch)
+                break;
+            printf("%c", ch);
+            str_ptr++;
+        }
+    }
+    /*if (id != 9 && gpr[15] >= 0xFFF00000 && (addr >= 0x00100000 && addr < 0x10000000))
     {
         //can_disassemble = true;
         uint32_t process_ptr = read32(0xFFFF9004);
         printf("Jumping to PID%d (addr: $%08X)\n", read32(process_ptr + 0xB4), addr);
-    }
-    //if (addr == 0x1000B5)
-        //can_disassemble = true;
-    fetch_new_instr_ptr(addr);
+    }*/
+
     gpr[15] = addr;
+    fetch_new_instr_ptr(addr);
 
     if (change_thumb_state)
         CPSR.thumb = addr & 0x1;
@@ -180,11 +202,16 @@ void ARM_CPU::jp(uint32_t addr, bool change_thumb_state)
     }
 }
 
-void ARM_CPU::data_abort(uint32_t addr)
+void ARM_CPU::data_abort(uint32_t addr, bool is_write)
 {
-    EmuException::die("[ARM%d] Data abort at vaddr $%08X", id, addr);
+    if (id == 9)
+        EmuException::die("[ARM%d] Data abort at vaddr $%08X", id, addr);
 
-    can_disassemble = true;
+    printf("[ARM%d] Data abort at vaddr $%08X\n", id, addr);
+
+    cp15->set_data_abort_regs(addr, is_write);
+
+    //can_disassemble = true;
 
     uint32_t value = CPSR.get();
     SPSR[PSR_ABORT].set(value);
@@ -200,13 +227,19 @@ void ARM_CPU::data_abort(uint32_t addr)
         jp(0x10, true);
 }
 
-void ARM_CPU::prefetch_abort()
+void ARM_CPU::prefetch_abort(uint32_t addr)
 {
-    EmuException::die("[ARM%d] Prefetch abort", id);
+    if (id == 9)
+        EmuException::die("[ARM%d] Prefetch abort at vaddr $%08X\n", id, addr);
+
+    printf("[ARM%d] Prefetch abort at vaddr $%08X\n", id, addr);
+
+    cp15->set_prefetch_abort_regs(addr);
 
     uint32_t value = CPSR.get();
     SPSR[PSR_ABORT].set(value);
     LR_abt = gpr[15];
+    LR_abt += (CPSR.thumb) ? 2 : 4;
 
     update_reg_mode(PSR_ABORT);
     CPSR.mode = PSR_ABORT;
@@ -225,7 +258,11 @@ void ARM_CPU::swi()
     if (id == 9)
         printf("SWI $%02X!\n", op);
     else
+    {
+        //uint32_t process_ptr = read32(0xFFFF9004);
+        //printf("SVC $%02X, PID%d\n", op, read32(process_ptr + 0xB4));
         printf("SVC $%02X!\n", op);
+    }
     if (op == 0x3C)
     {
         EmuException::die("[ARM%d] svcBreak called!", id);
@@ -247,6 +284,22 @@ void ARM_CPU::swi()
         jp(0xFFFF0000 + 0x08, true);
     else
         jp(0x08, true);
+}
+
+void ARM_CPU::und()
+{
+    uint32_t value = CPSR.get();
+    SPSR[PSR_UNDEFINED].set(value);
+
+    LR_und = gpr[15] - 4;
+    update_reg_mode(PSR_UNDEFINED);
+    CPSR.mode = PSR_UNDEFINED;
+    CPSR.irq_disable = true;
+
+    if (cp15->has_high_exceptions())
+        jp(0xFFFF0000 + 0x04, true);
+    else
+        jp(0x04, true);
 }
 
 void ARM_CPU::int_check()
@@ -286,7 +339,7 @@ void ARM_CPU::halt()
 {
     if (!int_pending)
     {
-        printf("[ARM%d] Halting... $%08X\n", id, CPSR.get());
+        //printf("[ARM%d] Halting... $%08X\n", id, CPSR.get());
         halted = true;
     }
 }
@@ -294,6 +347,30 @@ void ARM_CPU::halt()
 void ARM_CPU::unhalt()
 {
     halted = false;
+}
+
+void ARM_CPU::wfe()
+{
+    if (!event_pending)
+    {
+        waiting_for_event = true;
+        halted = true;
+    }
+    else
+        event_pending = false;
+}
+
+void ARM_CPU::sev()
+{
+    e->arm11_send_events();
+}
+
+void ARM_CPU::send_event()
+{
+    if (waiting_for_event)
+        halted = false;
+    else
+        event_pending = true;
 }
 
 void ARM_CPU::set_zero_neg_flags(uint32_t value)
@@ -454,48 +531,6 @@ bool ARM_CPU::meets_condition(int cond)
     }
 }
 
-uint16_t ARM_CPU::read_instr16(uint32_t addr)
-{
-    uint64_t mem = (uint64_t)tlb_map[addr / 4096];
-    if (!(mem & (1UL << 60UL)))
-        EmuException::die("[ARM%d] Prefetch16 abort at vaddr $%08X", id, addr);
-    if (!(mem & (1UL << 63UL)))
-    {
-        mem &= ~(0xFUL << 60UL);
-        uint8_t* ptr = (uint8_t*)mem;
-        return *(uint16_t*)&ptr[addr & 0xFFF];
-    }
-    else
-        addr = (mem & 0xFFFFF000) + (addr & 0xFFF);
-    if (id == 9)
-        return e->arm9_read16(addr);
-    return e->arm11_read16(id - 11, addr);
-}
-
-uint32_t ARM_CPU::read_instr32(uint32_t addr)
-{
-    uint64_t mem = (uint64_t)tlb_map[addr / 4096];
-    if (!(mem & (1UL << 60UL)))
-    {
-        //TLB miss - reload and check the vaddr again
-        cp15->reload_tlb();
-        mem = (uint64_t)tlb_map[addr / 4096];
-        if (!(mem & (1UL << 60UL)))
-            EmuException::die("[ARM%d] Prefetch32 abort at vaddr $%08X (%llX)", id, addr, mem);
-    }
-    if (!(mem & (1UL << 63UL)))
-    {
-        mem &= ~(0xFUL << 60UL);
-        uint8_t* ptr = (uint8_t*)mem;
-        return *(uint32_t*)&ptr[addr & 0xFFF];
-    }
-    else
-        addr = (mem & 0xFFFFF000) + (addr & 0xFFF);
-    if (id == 9)
-        return e->arm9_read32(addr);
-    return e->arm11_read32(id - 11, addr);
-}
-
 void ARM_CPU::fetch_new_instr_ptr(uint32_t addr)
 {
     uint64_t mem = (uint64_t)tlb_map[addr / 4096];
@@ -504,10 +539,10 @@ void ARM_CPU::fetch_new_instr_ptr(uint32_t addr)
         cp15->reload_tlb();
         mem = (uint64_t)tlb_map[addr / 4096];
         if (!(mem & (1UL << 60UL)))
-            EmuException::die("[ARM%d] Prefetch abort at vaddr $%08X", id, addr);
+            throw EmuException::ARMPrefetchAbort(addr);
     }
     if (mem & (1UL << 63UL))
-        EmuException::die("[ARM%d] PC points to MMIO $%08X", addr);
+        EmuException::die("[ARM%d] PC points to MMIO $%08X", id, addr);
     mem &= ~(0xFUL << 60UL);
     instr_ptr = (uint8_t*)mem;
 }
@@ -516,7 +551,13 @@ uint8_t ARM_CPU::read8(uint32_t addr)
 {
     uint64_t mem = (uint64_t)tlb_map[addr / 4096];
     if (!(mem & (1UL << 62UL)))
-        throw EmuException::ARMDataAbort(addr);
+    {
+        //TLB miss - reload and check the vaddr again
+        cp15->reload_tlb();
+        mem = (uint64_t)tlb_map[addr / 4096];
+        if (!(mem & (1UL << 62UL)))
+            throw EmuException::ARMDataAbort(addr, false);
+    }
     if (!(mem & (1UL << 63UL)))
     {
         mem &= ~(0xFUL << 60UL);
@@ -534,7 +575,13 @@ uint16_t ARM_CPU::read16(uint32_t addr)
 {
     uint64_t mem = (uint64_t)tlb_map[addr / 4096];
     if (!(mem & (1UL << 62UL)))
-        throw EmuException::ARMDataAbort(addr);
+    {
+        //TLB miss - reload and check the vaddr again
+        cp15->reload_tlb();
+        mem = (uint64_t)tlb_map[addr / 4096];
+        if (!(mem & (1UL << 62UL)))
+            throw EmuException::ARMDataAbort(addr, false);
+    }
     if (!(mem & (1UL << 63UL)))
     {
         mem &= ~(0xFUL << 60UL);
@@ -557,7 +604,7 @@ uint32_t ARM_CPU::read32(uint32_t addr)
         cp15->reload_tlb();
         mem = (uint64_t)tlb_map[addr / 4096];
         if (!(mem & (1UL << 62UL)))
-            throw EmuException::ARMDataAbort(addr);
+            throw EmuException::ARMDataAbort(addr, false);
     }
     if (!(mem & (1UL << 63UL)))
     {
@@ -576,7 +623,13 @@ void ARM_CPU::write8(uint32_t addr, uint8_t value)
 {
     uint64_t mem = (uint64_t)tlb_map[addr / 4096];
     if (!(mem & (1UL << 61UL)))
-        throw EmuException::ARMDataAbort(addr);
+    {
+        //TLB miss - reload and check the vaddr again
+        cp15->reload_tlb();
+        mem = (uint64_t)tlb_map[addr / 4096];
+        if (!(mem & (1UL << 62UL)))
+            throw EmuException::ARMDataAbort(addr, true);
+    }
     if (!(mem & (1UL << 63UL)))
     {
         mem &= ~(0xFUL << 60UL);
@@ -596,7 +649,13 @@ void ARM_CPU::write16(uint32_t addr, uint16_t value)
 {
     uint64_t mem = (uint64_t)tlb_map[addr / 4096];
     if (!(mem & (1UL << 61UL)))
-        throw EmuException::ARMDataAbort(addr);
+    {
+        //TLB miss - reload and check the vaddr again
+        cp15->reload_tlb();
+        mem = (uint64_t)tlb_map[addr / 4096];
+        if (!(mem & (1UL << 62UL)))
+            throw EmuException::ARMDataAbort(addr, true);
+    }
     if (!(mem & (1UL << 63UL)))
     {
         mem &= ~(0xFUL << 60UL);
@@ -614,21 +673,16 @@ void ARM_CPU::write16(uint32_t addr, uint16_t value)
 
 void ARM_CPU::write32(uint32_t addr, uint32_t value)
 {
-    if (id == 9 && addr >= 0x080B1ED8 && addr < 0x080B1ED8 + 0x30)
-    //if (id == 9 && addr >= 0x08020000 && addr < 0x08100000)
-        printf("[ARM9] Write32 blorp $%08X: $%08X\n", addr, value);
     uint64_t mem = (uint64_t)tlb_map[addr / 4096];
     if (!(mem & (1UL << 61UL)))
     {
         //TLB miss - reload and check the vaddr again
+        if (id == 9 && (addr & 0xF0000000) == 0xC0000000)
+            return;
         cp15->reload_tlb();
         mem = (uint64_t)tlb_map[addr / 4096];
         if (!(mem & (1UL << 61UL)))
-        {
-            if ((addr & 0xFFFF0000) == 0xC0000000)
-                return;
-            throw EmuException::ARMDataAbort(addr);
-        }
+            throw EmuException::ARMDataAbort(addr, true);
     }
     if (!(mem & (1UL << 63UL)))
     {

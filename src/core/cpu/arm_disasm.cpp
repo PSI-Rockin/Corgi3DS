@@ -65,17 +65,43 @@ ARM_INSTR decode_arm(uint32_t instr)
     if ((instr & 0xFFF000F0) == 0xE1200070)
         return ARM_BKPT;
 
-    if ((instr & 0x0FFF00F0) == 0x06AF0070)
-        return ARM_SXTB;
+    if ((instr & 0x0E000010) == 0x06000010)
+    {
+        if ((instr & 0x0FFF00F0) == 0x06AF0070)
+            return ARM_SXTB;
 
-    if ((instr & 0x0FFF00F0) == 0x06BF0070)
-        return ARM_SXTH;
+        if ((instr & 0x0FFF00F0) == 0x06BF0070)
+            return ARM_SXTH;
 
-    if ((instr & 0x0FFF00F0) == 0x06EF0070)
-        return ARM_UXTB;
+        if ((instr & 0x0FFF00F0) == 0x06EF0070)
+            return ARM_UXTB;
 
-    if ((instr & 0x0FFF00F0) == 0x06FF0070)
-        return ARM_UXTH;
+        if ((instr & 0x0FF000F0) == 0x06F00070)
+        {
+            if ((instr & 0x0FFF00F0) == 0x06FF0070)
+                return ARM_UXTH;
+            return ARM_UXTAH;
+        }
+
+        if ((instr & 0x0FFF0FF0) == 0x06BF0F30)
+            return ARM_REV;
+
+        if ((instr & 0x0FFF0FF0) == 0x06BF0FB0)
+            return ARM_REV16;
+
+        if ((instr & 0x0FF00F00) == 0x06600F00)
+        {
+            switch (instr & 0xF0)
+            {
+                case 0xF0:
+                    return ARM_UQSUB8;
+                default:
+                    return ARM_UNDEFINED;
+            }
+        }
+
+        return ARM_UNDEFINED;
+    }
 
     if ((instr & 0xFD70F000) == 0xF550F000)
         return ARM_PLD;
@@ -104,16 +130,11 @@ ARM_INSTR decode_arm(uint32_t instr)
     if ((instr & 0x0FF00FF0) == 0x01A00F90)
         return ARM_STORE_EX_DOUBLEWORD;
 
-    if ((instr & 0x0FF00F00) == 0x06600F00)
-    {
-        switch (instr & 0xF0)
-        {
-            case 0xF0:
-                return ARM_UQSUB8;
-            default:
-                return ARM_UNDEFINED;
-        }
-    }
+    if ((instr & 0x0E000000) == 0x02000000)
+        return ARM_DATA_PROCESSING;
+
+    if (((instr & 0x0E000010) == 0x00000000) || (instr & 0x0E000090) == 0x00000010)
+        return ARM_DATA_PROCESSING;
 
     if (((instr >> 26) & 0x3) == 0)
     {
@@ -163,7 +184,7 @@ ARM_INSTR decode_arm(uint32_t instr)
                 return ARM_UNDEFINED;
             }
         }
-        return ARM_DATA_PROCESSING;
+        return ARM_UNDEFINED;
     }
     else if ((instr & (0x0F000000)) >> 26 == 0x1)
     {
@@ -265,6 +286,12 @@ string disasm_arm(ARM_CPU& cpu, uint32_t instr)
             return arm_uxtb(instr);
         case ARM_UXTH:
             return arm_uxth(instr);
+        case ARM_UXTAH:
+            return arm_uxtah(instr);
+        case ARM_REV:
+            return arm_rev(instr);
+        case ARM_REV16:
+            return arm_rev16(instr);
         case ARM_DATA_PROCESSING:
             return arm_data_processing(instr);
         case ARM_MULTIPLY:
@@ -547,6 +574,45 @@ string arm_uxth(uint32_t instr)
 
     if (rot)
         output << ", ror #" << std::dec << rot * 8;
+
+    return output.str();
+}
+
+string arm_uxtah(uint32_t instr)
+{
+    stringstream output;
+    int source1 = (instr >> 16) & 0xF;
+    int source2 = instr & 0xF;
+    int rot = (instr >> 10) & 0x3;
+    int dest = (instr >> 12) & 0xF;
+
+    output << "uxtah " << ARM_CPU::get_reg_name(dest) << ", " <<
+           ARM_CPU::get_reg_name(source1) << ", " << ARM_CPU::get_reg_name(source2);
+
+    if (rot)
+        output << ", ror #" << std::dec << rot * 8;
+
+    return output.str();
+}
+
+string arm_rev(uint32_t instr)
+{
+    stringstream output;
+    int source = instr & 0xF;
+    int dest = (instr >> 12) & 0xF;
+
+    output << "rev " << ARM_CPU::get_reg_name(dest) << ", " << ARM_CPU::get_reg_name(source);
+
+    return output.str();
+}
+
+string arm_rev16(uint32_t instr)
+{
+    stringstream output;
+    int source = instr & 0xF;
+    int dest = (instr >> 12) & 0xF;
+
+    output << "rev16 " << ARM_CPU::get_reg_name(dest) << ", " << ARM_CPU::get_reg_name(source);
 
     return output.str();
 }

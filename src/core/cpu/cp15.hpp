@@ -12,8 +12,15 @@ class CP15
         ARM_CPU* cpu;
         MMU* mmu;
 
+        uint32_t aux_control;
+
         bool mmu_enabled;
         bool high_exception_vector;
+
+        uint32_t data_fault_addr;
+        uint32_t data_fault_reg;
+
+        uint32_t instr_fault_reg;
 
         uint32_t thread_regs[3];
     public:
@@ -29,6 +36,9 @@ class CP15
         uint8_t** get_tlb_mapping();
 
         bool has_high_exceptions();
+
+        void set_data_abort_regs(uint32_t vaddr, bool is_write);
+        void set_prefetch_abort_regs(uint32_t vaddr);
 
         uint32_t mrc(int operation_mode, int CP_reg,
                      int coprocessor_info, int coprocessor_operand);

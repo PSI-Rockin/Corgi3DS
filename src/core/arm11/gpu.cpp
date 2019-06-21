@@ -12,15 +12,14 @@ GPU::GPU()
 
 GPU::~GPU()
 {
-    delete[] vram;
+    //vram is passed by the emulator, so no need to delete
     delete[] top_screen;
     delete[] bottom_screen;
 }
 
-void GPU::reset()
+void GPU::reset(uint8_t* vram)
 {
-    if (!vram)
-        vram = new uint8_t[0x00600000];
+    this->vram = vram;
 
     if (!top_screen)
         top_screen = new uint8_t[240 * 400 * 4];
@@ -169,6 +168,8 @@ uint32_t GPU::read32_fb(int index, uint32_t addr)
             return fb->left_addr_a;
         case 0x6C:
             return fb->left_addr_b;
+        case 0x78:
+            return fb->buffer_select;
         case 0x94:
             return fb->right_addr_a;
         case 0x98:

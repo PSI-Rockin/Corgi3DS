@@ -16,6 +16,8 @@ void MPCore_PMR::reset()
     for (int i = 0; i < 4; i++)
         irq_cause[i] = 0x3FF;
 
+    memset(int_targets, 0, sizeof(int_targets));
+
     //Interrupts 0-15 are always enabled
     global_int_mask[0] = 0xFFFF;
 }
@@ -96,15 +98,32 @@ uint32_t MPCore_PMR::read32(int core, uint32_t addr)
         return global_int_pending[(addr / 4) & 0x7];
     if (addr >= 0x17E01280 && addr < 0x17E012A0)
         return global_int_pending[(addr / 4) & 0x7];
+    if (addr >= 0x17E01800 && addr < 0x17E01880)
+    {
+        if (addr >= 0x17E01820)
+            return int_targets[(addr - 0x17E01820) / 4];
+        if (addr == 0x17E0181C)
+        {
+            //29-31 are always 1. 0-28 are always 0 (as they are SWIs)
+            //2 cores
+            if (core == 0)
+                return 0x01010100;
+            return 0x02020200;
+        }
+        return 0;
+    }
     switch (addr)
     {
         case 0x17E00004:
-            return 2; //number of CPUs. 4 for N3DS
+            return 1 | (3 << 4); //2 cores
         case 0x17E0010C:
             return irq_cause[core];
         case 0x17E00118:
             //TODO: This should be the highest priority pending interrupt
             return irq_cause[core];
+        case 0x17E01004:
+            //2 cores + 96 external interrupt lines
+            return (1 << 5) | 0x3;
     }
     printf("[PMR%d] Unrecognized read32 $%08X\n", core, addr);
     return 0;

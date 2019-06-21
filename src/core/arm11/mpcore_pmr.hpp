@@ -14,6 +14,7 @@ class MPCore_PMR
 
         uint32_t private_int_pending[4];
         uint32_t global_int_mask[8], global_int_pending[8];
+        uint32_t int_targets[7];
 
         void set_int_signal(ARM_CPU* core, int id_of_requester = 0);
     public:

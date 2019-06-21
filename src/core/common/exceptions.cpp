@@ -4,7 +4,11 @@
 namespace EmuException
 {
 
-ARMDataAbort::ARMDataAbort(uint32_t vaddr) : std::runtime_error("ARM data abort"), vaddr(vaddr)
+ARMDataAbort::ARMDataAbort(uint32_t vaddr, bool is_write) : std::runtime_error("ARM data abort"), vaddr(vaddr),
+    is_write(is_write)
+{}
+
+ARMPrefetchAbort::ARMPrefetchAbort(uint32_t vaddr) : std::runtime_error("ARM prefetch abort"), vaddr(vaddr)
 {}
 
 void die(const char* format, ...)

@@ -64,6 +64,15 @@ void interpret_arm(ARM_CPU &cpu, uint32_t instr)
         case ARM_UXTH:
             arm_uxth(cpu, instr);
             break;
+        case ARM_UXTAH:
+            arm_uxtah(cpu, instr);
+            break;
+        case ARM_REV:
+            arm_rev(cpu, instr);
+            break;
+        case ARM_REV16:
+            arm_rev16(cpu, instr);
+            break;
         case ARM_DATA_PROCESSING:
             arm_data_processing(cpu, instr);
             break;
@@ -148,6 +157,12 @@ void interpret_arm(ARM_CPU &cpu, uint32_t instr)
         case ARM_NOP:
         case ARM_YIELD:
             break;
+        case ARM_WFE:
+            cpu.wfe();
+            break;
+        case ARM_SEV:
+            cpu.sev();
+            break;
         case ARM_WFI:
             cpu.halt();
             break;
@@ -155,7 +170,7 @@ void interpret_arm(ARM_CPU &cpu, uint32_t instr)
             cpu.clear_exclusive();
             break;
         case ARM_BKPT:
-            cpu.prefetch_abort();
+            EmuException::die("[ARM_Interpreter] BKPT called\n");
             break;
         default:
             EmuException::die("[ARM_Interpreter] Undefined instr $%08X\n", instr);
@@ -279,6 +294,42 @@ void arm_uxth(ARM_CPU &cpu, uint32_t instr)
     uint32_t source_reg = rotr32(cpu.get_register(source), rot * 8);
 
     cpu.set_register(dest, source_reg & 0xFFFF);
+}
+
+void arm_uxtah(ARM_CPU &cpu, uint32_t instr)
+{
+    int source1 = (instr >> 16) & 0xF;
+    int source2 = instr & 0xF;
+    int rot = (instr >> 10) & 0x3;
+    int dest = (instr >> 12) & 0xF;
+
+    uint32_t source1_reg = cpu.get_register(source1);
+    uint32_t source2_reg = rotr32(cpu.get_register(source2), rot * 8) & 0xFFFF;
+
+    cpu.set_register(dest, source1_reg + source2_reg);
+}
+
+void arm_rev(ARM_CPU &cpu, uint32_t instr)
+{
+    int source = instr & 0xF;
+    int dest = (instr >> 12) & 0xF;
+
+    uint32_t source_reg = cpu.get_register(source);
+
+    cpu.set_register(dest, bswp32(source_reg));
+}
+
+void arm_rev16(ARM_CPU &cpu, uint32_t instr)
+{
+    int source = instr & 0xF;
+    int dest = (instr >> 12) & 0xF;
+
+    uint32_t source_reg = cpu.get_register(source);
+
+    uint32_t h1 = bswp16(source_reg & 0xFFFF);
+    uint32_t h2 = bswp16(source_reg >> 16);
+
+    cpu.set_register(dest, h1 | (h2 << 16));
 }
 
 void arm_data_processing(ARM_CPU &cpu, uint32_t instr)
@@ -865,17 +916,17 @@ void arm_store_word(ARM_CPU &cpu, uint32_t instr)
             cpu.set_register(base, address);
 
         //cpu.add_n32_data(address, 1);
-        if (cpu.get_id() != 9 && (address & 0x3))
-            EmuException::die("ARM11 unaligned write32");
-        cpu.write32(address & ~0x3, value);
+        if (cpu.get_id() < 11)
+            address &= ~0x3;
+        cpu.write32(address, value);
         cpu.clear_global_exclusives(address);
     }
     else
     {
         //cpu.add_n32_data(address, 1);
-        if (cpu.get_id() != 9 && (address & 0x3))
-            EmuException::die("ARM11 unaligned write32");
-        cpu.write32(address & ~0x3, value);
+        if (cpu.get_id() < 11)
+            address &= ~0x3;
+        cpu.write32(address, value);
         cpu.clear_global_exclusives(address);
 
         if (is_adding_offset)

@@ -35,6 +35,7 @@ class Emulator
         uint8_t* axi_RAM;
         uint8_t* fcram;
         uint8_t* dsp_mem;
+        uint8_t* vram;
 
         ARM_CPU arm9, appcore, syscore;
         CP15 arm9_cp15, app_cp15, sys_cp15;
@@ -65,6 +66,7 @@ class Emulator
         void run();
         void print_state();
         void dump();
+        void memdump11(int id, uint64_t start, uint64_t size);
 
         void load_roms(uint8_t* boot9, uint8_t* boot11, uint8_t* otp, uint8_t* cid);
         bool mount_nand(std::string file_name);
@@ -83,6 +85,8 @@ class Emulator
         void arm11_write8(int core, uint32_t addr, uint8_t value);
         void arm11_write16(int core, uint32_t addr, uint16_t value);
         void arm11_write32(int core, uint32_t addr, uint32_t value);
+
+        void arm11_send_events();
 
         uint8_t* get_top_buffer();
         uint8_t* get_bottom_buffer();

@@ -16,6 +16,9 @@ namespace ARM_Interpreter
     void arm_sxth(ARM_CPU& cpu, uint32_t instr);
     void arm_uxtb(ARM_CPU& cpu, uint32_t instr);
     void arm_uxth(ARM_CPU& cpu, uint32_t instr);
+    void arm_uxtah(ARM_CPU& cpu, uint32_t instr);
+    void arm_rev(ARM_CPU& cpu, uint32_t instr);
+    void arm_rev16(ARM_CPU& cpu, uint32_t instr);
     void arm_data_processing(ARM_CPU& cpu, uint32_t instr);
     void arm_signed_halfword_multiply(ARM_CPU& cpu, uint32_t instr);
     void arm_uqsub8(ARM_CPU& cpu, uint32_t instr);

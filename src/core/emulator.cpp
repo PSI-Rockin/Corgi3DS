@@ -23,6 +23,8 @@ Emulator::Emulator() :
     arm9_RAM = nullptr;
     axi_RAM = nullptr;
     fcram = nullptr;
+    dsp_mem = nullptr;
+    vram = nullptr;
 }
 
 Emulator::~Emulator()
@@ -30,6 +32,8 @@ Emulator::~Emulator()
     delete[] arm9_RAM;
     delete[] axi_RAM;
     delete[] fcram;
+    delete[] dsp_mem;
+    delete[] vram;
 }
 
 void Emulator::reset(bool cold_boot)
@@ -42,6 +46,8 @@ void Emulator::reset(bool cold_boot)
         fcram = new uint8_t[1024 * 1024 * 128];
     if (!dsp_mem)
         dsp_mem = new uint8_t[1024 * 512];
+    if (!vram)
+        vram = new uint8_t[1024 * 1024 * 6];
 
     mpcore_pmr.reset();
 
@@ -49,7 +55,7 @@ void Emulator::reset(bool cold_boot)
 
     HID_PAD = 0xFFF;
 
-    gpu.reset();
+    gpu.reset(vram);
     i2c.reset();
 
     aes.reset();
@@ -72,18 +78,21 @@ void Emulator::reset(bool cold_boot)
     arm9_pu.add_physical_mapping(axi_RAM, 0x1FF80000, 1024 * 512);
     arm9_pu.add_physical_mapping(fcram, 0x20000000, 1024 * 1024 * 128);
     arm9_pu.add_physical_mapping(boot9_free, 0xFFFF0000, 1024 * 64);
+    arm9_pu.add_physical_mapping(vram, 0x18000000, 1024 * 1024 * 6);
 
     app_mmu.add_physical_mapping(boot11_free, 0, 1024 * 64);
     app_mmu.add_physical_mapping(boot11_free, 0x10000, 1024 * 64);
     app_mmu.add_physical_mapping(dsp_mem, 0x1FF00000, 1024 * 512);
     app_mmu.add_physical_mapping(axi_RAM, 0x1FF80000, 1024 * 512);
     app_mmu.add_physical_mapping(fcram, 0x20000000, 1024 * 1024 * 128);
+    app_mmu.add_physical_mapping(vram, 0x18000000, 1024 * 1024 * 6);
 
     sys_mmu.add_physical_mapping(boot11_free, 0, 1024 * 64);
     sys_mmu.add_physical_mapping(boot11_free, 0x10000, 1024 * 64);
     sys_mmu.add_physical_mapping(dsp_mem, 0x1FF00000, 1024 * 512);
     sys_mmu.add_physical_mapping(axi_RAM, 0x1FF80000, 1024 * 512);
     sys_mmu.add_physical_mapping(fcram, 0x20000000, 1024 * 1024 * 128);
+    sys_mmu.add_physical_mapping(vram, 0x18000000, 1024 * 1024 * 6);
 
     //We must reset the CPUs after the MMUs are initialized so we can get the TLB pointer
     arm9.reset();
@@ -104,7 +113,7 @@ void Emulator::run()
     static int frames = 0;
     i2c.update_time();
     printf("FRAME %d\n", frames);
-    //arm9.set_disassembly(frames == 64);
+    syscore.set_disassembly(frames == 407);
     for (int i = 0; i < 4000000 / 2; i++)
     {
         scheduler.calculate_cycles_to_run();
@@ -113,6 +122,7 @@ void Emulator::run()
         appcore.run(cycles11);
         syscore.run(cycles11);
         arm9.run(cycles9);
+        timers.run();
         timers.run();
         dma9.process_ndma_reqs();
         dma9.run_xdma();
@@ -143,6 +153,28 @@ void Emulator::dump()
     hey.write((char*)arm9_RAM, 1024 * 1024);
     hey.close();
     EmuException::die("memdump");
+}
+
+void Emulator::memdump11(int id, uint64_t start, uint64_t size)
+{
+    ARM_CPU* core = nullptr;
+    if (id == 11)
+        core = &appcore;
+    else
+        core = &syscore;
+
+    uint8_t* buffer = new uint8_t[size];
+
+    for (uint64_t i = 0; i < size; i += 4)
+    {
+        *(uint32_t*)&buffer[i] = core->read32(start + i);
+
+    }
+
+    std::ofstream file("memdump11.bin", std::ofstream::binary);
+    file.write((char*)buffer, size);
+    file.close();
+    EmuException::die("memdump11");
 }
 
 void Emulator::load_roms(uint8_t *boot9, uint8_t *boot11, uint8_t *otp, uint8_t* cid)
@@ -482,6 +514,12 @@ void Emulator::arm9_write16(uint32_t addr, uint16_t value)
 
 void Emulator::arm9_write32(uint32_t addr, uint32_t value)
 {
+    if (addr >= 0x10003000 && addr < 0x10004000)
+    {
+        timers.arm9_write16(addr, value & 0xFFFF);
+        timers.arm9_write16(addr + 2, value >> 16);
+        return;
+    }
     if (addr >= 0x08000000 && addr < 0x08100000)
     {
         *(uint32_t*)&arm9_RAM[addr & 0xFFFFF] = value;
@@ -576,6 +614,9 @@ void Emulator::arm9_write32(uint32_t addr, uint32_t value)
         case 0x10008000:
             pxi.write_sync9(value);
             return;
+        case 0x10008004:
+            pxi.write_cnt9(value & 0xFFFF);
+            return;
         case 0x10008008:
             pxi.send_to_11(value);
             return;
@@ -595,6 +636,8 @@ uint8_t Emulator::arm11_read8(int core, uint32_t addr)
         printf("[GPIO] Unrecognized read8 $%08X\n", addr);
         return 0;
     }
+    if (addr >= 0x10148000 && addr < 0x10149000)
+        return i2c.read8(addr);
     if (addr >= 0x10161000 && addr < 0x10162000)
         return i2c.read8(addr);
     if (addr >= 0x17E00000 && addr < 0x17E02000)
@@ -626,6 +669,8 @@ uint16_t Emulator::arm11_read16(int core, uint32_t addr)
     }
     switch (addr)
     {
+        case 0x101401C0:
+            return 0x7; //3DS/DS SPI switch
         case 0x10140FFC:
             return 0x1; //Clock multiplier; bit 2 off = 2x
         case 0x10146000:
@@ -655,12 +700,27 @@ uint32_t Emulator::arm11_read32(int core, uint32_t addr)
         printf("[LCD] Unrecognized read $%08X\n", addr);
         return 0;
     }
+    if (addr >= 0x10142000 && addr < 0x10144000)
+    {
+        printf("[SPI] Unrecognized read32 $%08X\n", addr);
+        return 0;
+    }
+    if (addr >= 0x10160000 && addr < 0x10161000)
+    {
+        printf("[SPI] Unrecognized read32 $%08X\n", addr);
+        return 0;
+    }
     switch (addr)
     {
         case 0x10141200:
             return 0; //GPU power config
+        case 0x10146000:
+            return HID_PAD;
         case 0x10163000:
             return pxi.read_sync11();
+        case 0x10163008:
+            //3dslinux reads from SEND11 for some mysterious reason...
+            return 0;
         case 0x1016300C:
             return pxi.read_msg11();
     }
@@ -685,7 +745,14 @@ void Emulator::arm11_write8(int core, uint32_t addr, uint8_t value)
         i2c.write8(addr, value);
         return;
     }
+
     if (addr >= 0x10161000 && addr < 0x10162000)
+    {
+        i2c.write8(addr, value);
+        return;
+    }
+
+    if (addr >= 0x10148000 && addr < 0x10149000)
     {
         i2c.write8(addr, value);
         return;
@@ -736,6 +803,8 @@ void Emulator::arm11_write16(int core, uint32_t addr, uint16_t value)
     }
     switch (addr)
     {
+        case 0x101401C0:
+            return;
         case 0x10163004:
             pxi.write_cnt11(value);
             return;
@@ -765,6 +834,16 @@ void Emulator::arm11_write32(int core, uint32_t addr, uint32_t value)
         gpu.write32(addr, value);
         return;
     }
+    if (addr >= 0x10142000 && addr < 0x10144000)
+    {
+        printf("[SPI] Unrecognized write32 $%08X: $%08X\n", addr, value);
+        return;
+    }
+    if (addr >= 0x10160000 && addr < 0x10161000)
+    {
+        printf("[SPI] Unrecognized write32 $%08X: $%08X\n", addr, value);
+        return;
+    }
     if (addr >= 0x18000000 && addr < 0x18600000)
     {
         gpu.write_vram<uint32_t>(addr, value);
@@ -779,6 +858,9 @@ void Emulator::arm11_write32(int core, uint32_t addr, uint32_t value)
         case 0x10163000:
             pxi.write_sync11(value);
             return;
+        case 0x10163004:
+            pxi.write_cnt11(value & 0xFFFF);
+            return;
         case 0x10163008:
             //if (value == 0x10a9b8)
                 //arm9.set_disassembly(true);
@@ -788,6 +870,12 @@ void Emulator::arm11_write32(int core, uint32_t addr, uint32_t value)
             return;
     }
     EmuException::die("[ARM11] Invalid write32 $%08X: $%08X\n", addr, value);
+}
+
+void Emulator::arm11_send_events()
+{
+    appcore.send_event();
+    syscore.send_event();
 }
 
 uint8_t* Emulator::get_top_buffer()

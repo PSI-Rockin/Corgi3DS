@@ -29,6 +29,8 @@ void MMU::reset()
     if (!asid_mapping)
         asid_mapping = new uint16_t[1024 * 1024];
 
+    domain_control = 0;
+
     memset(user_mapping, 0, 1024 * 1024 * sizeof(uint8_t*));
     memset(privileged_mapping, 0, 1024 * 1024 * sizeof(uint8_t*));
 
@@ -92,6 +94,22 @@ uint8_t** MMU::get_user_mapping()
     return user_mapping;
 }
 
+bool MMU::is_section(uint32_t addr)
+{
+    uint32_t base;
+    if (addr < l1_table_cutoff)
+        base = l1_table_base[0];
+    else
+        base = l1_table_base[1];
+
+    uint64_t mem = (uint64_t)direct_mapping[addr / 4096];
+    mem &= ~(0xFUL << 60UL);
+    uint8_t* ptr = (uint8_t*)mem;
+    uint32_t entry = *(uint32_t*)&ptr[addr & 0xFFF];
+
+    return false;
+}
+
 void MMU::invalidate_tlb()
 {
     memset(privileged_mapping, 0, 1024 * 1024 * sizeof(uint8_t*));
@@ -133,7 +151,7 @@ void MMU::reload_tlb_by_table(int index)
         pc = l1_table_cutoff * 1024 * 256;
     }
 
-    printf("Reloading TLB from $%08X... (size: $%08X)\n", addr, size);
+    //printf("Reloading TLB from $%08X... (size: $%08X)\n", addr, size);
 
     while (addr < l1_table_base[index] + size)
     {
@@ -245,6 +263,8 @@ void MMU::remap_mmu_region(uint32_t base, uint32_t size, uint64_t paddr,
     size /= 4096;
     paddr /= 4096;
 
+    //apx &= ~0x4;
+
     uint64_t priv_perm = get_privileged_apx_perms(apx);
     if (exec_never)
         priv_perm &= ~0x1;
@@ -267,9 +287,19 @@ void MMU::remap_mmu_region(uint32_t base, uint32_t size, uint64_t paddr,
     }
 }
 
+uint32_t MMU::get_l1_table_base(int index)
+{
+    return l1_table_base[index];
+}
+
 uint32_t MMU::get_l1_table_control()
 {
     return l1_table_control;
+}
+
+uint32_t MMU::get_domain_control()
+{
+    return domain_control;
 }
 
 void MMU::set_l1_table_base(int index, uint32_t value)
@@ -289,6 +319,11 @@ void MMU::set_l1_table_control(uint32_t value)
     l1_table_cutoff = 1UL << 32UL;
     l1_table_cutoff >>= value & 0x7;
     l1_table_cutoff /= (1024 * 256);
+}
+
+void MMU::set_domain_control(uint32_t value)
+{
+    domain_control = value;
 }
 
 void MMU::set_asid(uint32_t value)

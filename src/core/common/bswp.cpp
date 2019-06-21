@@ -1,5 +1,11 @@
 #include "bswp.hpp"
 
+uint16_t bswp16(uint16_t value)
+{
+    return (value >> 8) |
+            (value << 8);
+}
+
 uint32_t bswp32(uint32_t value)
 {
     return (value >> 24) |

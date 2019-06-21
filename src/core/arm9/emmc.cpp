@@ -82,7 +82,7 @@ uint16_t EMMC::read16(uint32_t addr)
             reg = response[index] >> 16;
         else
             reg = response[index] & 0xFFFF;
-        printf("[EMMC] Read response $%08X: $%04X\n", addr, reg);
+        //printf("[EMMC] Read response $%08X: $%04X\n", addr, reg);
         return reg;
     }
     switch (addr)
@@ -97,19 +97,19 @@ uint16_t EMMC::read16(uint32_t addr)
             reg = (istat & 0xFFFF);
             reg |= 1 << 5;
             reg |= (!sd_write_protected) << 7;
-            printf("[EMMC] Read ISTAT_L: $%04X\n", reg);
+            //printf("[EMMC] Read ISTAT_L: $%04X\n", reg);
             break;
         case 0x1000601E:
             reg = istat >> 16;
-            printf("[EMMC] Read ISTAT_H: $%04X\n", reg);
+            //printf("[EMMC] Read ISTAT_H: $%04X\n", reg);
             break;
         case 0x10006020:
             reg = imask & 0xFFFF;
-            printf("[EMMC] Read IMASK_L: $%04X\n", reg);
+            //printf("[EMMC] Read IMASK_L: $%04X\n", reg);
             break;
         case 0x10006022:
             reg = imask >> 16;
-            printf("[EMMC] Read IMASK_H: $%04X\n", reg);
+            //printf("[EMMC] Read IMASK_H: $%04X\n", reg);
             break;
         case 0x10006026:
             reg = data_block_len;
@@ -130,7 +130,7 @@ uint16_t EMMC::read16(uint32_t addr)
             reg |= sd_data32.tx32rq_irq_pending << 9;
             reg |= sd_data32.rd32rdy_irq_enable << 11;
             reg |= sd_data32.tx32rq_irq_enable << 12;
-            printf("[EMMC] Read SD_DATA32_IRQ: $%04X\n", reg);
+            //printf("[EMMC] Read SD_DATA32_IRQ: $%04X\n", reg);
             break;
         case 0x10006104:
             reg = data32_block_len;
@@ -144,14 +144,22 @@ uint16_t EMMC::read16(uint32_t addr)
 
 uint32_t EMMC::read32(uint32_t addr)
 {
+    uint32_t reg = 0;
     switch (addr)
     {
+        case 0x1000601C:
+            reg = istat;
+            reg |= 1 << 5;
+            reg |= (!sd_write_protected) << 7;
+            break;
         case 0x1000610C:
-            return read_fifo32();
+            reg = read_fifo32();
+            break;
         default:
             EmuException::die("[EMMC] Unrecognized read32 $%08X\n", addr);
             return 0;
     }
+    return reg;
 }
 
 void EMMC::write16(uint32_t addr, uint16_t value)
@@ -184,20 +192,20 @@ void EMMC::write16(uint32_t addr, uint16_t value)
             printf("[EMMC] Set BLKCOUNT: $%04X\n", value);
             break;
         case 0x1000601C:
-            printf("[EMMC] Write ISTAT_L: $%04X\n", value);
+            //printf("[EMMC] Write ISTAT_L: $%04X\n", value);
             istat &= value | 0xFFFF0000;
             break;
         case 0x1000601E:
-            printf("[EMMC] Write ISTAT_H: $%04X\n", value);
+            //printf("[EMMC] Write ISTAT_H: $%04X\n", value);
             istat &= (value << 16) | 0xFFFF;
             break;
         case 0x10006020:
-            printf("[EMMC] Set IMASK_L: $%04X\n", value);
+            //printf("[EMMC] Set IMASK_L: $%04X\n", value);
             imask &= ~0xFFFF;
             imask |= value;
             break;
         case 0x10006022:
-            printf("[EMMC] Set IMASK_H: $%04X\n", value);
+            //printf("[EMMC] Set IMASK_H: $%04X\n", value);
             imask &= 0xFFFF;
             imask |= value << 16;
             break;
@@ -211,7 +219,7 @@ void EMMC::write16(uint32_t addr, uint16_t value)
             ctrl = value;
             break;
         case 0x10006100:
-            printf("[EMMC] Write SD_DATA32_IRQ: $%04X\n", value);
+            //printf("[EMMC] Write SD_DATA32_IRQ: $%04X\n", value);
             sd_data32.data32 = value & (1 << 1);
 
             sd_data32.rd32rdy_irq_enable = value & (1 << 11);
@@ -239,7 +247,9 @@ void EMMC::write32(uint32_t addr, uint32_t value)
             write_fifo32(value);
             return;
         default:
-            printf("[EMMC] Unrecognized write32 $%08X: $%08X\n", addr, value);
+            write16(addr, value & 0xFFFF);
+            write16(addr + 2, value >> 16);
+            //EmuException::die("[EMMC] Unrecognized write32 $%08X: $%08X\n", addr, value);
     }
 }
 

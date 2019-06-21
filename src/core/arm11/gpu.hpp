@@ -40,7 +40,7 @@ class GPU
         GPU();
         ~GPU();
 
-        void reset();
+        void reset(uint8_t* vram);
         void render_frame();
 
         template <typename T> T read_vram(uint32_t addr);

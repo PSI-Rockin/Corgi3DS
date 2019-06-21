@@ -1,4 +1,5 @@
 #include <cstdio>
+#include "../common/common.hpp"
 #include "arm.hpp"
 #include "cp15.hpp"
 #include "mmu.hpp"
@@ -10,6 +11,10 @@ CP15::CP15(int id, ARM_CPU* cpu, MMU* mmu) : id(id), cpu(cpu), mmu(mmu)
 
 void CP15::reset(bool has_tcm)
 {
+    mmu_enabled = false;
+    aux_control = 0xF;
+    data_fault_addr = 0;
+    data_fault_reg = 0;
     if (has_tcm)
     {
         itcm_size = 0x08000000;
@@ -55,6 +60,31 @@ bool CP15::has_high_exceptions()
     return high_exception_vector;
 }
 
+void CP15::set_data_abort_regs(uint32_t vaddr, bool is_write)
+{
+    uint8_t** cur_tlb = get_tlb_mapping();
+
+    data_fault_addr = vaddr;
+
+    //Determine the cause of the abort (unmapped access or lack of permissions, section or page, etc)
+    if (!cur_tlb[vaddr / 4096])
+        data_fault_reg = 0x5; //translation fault
+    else
+        data_fault_reg = 0xD; //permission fault
+
+    data_fault_reg |= is_write << 11;
+}
+
+void CP15::set_prefetch_abort_regs(uint32_t vaddr)
+{
+    uint8_t** cur_tlb = get_tlb_mapping();
+
+    if (!cur_tlb[vaddr / 4096])
+        instr_fault_reg = 0x5 | 2; //translation fault
+    else
+        instr_fault_reg = 0xD; //permission fault
+}
+
 uint32_t CP15::mrc(int operation_mode, int CP_reg, int coprocessor_info, int coprocessor_operand)
 {
     //Don't know if operation mode is used for anything. Let's just keep it around for now
@@ -62,27 +92,80 @@ uint32_t CP15::mrc(int operation_mode, int CP_reg, int coprocessor_info, int cop
     uint16_t op = (CP_reg << 8) | (coprocessor_operand << 4) | coprocessor_info;
     switch (op)
     {
+        case 0x000:
+            if (id != 9)
+                return 0x410FB024;
+            return 0;
         case 0x005:
             printf("[CP15_%d] Read CPU id\n", id);
             return id;
+        case 0x014:
+            if (id != 9)
+                return 0x01100103;
+            return 0;
+        case 0x015:
+            if (id != 9)
+                return 0x10020302;
+            return 0;
+        case 0x016:
+            if (id != 9)
+                return 0x01222000;
+            return 0;
+        case 0x017:
+            return 0;
+        case 0x020:
+            if (id != 9)
+                return 0x00100011;
+            return 0;
+        case 0x021:
+            if (id != 9)
+                return 0x12002111;
+            return 0;
+        case 0x022:
+            if (id != 9)
+                return 0x11221011;
+            return 0;
+        case 0x023:
+            if (id != 9)
+                return 0x01102131;
+            return 0;
+        case 0x024:
+            if (id != 9)
+                return 0x00000141;
+            return 0;
         case 0x100:
         {
             uint32_t reg = mmu_enabled;
             reg |= high_exception_vector << 13;
             return reg;
         }
+        case 0x101:
+            return aux_control;
+        case 0x200:
+        case 0x201:
+            if (id != 9)
+                return mmu->get_l1_table_base(op & 0x1);
+            return 0;
         case 0x202:
             if (id != 9)
                 return mmu->get_l1_table_control();
             return 0;
+        case 0x300:
+            return mmu->get_domain_control();
+        case 0x500:
+            return data_fault_reg;
+        case 0x501:
+            return instr_fault_reg;
+        case 0x600:
+            return data_fault_addr;
         case 0xD02:
         case 0xD03:
         case 0xD04:
             return thread_regs[op - 0xD02];
         default:
             printf("[CP15_%d] Unrecognized MRC op $%04X\n", id, op);
-            return 0;
     }
+    return 0;
 }
 
 void CP15::mcr(int operation_mode, int CP_reg, int coprocessor_info, int coprocessor_operand, uint32_t value)
@@ -98,6 +181,9 @@ void CP15::mcr(int operation_mode, int CP_reg, int coprocessor_info, int coproce
                 reload_tlb();
             mmu_enabled = value & 0x1;
             high_exception_vector = value & (1 << 13);
+            break;
+        case 0x101:
+            aux_control = value;
             break;
         case 0x200:
             if (id != 9)
@@ -133,6 +219,8 @@ void CP15::mcr(int operation_mode, int CP_reg, int coprocessor_info, int coproce
         case 0x704:
             cpu->halt();
             break;
+        case 0x750:
+            break;
         case 0x761:
         case 0x7A1:
         case 0x7A4:
@@ -140,6 +228,8 @@ void CP15::mcr(int operation_mode, int CP_reg, int coprocessor_info, int coproce
             break;
         case 0x7E1:
             break;
+        case 0x850:
+        case 0x860:
         case 0x870:
             if (id != 9)
             {
@@ -147,11 +237,25 @@ void CP15::mcr(int operation_mode, int CP_reg, int coprocessor_info, int coproce
                 mmu->invalidate_tlb();
             }
             break;
+        case 0x852:
+        case 0x862:
         case 0x872:
             if (id != 9)
             {
                 printf("[CP15_%d] TLB invalidate by ASID: $%08X\n", id, value);
                 mmu->invalidate_tlb_by_asid(value & 0xFF);
+            }
+            break;
+        case 0x910:
+            if (id == 9)
+            {
+                mmu->remove_physical_mapping(dtcm_base, dtcm_size);
+
+                dtcm_base = value & ~0xFFF;
+                dtcm_size = (value >> 1) & 0x1F;
+                dtcm_size = 512 << dtcm_size;
+
+                mmu->add_physical_mapping(DTCM, dtcm_base, dtcm_size);
             }
             break;
         case 0xD01:

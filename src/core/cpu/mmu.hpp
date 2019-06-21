@@ -53,6 +53,7 @@ class MMU
         uint32_t l1_table_base[2];
         uint64_t l1_table_cutoff;
         uint32_t l1_table_control;
+        uint32_t domain_control;
 
         PU_Region pu_regions[8];
 
@@ -77,14 +78,19 @@ class MMU
         uint8_t** get_privileged_mapping();
         uint8_t** get_direct_mapping();
 
+        bool is_section(uint32_t addr);
+
         void invalidate_tlb();
         void invalidate_tlb_by_asid(uint8_t value);
         void reload_tlb();
         void reload_pu();
 
+        uint32_t get_l1_table_base(int index);
         uint32_t get_l1_table_control();
+        uint32_t get_domain_control();
         void set_l1_table_base(int index, uint32_t value);
         void set_l1_table_control(uint32_t value);
+        void set_domain_control(uint32_t value);
         void set_asid(uint32_t value);
 
         void set_pu_permissions_ex(bool is_data, uint32_t value);

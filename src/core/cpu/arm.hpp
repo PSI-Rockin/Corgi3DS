@@ -50,8 +50,10 @@ class ARM_CPU
         int id;
         uint32_t gpr[16];
         bool halted;
+        bool waiting_for_event;
         bool can_disassemble;
         bool int_pending;
+        bool event_pending;
         uint64_t local_exclusive_start, local_exclusive_end;
 
         CP15* cp15;
@@ -81,9 +83,6 @@ class ARM_CPU
         uint32_t get_PC();
         PSR_Flags* get_CPSR();
 
-        uint16_t read_instr16(uint32_t addr);
-        uint32_t read_instr32(uint32_t addr);
-
         uint8_t read8(uint32_t addr);
         uint16_t read16(uint32_t addr);
         uint32_t read32(uint32_t addr);
@@ -100,13 +99,17 @@ class ARM_CPU
         uint32_t get_register(int id);
         void set_register(int id, uint32_t value);
 
-        void data_abort(uint32_t addr);
-        void prefetch_abort();
+        void data_abort(uint32_t addr, bool is_write);
+        void prefetch_abort(uint32_t addr);
         void swi();
+        void und();
         void int_check();
         void set_int_signal(bool pending);
         void halt();
         void unhalt();
+        void wfe();
+        void sev();
+        void send_event();
         void set_disassembly(bool dis);
 
         void jp(uint32_t addr, bool change_thumb_state);
