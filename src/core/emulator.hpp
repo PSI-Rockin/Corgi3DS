@@ -14,6 +14,7 @@
 #include "cpu/arm.hpp"
 #include "cpu/cp15.hpp"
 #include "cpu/mmu.hpp"
+#include "cpu/vfp.hpp"
 
 #include "i2c.hpp"
 #include "pxi.hpp"
@@ -40,6 +41,7 @@ class Emulator
         ARM_CPU arm9, appcore, syscore;
         CP15 arm9_cp15, app_cp15, sys_cp15;
         MMU arm9_pu, app_mmu, sys_mmu;
+        VFP app_vfp, sys_vfp;
         AES aes;
         DMA9 dma9;
         EMMC emmc;

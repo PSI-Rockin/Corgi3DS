@@ -35,7 +35,10 @@ SOURCES += src/qt/main.cpp \
     src/core/i2c.cpp \
     src/core/common/exceptions.cpp \
     src/core/cpu/mmu.cpp \
-    src/core/scheduler.cpp
+    src/core/scheduler.cpp \
+    src/core/cpu/vfp.cpp \
+    src/core/cpu/vfp_disasm.cpp \
+    src/core/cpu/vfp_interpreter.cpp
 
 HEADERS += \
     src/core/emulator.hpp \
@@ -62,7 +65,8 @@ HEADERS += \
     src/core/common/common.hpp \
     src/core/common/exceptions.hpp \
     src/core/cpu/mmu.hpp \
-    src/core/scheduler.hpp
+    src/core/scheduler.hpp \
+    src/core/cpu/vfp.hpp
 
 INCLUDEPATH += /usr/local/include
 

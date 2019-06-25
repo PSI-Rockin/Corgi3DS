@@ -2,6 +2,7 @@
 #include "arm.hpp"
 #include "arm_disasm.hpp"
 #include "arm_interpret.hpp"
+#include "vfp.hpp"
 #include "../common/common.hpp"
 #include "../emulator.hpp"
 
@@ -40,7 +41,7 @@ void PSR_Flags::set(uint32_t value)
     mode = (PSR_MODE)(value & 0x1F);
 }
 
-ARM_CPU::ARM_CPU(Emulator* e, int id, CP15* cp15) : e(e), id(id), cp15(cp15)
+ARM_CPU::ARM_CPU(Emulator* e, int id, CP15* cp15, VFP* vfp) : e(e), id(id), cp15(cp15), vfp(vfp)
 {
 
 }
@@ -87,6 +88,7 @@ void ARM_CPU::reset()
     else
         jp(0, true);
 
+    prefetch_abort_occurred = false;
     can_disassemble = false;
     event_pending = false;
     halted = false;
@@ -108,6 +110,8 @@ void ARM_CPU::run(int cycles)
         {
             if (CPSR.thumb)
             {
+                if (prefetch_abort_occurred)
+                    throw EmuException::ARMPrefetchAbort(gpr[15] - 2);
                 uint16_t instr = *(uint16_t*)&instr_ptr[(gpr[15] - 2) & 0xFFF];
                 if ((gpr[15] & 0xFFF) == 0)
                     fetch_new_instr_ptr(gpr[15]);
@@ -121,6 +125,8 @@ void ARM_CPU::run(int cycles)
             }
             else
             {
+                if (prefetch_abort_occurred)
+                    throw EmuException::ARMPrefetchAbort(gpr[15] - 4);
                 uint32_t instr = *(uint32_t*)&instr_ptr[(gpr[15] - 4) & 0xFFF];
                 if ((gpr[15] & 0xFFF) == 0)
                     fetch_new_instr_ptr(gpr[15]);
@@ -162,8 +168,27 @@ void ARM_CPU::print_state()
 
 void ARM_CPU::jp(uint32_t addr, bool change_thumb_state)
 {
-    if (addr == 0xC000FEA0)
+    if (addr == 0xB6D988B8)
         print_state();
+    if (addr == 0xC0118F78)
+    {
+        uint32_t filename = read32(gpr[1]);
+        printf("[ARM%d] EXEC PROGRAM: ", id);
+
+        int i = 0;
+        while (true)
+        {
+            uint8_t ch = read8(filename);
+            //if (ch == 'i' && i == 1)
+                //can_disassemble = true;
+            if (!ch)
+                break;
+            printf("%c", ch);
+            filename++;
+            i++;
+        }
+        printf("\n");
+    }
     if (addr == 0xC00B8A20)
     {
         uint32_t str_ptr = gpr[0] + 2;
@@ -211,7 +236,11 @@ void ARM_CPU::data_abort(uint32_t addr, bool is_write)
 
     cp15->set_data_abort_regs(addr, is_write);
 
-    //can_disassemble = true;
+    //if (addr == 0xB7B8069C)
+        //can_disassemble = true;
+
+    if (addr == 0x6DF0869C)
+        can_disassemble = false;
 
     uint32_t value = CPSR.get();
     SPSR[PSR_ABORT].set(value);
@@ -229,6 +258,7 @@ void ARM_CPU::data_abort(uint32_t addr, bool is_write)
 
 void ARM_CPU::prefetch_abort(uint32_t addr)
 {
+    prefetch_abort_occurred = false;
     if (id == 9)
         EmuException::die("[ARM%d] Prefetch abort at vaddr $%08X\n", id, addr);
 
@@ -238,7 +268,7 @@ void ARM_CPU::prefetch_abort(uint32_t addr)
 
     uint32_t value = CPSR.get();
     SPSR[PSR_ABORT].set(value);
-    LR_abt = gpr[15];
+    LR_abt = addr;
     LR_abt += (CPSR.thumb) ? 2 : 4;
 
     update_reg_mode(PSR_ABORT);
@@ -261,7 +291,22 @@ void ARM_CPU::swi()
     {
         //uint32_t process_ptr = read32(0xFFFF9004);
         //printf("SVC $%02X, PID%d\n", op, read32(process_ptr + 0xB4));
-        printf("SVC $%02X!\n", op);
+        //printf("SVC $%02X!\n", op);
+        printf("SVC $%04X!\n", gpr[7]);
+    }
+    if (gpr[7] == 4)
+    {
+        //can_disassemble = false;
+        uint32_t buf = gpr[1];
+        uint32_t count = gpr[2];
+
+        printf("SYS_WRITE: ");
+        while (count)
+        {
+            printf("%c", read8(buf));
+            buf++;
+            count--;
+        }
     }
     if (op == 0x3C)
     {
@@ -539,7 +584,7 @@ void ARM_CPU::fetch_new_instr_ptr(uint32_t addr)
         cp15->reload_tlb();
         mem = (uint64_t)tlb_map[addr / 4096];
         if (!(mem & (1UL << 60UL)))
-            throw EmuException::ARMPrefetchAbort(addr);
+            prefetch_abort_occurred = true;
     }
     if (mem & (1UL << 63UL))
         EmuException::die("[ARM%d] PC points to MMIO $%08X", id, addr);
@@ -573,6 +618,8 @@ uint8_t ARM_CPU::read8(uint32_t addr)
 
 uint16_t ARM_CPU::read16(uint32_t addr)
 {
+    //if ((addr & 0xFFF) > 0xFFE)
+        //EmuException::die("[ARM%d] Unaligned read16 on page boundary $%08X", id, addr);
     uint64_t mem = (uint64_t)tlb_map[addr / 4096];
     if (!(mem & (1UL << 62UL)))
     {
@@ -597,6 +644,10 @@ uint16_t ARM_CPU::read16(uint32_t addr)
 
 uint32_t ARM_CPU::read32(uint32_t addr)
 {
+    if ((addr & 0xFFF) > 0xFFC)
+        EmuException::die("[ARM%d] Unaligned read32 on page boundary $%08X", id, addr);
+    if (addr == 0xB6FC8F9C + 4)
+        printf("Blorp read $%08X\n", addr);
     uint64_t mem = (uint64_t)tlb_map[addr / 4096];
     if (!(mem & (1UL << 62UL)))
     {
@@ -610,6 +661,8 @@ uint32_t ARM_CPU::read32(uint32_t addr)
     {
         mem &= ~(0xFUL << 60UL);
         uint8_t* ptr = (uint8_t*)mem;
+        if ((addr & ~0xFFF) == 0xBEF5A000)
+            printf("[ARM%d] Read stack $%08X: $%08X\n", id, addr, *(uint32_t*)&ptr[addr & 0xFFF]);
         return *(uint32_t*)&ptr[addr & 0xFFF];
     }
     else
@@ -647,6 +700,8 @@ void ARM_CPU::write8(uint32_t addr, uint8_t value)
 
 void ARM_CPU::write16(uint32_t addr, uint16_t value)
 {
+    if ((addr & 0xFFF) > 0xFFE)
+        EmuException::die("[ARM%d] Unaligned write16 on page boundary $%08X: $%08X", id, addr, value);
     uint64_t mem = (uint64_t)tlb_map[addr / 4096];
     if (!(mem & (1UL << 61UL)))
     {
@@ -673,6 +728,10 @@ void ARM_CPU::write16(uint32_t addr, uint16_t value)
 
 void ARM_CPU::write32(uint32_t addr, uint32_t value)
 {
+    if ((addr & ~0xFFF) == 0xBEF5A000)
+        printf("[ARM%d] Write stack $%08X: $%08X\n", id, addr, value);
+    if ((addr & 0xFFF) > 0xFFC)
+        EmuException::die("[ARM%d] Unaligned write32 on page boundary $%08X: $%08X", id, addr, value);
     uint64_t mem = (uint64_t)tlb_map[addr / 4096];
     if (!(mem & (1UL << 61UL)))
     {
@@ -1116,6 +1175,11 @@ void ARM_CPU::rfe(uint32_t instr)
     CPSR.set(PSR);
 
     jp(PC, true);
+}
+
+void ARM_CPU::vfp_load_store(uint32_t instr)
+{
+    ARM_Interpreter::vfp_load_store(*this, *vfp, instr);
 }
 
 uint32_t ARM_CPU::mrc(int coprocessor_id, int operation_mode, int CP_reg,

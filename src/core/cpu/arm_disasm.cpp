@@ -186,7 +186,7 @@ ARM_INSTR decode_arm(uint32_t instr)
         }
         return ARM_UNDEFINED;
     }
-    else if ((instr & (0x0F000000)) >> 26 == 0x1)
+    if ((instr & (0x0F000000)) >> 26 == 0x1)
     {
         if ((instr & (1 << 20)) == 0)
         {
@@ -203,14 +203,18 @@ ARM_INSTR decode_arm(uint32_t instr)
                 return ARM_LOAD_BYTE;
         }
     }
-    else if (((instr >> 25) & 0x7) == 0x4)
+    if (((instr >> 25) & 0x7) == 0x4)
     {
         if ((instr & (1 << 20)) == 0)
             return ARM_STORE_BLOCK;
         else
             return ARM_LOAD_BLOCK;
     }
-    else if (((instr >> 24) & 0xF) == 0xE)
+    if ((instr & 0x0E000000) == 0x0C000000)
+    {
+        return ARM_COP_LOAD_STORE;
+    }
+    if (((instr >> 24) & 0xF) == 0xE)
     {
         if ((instr & (1 << 4)) != 0)
             return ARM_COP_REG_TRANSFER;
@@ -320,6 +324,13 @@ string disasm_arm(ARM_CPU& cpu, uint32_t instr)
             return arm_load_store_block(instr);
         case ARM_UQSUB8:
             return arm_unsigned_parallel_alu(instr);
+        case ARM_COP_LOAD_STORE:
+        {
+            int id = (instr >> 8) & 0xF;
+            if (id == 10 || id == 11)
+                return vfp_load_store(instr);
+            return "undefined";
+        }
         case ARM_COP_REG_TRANSFER:
             return arm_cop_transfer(instr);
         case ARM_LOAD_EX_BYTE:

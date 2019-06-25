@@ -62,27 +62,15 @@ bool CP15::has_high_exceptions()
 
 void CP15::set_data_abort_regs(uint32_t vaddr, bool is_write)
 {
-    uint8_t** cur_tlb = get_tlb_mapping();
-
     data_fault_addr = vaddr;
 
-    //Determine the cause of the abort (unmapped access or lack of permissions, section or page, etc)
-    if (!cur_tlb[vaddr / 4096])
-        data_fault_reg = 0x5; //translation fault
-    else
-        data_fault_reg = 0xD; //permission fault
-
+    data_fault_reg = 0x5; //translation fault
     data_fault_reg |= is_write << 11;
 }
 
 void CP15::set_prefetch_abort_regs(uint32_t vaddr)
 {
-    uint8_t** cur_tlb = get_tlb_mapping();
-
-    if (!cur_tlb[vaddr / 4096])
-        instr_fault_reg = 0x5 | 2; //translation fault
-    else
-        instr_fault_reg = 0xD; //permission fault
+    instr_fault_reg = 0x5; //translation fault
 }
 
 uint32_t CP15::mrc(int operation_mode, int CP_reg, int coprocessor_info, int coprocessor_operand)
@@ -237,8 +225,11 @@ void CP15::mcr(int operation_mode, int CP_reg, int coprocessor_info, int coproce
                 mmu->invalidate_tlb();
             }
             break;
+        case 0x851:
         case 0x852:
+        case 0x861:
         case 0x862:
+        case 0x871:
         case 0x872:
             if (id != 9)
             {

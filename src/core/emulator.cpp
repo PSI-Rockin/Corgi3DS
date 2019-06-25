@@ -4,9 +4,9 @@
 #include "emulator.hpp"
 
 Emulator::Emulator() :
-    arm9(this, 9, &arm9_cp15),
-    appcore(this, 11, &app_cp15),
-    syscore(this, 12, &sys_cp15),
+    arm9(this, 9, &arm9_cp15, nullptr),
+    appcore(this, 11, &app_cp15, &app_vfp),
+    syscore(this, 12, &sys_cp15, &sys_vfp),
     arm9_cp15(9, &arm9, &arm9_pu),
     app_cp15(0, &appcore, &app_mmu),
     sys_cp15(1, &syscore, &sys_mmu),
@@ -113,7 +113,8 @@ void Emulator::run()
     static int frames = 0;
     i2c.update_time();
     printf("FRAME %d\n", frames);
-    syscore.set_disassembly(frames == 407);
+    //appcore.set_disassembly(frames == 417);
+    //syscore.set_disassembly(frames == 417);
     for (int i = 0; i < 4000000 / 2; i++)
     {
         scheduler.calculate_cycles_to_run();
@@ -171,7 +172,7 @@ void Emulator::memdump11(int id, uint64_t start, uint64_t size)
 
     }
 
-    std::ofstream file("memdump11.bin", std::ofstream::binary);
+    std::ofstream file("ld_so.bin", std::ofstream::binary);
     file.write((char*)buffer, size);
     file.close();
     EmuException::die("memdump11");

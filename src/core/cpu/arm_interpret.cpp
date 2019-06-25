@@ -151,6 +151,15 @@ void interpret_arm(ARM_CPU &cpu, uint32_t instr)
         case ARM_STORE_EX_DOUBLEWORD:
             arm_store_ex_doubleword(cpu, instr);
             break;
+        case ARM_COP_LOAD_STORE:
+        {
+            int id = (instr >> 8) & 0xF;
+            if (id == 10 || id == 11)
+                cpu.vfp_load_store(instr);
+            else
+                EmuException::die("[ARM_Interpreter] Undefined instr $%08X\n", instr);
+        }
+            break;
         case ARM_COP_REG_TRANSFER:
             arm_cop_transfer(cpu, instr);
             break;
@@ -740,10 +749,10 @@ void arm_load_byte(ARM_CPU &cpu, uint32_t instr)
         else
             address -= offset;
 
+        cpu.set_register(destination, cpu.read8(address));
+
         if (is_writing_back)
             cpu.set_register(base, address);
-
-        cpu.set_register(destination, cpu.read8(address));
     }
     else
     {
@@ -787,11 +796,10 @@ void arm_store_byte(ARM_CPU &cpu, uint32_t instr)
         else
             address -= offset;
 
-        if (is_writing_back)
-            cpu.set_register(base, address);
-
         cpu.write8(address, value);
         cpu.clear_global_exclusives(address);
+        if (is_writing_back)
+            cpu.set_register(base, address);
     }
     else
     {
@@ -833,9 +841,6 @@ void arm_load_word(ARM_CPU &cpu, uint32_t instr)
         else
             address -= offset;
 
-        if (is_writing_back)
-            cpu.set_register(base, address);
-
         uint32_t word;
 
         //Split unaligned accesses into two reads to prevent issues if physical pages are not contiguous
@@ -850,6 +855,9 @@ void arm_load_word(ARM_CPU &cpu, uint32_t instr)
         }
         else
             word = cpu.rotr32(cpu.read32(address & ~0x3), (address & 0x3) * 8, false);
+
+        if (is_writing_back)
+            cpu.set_register(base, address);
 
         if (destination == REG_PC)
             cpu.jp(word, true);
@@ -912,14 +920,13 @@ void arm_store_word(ARM_CPU &cpu, uint32_t instr)
         else
             address -= offset;
 
-        if (is_writing_back)
-            cpu.set_register(base, address);
-
         //cpu.add_n32_data(address, 1);
         if (cpu.get_id() < 11)
             address &= ~0x3;
         cpu.write32(address, value);
         cpu.clear_global_exclusives(address);
+        if (is_writing_back)
+            cpu.set_register(base, address);
     }
     else
     {
@@ -964,10 +971,9 @@ void arm_load_halfword(ARM_CPU &cpu, uint32_t instr)
         else
             address -= offset;
 
+        cpu.set_register(destination, cpu.read16(address));
         if (is_writing_back && base != destination)
             cpu.set_register(base, address);
-
-        cpu.set_register(destination, cpu.read16(address));
     }
     else
     {
@@ -1055,11 +1061,10 @@ void arm_load_signed_byte(ARM_CPU &cpu, uint32_t instr)
         else
             address -= offset;
 
-        if (is_writing_back)
-            cpu.set_register(base, address);
-
         uint32_t word = (int32_t)(int8_t)(cpu.read8(address));
         cpu.set_register(destination, word);
+        if (is_writing_back)
+            cpu.set_register(base, address);
     }
     else
     {
@@ -1104,11 +1109,10 @@ void arm_load_signed_halfword(ARM_CPU &cpu, uint32_t instr)
         else
             address -= offset;
 
-        if (is_writing_back)
-            cpu.set_register(base, address);
-
         uint32_t word = (int32_t)(int16_t)(cpu.read16(address));
         cpu.set_register(destination, word);
+        if (is_writing_back)
+            cpu.set_register(base, address);
     }
     else
     {

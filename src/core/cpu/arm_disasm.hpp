@@ -53,6 +53,7 @@ enum ARM_INSTR
 
     ARM_PLD,
 
+    ARM_COP_LOAD_STORE,
     ARM_COP_REG_TRANSFER,
     ARM_COP_DATA_OP,
 
@@ -147,6 +148,9 @@ namespace ARM_Disasm
     std::string arm_load_store_ex_doubleword(uint32_t instr);
     std::string arm_load_store_block(uint32_t instr);
     std::string arm_cop_transfer(uint32_t instr);
+
+    std::string vfp_load_store(uint32_t instr);
+    std::string vfp_load_store_block(uint32_t instr);
 
     std::string disasm_thumb(ARM_CPU& cpu, uint16_t instr);
     std::string thumb_move_shift(uint16_t instr);

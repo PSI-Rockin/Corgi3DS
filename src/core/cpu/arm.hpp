@@ -42,6 +42,7 @@ struct PSR_Flags
 };
 
 class Emulator;
+class VFP;
 
 class ARM_CPU
 {
@@ -49,6 +50,7 @@ class ARM_CPU
         Emulator* e;
         int id;
         uint32_t gpr[16];
+        bool prefetch_abort_occurred;
         bool halted;
         bool waiting_for_event;
         bool can_disassemble;
@@ -56,6 +58,7 @@ class ARM_CPU
         bool event_pending;
         uint64_t local_exclusive_start, local_exclusive_end;
 
+        VFP* vfp;
         CP15* cp15;
 
         uint32_t fiq_regs[5];
@@ -70,7 +73,7 @@ class ARM_CPU
         void fetch_new_instr_ptr(uint32_t addr);
     public:
         static uint64_t global_exclusive_start[4], global_exclusive_end[4];
-        ARM_CPU(Emulator* e, int id, CP15* cp15);
+        ARM_CPU(Emulator* e, int id, CP15* cp15, VFP* vfp);
 
         static std::string get_reg_name(int id);
 
@@ -142,6 +145,8 @@ class ARM_CPU
         void cps(uint32_t instr);
         void srs(uint32_t instr);
         void rfe(uint32_t instr);
+
+        void vfp_load_store(uint32_t instr);
 
         uint32_t mrc(int coprocessor_id, int operation_mode, int CP_reg,
                      int coprocessor_info, int coprocessor_operand);

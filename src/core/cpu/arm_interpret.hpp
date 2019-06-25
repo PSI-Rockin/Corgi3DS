@@ -3,6 +3,7 @@
 #include <cstdint>
 
 class ARM_CPU;
+class VFP;
 
 namespace ARM_Interpreter
 {
@@ -45,6 +46,9 @@ namespace ARM_Interpreter
     void arm_load_block(ARM_CPU& cpu, uint32_t instr);
     void arm_store_block(ARM_CPU& cpu, uint32_t instr);
     void arm_cop_transfer(ARM_CPU& cpu, uint32_t instr);
+
+    void vfp_load_store(ARM_CPU& cpu, VFP& vfp, uint32_t instr);
+    void vfp_store_block_double(ARM_CPU& cpu, VFP& vfp, uint32_t instr);
 
     void interpret_thumb(ARM_CPU& cpu, uint16_t instr);
     void thumb_move_shift(ARM_CPU& cpu, uint16_t instr);
