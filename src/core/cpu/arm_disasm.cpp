@@ -130,12 +130,6 @@ ARM_INSTR decode_arm(uint32_t instr)
     if ((instr & 0x0FF00FF0) == 0x01A00F90)
         return ARM_STORE_EX_DOUBLEWORD;
 
-    if ((instr & 0x0E000000) == 0x02000000)
-        return ARM_DATA_PROCESSING;
-
-    if (((instr & 0x0E000010) == 0x00000000) || (instr & 0x0E000090) == 0x00000010)
-        return ARM_DATA_PROCESSING;
-
     if (((instr >> 26) & 0x3) == 0)
     {
         if ((instr & (1 << 25)) == 0)
@@ -181,11 +175,18 @@ ARM_INSTR decode_arm(uint32_t instr)
                     else
                         return ARM_STORE_DOUBLEWORD;
                 }
-                return ARM_UNDEFINED;
             }
         }
+
+        if ((instr & 0x0E000000) == 0x02000000)
+            return ARM_DATA_PROCESSING;
+
+        if ((instr & 0x0E000010) == 0x00000000 || (instr & 0x0E000090) == 0x00000010)
+            return ARM_DATA_PROCESSING;
+
         return ARM_UNDEFINED;
     }
+
     if ((instr & (0x0F000000)) >> 26 == 0x1)
     {
         if ((instr & (1 << 20)) == 0)

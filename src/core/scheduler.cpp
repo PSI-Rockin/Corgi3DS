@@ -37,9 +37,19 @@ void Scheduler::calculate_cycles_to_run()
         cycles9_to_run++;
 }
 
-void Scheduler::add_event(SchedulerEvent &event)
+void Scheduler::add_event(EVENT_ID id, event_func func, int64_t cycles, uint64_t param)
 {
+    SchedulerEvent event;
 
+    event.id = id;
+    event.func = func;
+    event.time_registered = -1; //TODO
+    event.time_to_run = cycles11.count + cycles;
+    event.param = param;
+
+    closest_event_time = std::min(event.time_to_run, closest_event_time);
+
+    events.push_back(event);
 }
 
 void Scheduler::process_events(Emulator* e)

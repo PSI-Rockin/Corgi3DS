@@ -106,7 +106,8 @@ void ARM_CPU::run(int cycles)
 
     try
     {
-        for (int i = 0; i < cycles; i++)
+        int cycles_to_run = cycles;
+        while (!halted && cycles_to_run)
         {
             if (CPSR.thumb)
             {
@@ -138,6 +139,7 @@ void ARM_CPU::run(int cycles)
                 }
                 ARM_Interpreter::interpret_arm(*this, instr);
             }
+            cycles_to_run--;
         }
     }
     catch (EmuException::ARMDataAbort& a)
@@ -168,8 +170,6 @@ void ARM_CPU::print_state()
 
 void ARM_CPU::jp(uint32_t addr, bool change_thumb_state)
 {
-    if (addr == 0xB6D988B8)
-        print_state();
     if (addr == 0xC0118F78)
     {
         uint32_t filename = read32(gpr[1]);
@@ -294,7 +294,7 @@ void ARM_CPU::swi()
         //printf("SVC $%02X!\n", op);
         printf("SVC $%04X!\n", gpr[7]);
     }
-    if (gpr[7] == 4)
+    /*if (gpr[7] == 4)
     {
         //can_disassemble = false;
         uint32_t buf = gpr[1];
@@ -307,7 +307,7 @@ void ARM_CPU::swi()
             buf++;
             count--;
         }
-    }
+    }*/
     if (op == 0x3C)
     {
         EmuException::die("[ARM%d] svcBreak called!", id);
@@ -398,6 +398,7 @@ void ARM_CPU::wfe()
 {
     if (!event_pending)
     {
+        printf("[ARM%d] WFE\n", id);
         waiting_for_event = true;
         halted = true;
     }
@@ -407,13 +408,19 @@ void ARM_CPU::wfe()
 
 void ARM_CPU::sev()
 {
-    e->arm11_send_events();
+    e->arm11_send_events(id);
 }
 
-void ARM_CPU::send_event()
+void ARM_CPU::send_event(int id)
 {
+    if (this->id == id)
+        return;
     if (waiting_for_event)
+    {
+        printf("[ARM%d] WFE cancelled\n", id);
         halted = false;
+        waiting_for_event = false;
+    }
     else
         event_pending = true;
 }
@@ -581,7 +588,7 @@ void ARM_CPU::fetch_new_instr_ptr(uint32_t addr)
     uint64_t mem = (uint64_t)tlb_map[addr / 4096];
     if (!(mem & (1UL << 60UL)))
     {
-        cp15->reload_tlb();
+        cp15->reload_tlb(addr);
         mem = (uint64_t)tlb_map[addr / 4096];
         if (!(mem & (1UL << 60UL)))
             prefetch_abort_occurred = true;
@@ -598,7 +605,7 @@ uint8_t ARM_CPU::read8(uint32_t addr)
     if (!(mem & (1UL << 62UL)))
     {
         //TLB miss - reload and check the vaddr again
-        cp15->reload_tlb();
+        cp15->reload_tlb(addr);
         mem = (uint64_t)tlb_map[addr / 4096];
         if (!(mem & (1UL << 62UL)))
             throw EmuException::ARMDataAbort(addr, false);
@@ -620,11 +627,13 @@ uint16_t ARM_CPU::read16(uint32_t addr)
 {
     //if ((addr & 0xFFF) > 0xFFE)
         //EmuException::die("[ARM%d] Unaligned read16 on page boundary $%08X", id, addr);
+    if (id == 9 && (addr & 0x1))
+        EmuException::die("[ARM9] Unaligned read16 $%08X", addr);
     uint64_t mem = (uint64_t)tlb_map[addr / 4096];
     if (!(mem & (1UL << 62UL)))
     {
         //TLB miss - reload and check the vaddr again
-        cp15->reload_tlb();
+        cp15->reload_tlb(addr);
         mem = (uint64_t)tlb_map[addr / 4096];
         if (!(mem & (1UL << 62UL)))
             throw EmuException::ARMDataAbort(addr, false);
@@ -644,6 +653,8 @@ uint16_t ARM_CPU::read16(uint32_t addr)
 
 uint32_t ARM_CPU::read32(uint32_t addr)
 {
+    if (id == 9 && (addr & 0x3))
+        EmuException::die("[ARM9] Unaligned read32 $%08X", addr);
     if ((addr & 0xFFF) > 0xFFC)
         EmuException::die("[ARM%d] Unaligned read32 on page boundary $%08X", id, addr);
     if (addr == 0xB6FC8F9C + 4)
@@ -652,7 +663,7 @@ uint32_t ARM_CPU::read32(uint32_t addr)
     if (!(mem & (1UL << 62UL)))
     {
         //TLB miss - reload and check the vaddr again
-        cp15->reload_tlb();
+        cp15->reload_tlb(addr);
         mem = (uint64_t)tlb_map[addr / 4096];
         if (!(mem & (1UL << 62UL)))
             throw EmuException::ARMDataAbort(addr, false);
@@ -661,8 +672,6 @@ uint32_t ARM_CPU::read32(uint32_t addr)
     {
         mem &= ~(0xFUL << 60UL);
         uint8_t* ptr = (uint8_t*)mem;
-        if ((addr & ~0xFFF) == 0xBEF5A000)
-            printf("[ARM%d] Read stack $%08X: $%08X\n", id, addr, *(uint32_t*)&ptr[addr & 0xFFF]);
         return *(uint32_t*)&ptr[addr & 0xFFF];
     }
     else
@@ -678,7 +687,7 @@ void ARM_CPU::write8(uint32_t addr, uint8_t value)
     if (!(mem & (1UL << 61UL)))
     {
         //TLB miss - reload and check the vaddr again
-        cp15->reload_tlb();
+        cp15->reload_tlb(addr);
         mem = (uint64_t)tlb_map[addr / 4096];
         if (!(mem & (1UL << 62UL)))
             throw EmuException::ARMDataAbort(addr, true);
@@ -700,13 +709,15 @@ void ARM_CPU::write8(uint32_t addr, uint8_t value)
 
 void ARM_CPU::write16(uint32_t addr, uint16_t value)
 {
+    if (id == 9 && (addr & 0x1))
+        EmuException::die("[ARM9] Unaligned write16 $%08X: $%04X", addr, value);
     if ((addr & 0xFFF) > 0xFFE)
         EmuException::die("[ARM%d] Unaligned write16 on page boundary $%08X: $%08X", id, addr, value);
     uint64_t mem = (uint64_t)tlb_map[addr / 4096];
     if (!(mem & (1UL << 61UL)))
     {
         //TLB miss - reload and check the vaddr again
-        cp15->reload_tlb();
+        cp15->reload_tlb(addr);
         mem = (uint64_t)tlb_map[addr / 4096];
         if (!(mem & (1UL << 62UL)))
             throw EmuException::ARMDataAbort(addr, true);
@@ -728,8 +739,8 @@ void ARM_CPU::write16(uint32_t addr, uint16_t value)
 
 void ARM_CPU::write32(uint32_t addr, uint32_t value)
 {
-    if ((addr & ~0xFFF) == 0xBEF5A000)
-        printf("[ARM%d] Write stack $%08X: $%08X\n", id, addr, value);
+    if (id == 9 && (addr & 0x3))
+        EmuException::die("[ARM9] Unaligned write32 $%08X: $%08X", addr, value);
     if ((addr & 0xFFF) > 0xFFC)
         EmuException::die("[ARM%d] Unaligned write32 on page boundary $%08X: $%08X", id, addr, value);
     uint64_t mem = (uint64_t)tlb_map[addr / 4096];
@@ -738,7 +749,7 @@ void ARM_CPU::write32(uint32_t addr, uint32_t value)
         //TLB miss - reload and check the vaddr again
         if (id == 9 && (addr & 0xF0000000) == 0xC0000000)
             return;
-        cp15->reload_tlb();
+        cp15->reload_tlb(addr);
         mem = (uint64_t)tlb_map[addr / 4096];
         if (!(mem & (1UL << 61UL)))
             throw EmuException::ARMDataAbort(addr, true);

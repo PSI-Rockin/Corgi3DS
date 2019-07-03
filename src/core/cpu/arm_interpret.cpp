@@ -1341,7 +1341,7 @@ void arm_load_block(ARM_CPU &cpu, uint32_t instr)
     //cpu.add_n32_data(address, 1);
     //cpu.add_internal_cycles(1);
 
-    if (is_writing_back && !((reg_list & (1 << base))))
+    if (is_writing_back && !(reg_list & (1 << base)))
         cpu.set_register(base, address);
 
     if (change_cpsr)

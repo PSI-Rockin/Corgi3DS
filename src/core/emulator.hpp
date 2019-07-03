@@ -74,6 +74,8 @@ class Emulator
         bool mount_nand(std::string file_name);
         bool mount_sd(std::string file_name);
 
+        void gpu_memfill_event(uint64_t index);
+
         uint8_t arm9_read8(uint32_t addr);
         uint16_t arm9_read16(uint32_t addr);
         uint32_t arm9_read32(uint32_t addr);
@@ -88,7 +90,7 @@ class Emulator
         void arm11_write16(int core, uint32_t addr, uint16_t value);
         void arm11_write32(int core, uint32_t addr, uint32_t value);
 
-        void arm11_send_events();
+        void arm11_send_events(int id);
 
         uint8_t* get_top_buffer();
         uint8_t* get_bottom_buffer();

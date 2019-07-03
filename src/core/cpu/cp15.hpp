@@ -31,7 +31,7 @@ class CP15
         CP15(int id, ARM_CPU* cpu, MMU* mmu);
 
         void reset(bool has_tcm);
-        void reload_tlb();
+        void reload_tlb(uint32_t addr);
 
         uint8_t** get_tlb_mapping();
 

@@ -112,7 +112,7 @@ class ARM_CPU
         void unhalt();
         void wfe();
         void sev();
-        void send_event();
+        void send_event(int id);
         void set_disassembly(bool dis);
 
         void jp(uint32_t addr, bool change_thumb_state);

@@ -37,12 +37,12 @@ void CP15::reset(bool has_tcm)
     }
 }
 
-void CP15::reload_tlb()
+void CP15::reload_tlb(uint32_t addr)
 {
     if (mmu_enabled)
     {
         if (id != 9)
-            mmu->reload_tlb();
+            mmu->reload_tlb(addr);
         else
             mmu->reload_pu();
     }
@@ -166,7 +166,7 @@ void CP15::mcr(int operation_mode, int CP_reg, int coprocessor_info, int coproce
     {
         case 0x100:
             if (value & 0x1)
-                reload_tlb();
+                reload_tlb(0);
             mmu_enabled = value & 0x1;
             high_exception_vector = value & (1 << 13);
             break;
@@ -226,10 +226,16 @@ void CP15::mcr(int operation_mode, int CP_reg, int coprocessor_info, int coproce
             }
             break;
         case 0x851:
-        case 0x852:
         case 0x861:
-        case 0x862:
         case 0x871:
+            if (id != 9)
+            {
+                printf("[CP15_%d] TLB invalidate by addr: $%08X\n", id, value);
+                mmu->invalidate_tlb_by_addr(value);
+            }
+            break;
+        case 0x852:
+        case 0x862:
         case 0x872:
             if (id != 9)
             {

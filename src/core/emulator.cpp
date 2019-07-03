@@ -13,6 +13,7 @@ Emulator::Emulator() :
     aes(&dma9, &int9),
     dma9(this, &int9),
     emmc(&int9, &dma9),
+    gpu(&scheduler, &mpcore_pmr),
     int9(&arm9),
     mpcore_pmr(&appcore, &syscore, &timers),
     pxi(&mpcore_pmr, &int9),
@@ -113,8 +114,6 @@ void Emulator::run()
     static int frames = 0;
     i2c.update_time();
     printf("FRAME %d\n", frames);
-    //appcore.set_disassembly(frames == 417);
-    //syscore.set_disassembly(frames == 417);
     for (int i = 0; i < 4000000 / 2; i++)
     {
         scheduler.calculate_cycles_to_run();
@@ -129,6 +128,8 @@ void Emulator::run()
         dma9.run_xdma();
         scheduler.process_events(this);
     }
+    //VBLANK
+    mpcore_pmr.assert_hw_irq(0x2A);
     frames++;
     gpu.render_frame();
 }
@@ -204,6 +205,11 @@ bool Emulator::mount_nand(std::string file_name)
 bool Emulator::mount_sd(std::string file_name)
 {
     return emmc.mount_sd(file_name);
+}
+
+void Emulator::gpu_memfill_event(uint64_t index)
+{
+    gpu.do_memfill(index);
 }
 
 uint8_t Emulator::arm9_read8(uint32_t addr)
@@ -297,6 +303,8 @@ uint16_t Emulator::arm9_read16(uint32_t addr)
             return 0; //card select
         case 0x10000020:
             return 0;
+        case 0x10000FFC:
+            return 0;
         case 0x10008004:
             return pxi.read_cnt9();
         case 0x10146000:
@@ -359,6 +367,8 @@ uint32_t Emulator::arm9_read32(uint32_t addr)
 
     switch (addr)
     {
+        case 0x10000FFC:
+            return 0;
         case 0x10001000:
             return int9.read_ie();
         case 0x10001004:
@@ -663,6 +673,11 @@ uint8_t Emulator::arm11_read8(int core, uint32_t addr)
 
 uint16_t Emulator::arm11_read16(int core, uint32_t addr)
 {
+    if (addr >= 0x10147000 && addr < 0x10148000)
+    {
+        printf("[GPIO] Unrecognized read16 $%08X\n", addr);
+        return 0;
+    }
     if (addr >= 0x10161000 && addr < 0x10162000)
     {
         printf("[I2C] Unrecognized read8 $%08X\n", addr);
@@ -761,6 +776,8 @@ void Emulator::arm11_write8(int core, uint32_t addr, uint8_t value)
 
     switch (addr)
     {
+        case 0x10140104:
+            return;
         case 0x1014010C:
             return;
         case 0x10141204:
@@ -797,6 +814,11 @@ void Emulator::arm11_write16(int core, uint32_t addr, uint16_t value)
         printf("[I2C] Unrecognized write16 $%08X: $%04X\n", addr, value);
         return;
     }
+    if (addr >= 0x10147000 && addr < 0x10148000)
+    {
+        printf("[GPIO] Unrecognized write16 $%08X: $%04X\n", addr, value);
+        return;
+    }
     if (addr >= 0x10161000 && addr < 0x10162000)
     {
         printf("[I2C] Unrecognized write16 $%08X: $%04X\n", addr, value);
@@ -805,6 +827,10 @@ void Emulator::arm11_write16(int core, uint32_t addr, uint16_t value)
     switch (addr)
     {
         case 0x101401C0:
+            return;
+        case 0x10148002:
+            return;
+        case 0x10148004:
             return;
         case 0x10163004:
             pxi.write_cnt11(value);
@@ -863,8 +889,8 @@ void Emulator::arm11_write32(int core, uint32_t addr, uint32_t value)
             pxi.write_cnt11(value & 0xFFFF);
             return;
         case 0x10163008:
-            //if (value == 0x10a9b8)
-                //arm9.set_disassembly(true);
+            if (value == 0x10a9b8)
+                arm9.set_disassembly(true);
             pxi.send_to_9(value);
             return;
         case 0x10202014:
@@ -873,10 +899,10 @@ void Emulator::arm11_write32(int core, uint32_t addr, uint32_t value)
     EmuException::die("[ARM11] Invalid write32 $%08X: $%08X\n", addr, value);
 }
 
-void Emulator::arm11_send_events()
+void Emulator::arm11_send_events(int id)
 {
-    appcore.send_event();
-    syscore.send_event();
+    appcore.send_event(id);
+    syscore.send_event(id);
 }
 
 uint8_t* Emulator::get_top_buffer()

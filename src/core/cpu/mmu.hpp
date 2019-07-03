@@ -50,6 +50,8 @@ class MMU
         //Current ASID
         uint8_t asid;
 
+        bool whole_tlb_invalidated;
+
         uint32_t l1_table_base[2];
         uint64_t l1_table_cutoff;
         uint32_t l1_table_control;
@@ -60,6 +62,7 @@ class MMU
         void unmap_pu_region(int index);
         void remap_pu_region(int index);
 
+        void reload_tlb_section(uint32_t addr);
         void reload_tlb_by_table(int index);
         void remap_mmu_region(uint32_t base, uint32_t size, uint64_t paddr,
                               uint8_t apx, bool exec_never, bool nonglobal);
@@ -78,11 +81,10 @@ class MMU
         uint8_t** get_privileged_mapping();
         uint8_t** get_direct_mapping();
 
-        bool is_section(uint32_t addr);
-
         void invalidate_tlb();
         void invalidate_tlb_by_asid(uint8_t value);
-        void reload_tlb();
+        void invalidate_tlb_by_addr(uint32_t value);
+        void reload_tlb(uint32_t addr);
         void reload_pu();
 
         uint32_t get_l1_table_base(int index);

@@ -54,7 +54,7 @@ void Timers::run()
                     arm11_timers[i].int_flag = true;
                     if (arm11_timers[i].int_enabled)
                     {
-                        pmr->assert_private_irq(29 + (i / 4), i & 0x3);
+                        pmr->set_pending_irq(i & 0x3, 29 + (i / 4));
                     }
                 }
             }

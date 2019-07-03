@@ -18,12 +18,18 @@ struct MemoryFill
     uint32_t value;
 
     uint8_t fill_width;
+    bool busy;
     bool finished;
 };
+
+class Scheduler;
+class MPCore_PMR;
 
 class GPU
 {
     private:
+        Scheduler* scheduler;
+        MPCore_PMR* pmr;
         uint8_t* vram;
 
         uint8_t* top_screen, *bottom_screen;
@@ -37,11 +43,12 @@ class GPU
 
         void render_fb_pixel(uint8_t* screen, int fb_index, int x, int y);
     public:
-        GPU();
+        GPU(Scheduler* scheduler, MPCore_PMR* pmr);
         ~GPU();
 
         void reset(uint8_t* vram);
         void render_frame();
+        void do_memfill(int index);
 
         template <typename T> T read_vram(uint32_t addr);
         template <typename T> void write_vram(uint32_t addr, T value);

@@ -11,7 +11,8 @@ enum EVENT_ID
     TIMER9_INT,
     TIMER11_INT,
     NDMA_TRANSFER,
-    XDMA_TRANSFER
+    XDMA_TRANSFER,
+    GPU_MEMFILL
 };
 
 struct CycleCount
@@ -49,7 +50,7 @@ class Scheduler
         int get_cycles9_to_run();
         void reset();
 
-        void add_event(SchedulerEvent& event);
+        void add_event(EVENT_ID id, event_func func, int64_t cycles, uint64_t param = 0);
         void process_events(Emulator* e);
 };
 
