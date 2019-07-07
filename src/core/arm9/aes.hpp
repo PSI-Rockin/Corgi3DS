@@ -66,7 +66,7 @@ class AES
         void gen_normal_key(int slot);
         void gen_dsi_key(int slot);
         void crypt_check();
-        void input_vector(uint8_t* vector, int index, uint32_t value, int max_words);
+        void input_vector(uint8_t* vector, int index, uint32_t value, int max_words, bool force_order = false);
 
         void crypt_ctr();
         void decrypt_cbc();

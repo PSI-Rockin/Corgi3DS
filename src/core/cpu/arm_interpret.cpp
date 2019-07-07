@@ -52,6 +52,9 @@ void interpret_arm(ARM_CPU &cpu, uint32_t instr)
         case ARM_CLZ:
             arm_clz(cpu, instr);
             break;
+        case ARM_SWAP:
+            arm_swp(cpu, instr);
+            break;
         case ARM_SXTB:
             arm_sxtb(cpu, instr);
             break;
@@ -259,6 +262,33 @@ void arm_clz(ARM_CPU &cpu, uint32_t instr)
     }
 
     cpu.set_register(destination, bits);
+}
+
+void arm_swp(ARM_CPU &cpu, uint32_t instr)
+{
+    bool is_byte = instr & (1 << 22);
+    uint32_t base = (instr >> 16) & 0xF;
+    uint32_t destination = (instr >> 12) & 0xF;
+    uint32_t source = instr & 0xF;
+
+    uint32_t address = cpu.get_register(base);
+
+    if (is_byte)
+    {
+        uint8_t byte = cpu.read8(address);
+        cpu.write8(address, cpu.get_register(source) & 0xFF);
+        cpu.set_register(destination, byte);
+
+        //cpu.add_n16_data(address, 2);
+    }
+    else
+    {
+        uint32_t word = cpu.rotr32(cpu.read32(address & ~0x3), (address & 0x3) * 8, false);
+        cpu.write32(address, cpu.get_register(source));
+        cpu.set_register(destination, word);
+
+        //cpu.add_n32_data(address, 2);
+    }
 }
 
 void arm_sxtb(ARM_CPU &cpu, uint32_t instr)
@@ -751,7 +781,7 @@ void arm_load_byte(ARM_CPU &cpu, uint32_t instr)
 
         cpu.set_register(destination, cpu.read8(address));
 
-        if (is_writing_back)
+        if (is_writing_back && base != destination)
             cpu.set_register(base, address);
     }
     else
@@ -856,7 +886,7 @@ void arm_load_word(ARM_CPU &cpu, uint32_t instr)
         else
             word = cpu.rotr32(cpu.read32(address & ~0x3), (address & 0x3) * 8, false);
 
-        if (is_writing_back)
+        if (is_writing_back && base != destination)
             cpu.set_register(base, address);
 
         if (destination == REG_PC)

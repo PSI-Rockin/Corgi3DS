@@ -202,12 +202,12 @@ void ARM_CPU::jp(uint32_t addr, bool change_thumb_state)
             str_ptr++;
         }
     }
-    /*if (id != 9 && gpr[15] >= 0xFFF00000 && (addr >= 0x00100000 && addr < 0x10000000))
+    if (id != 9 && gpr[15] >= 0xFFF00000 && (addr >= 0x00100000 && addr < 0x10000000))
     {
         //can_disassemble = true;
         uint32_t process_ptr = read32(0xFFFF9004);
         printf("Jumping to PID%d (addr: $%08X)\n", read32(process_ptr + 0xB4), addr);
-    }*/
+    }
 
     gpr[15] = addr;
     fetch_new_instr_ptr(addr);
@@ -235,12 +235,6 @@ void ARM_CPU::data_abort(uint32_t addr, bool is_write)
     printf("[ARM%d] Data abort at vaddr $%08X\n", id, addr);
 
     cp15->set_data_abort_regs(addr, is_write);
-
-    //if (addr == 0xB7B8069C)
-        //can_disassemble = true;
-
-    if (addr == 0x6DF0869C)
-        can_disassemble = false;
 
     uint32_t value = CPSR.get();
     SPSR[PSR_ABORT].set(value);
@@ -283,16 +277,31 @@ void ARM_CPU::prefetch_abort(uint32_t addr)
 
 void ARM_CPU::swi()
 {
-    uint8_t op = read32(gpr[15] - 8) & 0xFF;
+    uint8_t op;
+    if (!CPSR.thumb)
+        op = read32(gpr[15] - 8) & 0xFF;
+    else
+        op = read32(gpr[15] - 4) & 0xFF;
 
     if (id == 9)
-        printf("SWI $%02X!\n", op);
+    {
+        //printf("SWI $%02X!\n", op);
+        if (op == 0xFF)
+        {
+            unsigned char c = gpr[0] & 0xFF;
+            if (c == 0xFF)
+                printf("\n");
+            else
+                printf("%c", c);
+            return;
+        }
+    }
     else
     {
         //uint32_t process_ptr = read32(0xFFFF9004);
         //printf("SVC $%02X, PID%d\n", op, read32(process_ptr + 0xB4));
-        //printf("SVC $%02X!\n", op);
-        printf("SVC $%04X!\n", gpr[7]);
+        printf("SVC $%02X!\n", op);
+        //printf("SVC $%04X!\n", gpr[7]);
     }
     /*if (gpr[7] == 4)
     {
@@ -653,12 +662,14 @@ uint16_t ARM_CPU::read16(uint32_t addr)
 
 uint32_t ARM_CPU::read32(uint32_t addr)
 {
+    if (addr >= 0x080B1EA0 && addr < 0x080B1EA0 + 0x30)
+    {
+        printf("[ARM9] Read32 blorp $%08X\n", addr - 0x080B1EA0);
+    }
     if (id == 9 && (addr & 0x3))
         EmuException::die("[ARM9] Unaligned read32 $%08X", addr);
     if ((addr & 0xFFF) > 0xFFC)
         EmuException::die("[ARM%d] Unaligned read32 on page boundary $%08X", id, addr);
-    if (addr == 0xB6FC8F9C + 4)
-        printf("Blorp read $%08X\n", addr);
     uint64_t mem = (uint64_t)tlb_map[addr / 4096];
     if (!(mem & (1UL << 62UL)))
     {
@@ -683,6 +694,10 @@ uint32_t ARM_CPU::read32(uint32_t addr)
 
 void ARM_CPU::write8(uint32_t addr, uint8_t value)
 {
+    if (addr >= 0x080B7BC0 && addr < 0x080B7BC0 + 0x200)
+    {
+        printf("[ARM9] Write8 blorp $%08X: $%02X\n", addr, value);
+    }
     uint64_t mem = (uint64_t)tlb_map[addr / 4096];
     if (!(mem & (1UL << 61UL)))
     {
@@ -739,6 +754,14 @@ void ARM_CPU::write16(uint32_t addr, uint16_t value)
 
 void ARM_CPU::write32(uint32_t addr, uint32_t value)
 {
+    if (addr >= 0x080B7BC0 && addr < 0x080B7BC0 + 0x200)
+    {
+        printf("[ARM9] Write32 blorp $%08X: $%08X\n", addr, value);
+    }
+    if (addr >= 0x080D6800 && addr < 0x080D6800 + 0x200)
+    {
+        printf("[ARM9] Write32 NDMA buffer $%08X: $%08X\n", addr, value);
+    }
     if (id == 9 && (addr & 0x3))
         EmuException::die("[ARM9] Unaligned write32 $%08X: $%08X", addr, value);
     if ((addr & 0xFFF) > 0xFFC)

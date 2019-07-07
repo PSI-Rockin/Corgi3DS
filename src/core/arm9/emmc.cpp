@@ -180,16 +180,16 @@ void EMMC::write16(uint32_t addr, uint16_t value)
         case 0x10006004:
             argument &= ~0xFFFF;
             argument |= value;
-            printf("[EMMC] Set arg lo: $%04X\n", value);
+            //printf("[EMMC] Set arg lo: $%04X\n", value);
             break;
         case 0x10006006:
             argument &= 0xFFFF;
             argument |= value << 16;
-            printf("[EMMC] Set arg hi: $%04X ($%08X)\n", value, argument);
+            //printf("[EMMC] Set arg hi: $%04X ($%08X)\n", value, argument);
             break;
         case 0x1000600A:
             data_blocks = value;
-            printf("[EMMC] Set BLKCOUNT: $%04X\n", value);
+            //printf("[EMMC] Set BLKCOUNT: $%04X\n", value);
             break;
         case 0x1000601C:
             //printf("[EMMC] Write ISTAT_L: $%04X\n", value);
@@ -210,7 +210,7 @@ void EMMC::write16(uint32_t addr, uint16_t value)
             imask |= value << 16;
             break;
         case 0x10006026:
-            printf("[EMMC] Set BLKLEN: $%04X\n", value);
+            //printf("[EMMC] Set BLKLEN: $%04X\n", value);
             data_block_len = value;
             if (data_block_len > 0x200)
                 data_block_len = 0x200;
@@ -226,11 +226,11 @@ void EMMC::write16(uint32_t addr, uint16_t value)
             sd_data32.tx32rq_irq_enable = value & (1 << 12);
             break;
         case 0x10006104:
-            printf("[EMMC] Write SD_DATA32_BLKLEN: $%04X\n", value);
+            //printf("[EMMC] Write SD_DATA32_BLKLEN: $%04X\n", value);
             data32_block_len = value & 0x3FF;
             break;
         case 0x10006108:
-            printf("[EMMC] Write SD_DATA32_BLKCOUNT: $%04X\n", value);
+            //printf("[EMMC] Write SD_DATA32_BLKCOUNT: $%04X\n", value);
             data32_blocks = value;
             break;
         default:
@@ -349,6 +349,11 @@ void EMMC::send_cmd(int command)
             printf("[EMMC] Read multiple blocks (start: $%08X blocks: $%08X)\n", argument, data_blocks);
             printf("Reading from %s\n", (nand_selected()) ? "NAND" : "SD");
 
+            if (argument >= 0x0DD80000 && argument < 0x0DD80000 + 0x64C00)
+            {
+                printf("Read from title.db: $%08X\n", argument - 0x0DD80000);
+            }
+
             if (cur_transfer_drive->eof())
                 cur_transfer_drive->clear();
 
@@ -374,6 +379,11 @@ void EMMC::send_cmd(int command)
             transfer_size = data_block_len;
             block_transfer = true;
             printf("[EMMC] Write multiple blocks (start: $%08X blocks: $%08X)\n", argument, data_blocks);
+
+            if (argument >= 0x0DD80000 && argument < 0x0DD80000 + 0x64C00)
+            {
+                printf("Write to title.db: $%08X\n", argument - 0x0DD80000);
+            }
 
             if (cur_transfer_drive->eof())
                 cur_transfer_drive->clear();
@@ -491,9 +501,7 @@ void EMMC::write_ready()
     sd_data32.tx32rq_irq_pending = false;
 
     if (sd_data32.tx32rq_irq_enable)
-        int9->assert_irq(16);
-
-    set_istat(ISTAT_TXRQ);
+        set_istat(ISTAT_TXRQ);
 }
 
 void EMMC::set_istat(uint32_t field)

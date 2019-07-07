@@ -138,7 +138,6 @@ void DMA9::run_ndma(int chan)
     for (int i = 0; i < block_size; i++)
     {
         uint32_t word = e->arm9_read32(ndma_chan[chan].int_src + (i * src_multiplier));
-        //printf("[NDMA%d] Write $%08X: $%08X\n", chan, ndma_chan[chan].int_dest + (i * dest_multiplier), word);
         e->arm9_write32(ndma_chan[chan].int_dest + (i * dest_multiplier), word);
     }
 

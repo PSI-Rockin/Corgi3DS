@@ -114,6 +114,7 @@ void Emulator::run()
     static int frames = 0;
     i2c.update_time();
     printf("FRAME %d\n", frames);
+    //arm9.set_disassembly(frames == 34);
     for (int i = 0; i < 4000000 / 2; i++)
     {
         scheduler.calculate_cycles_to_run();
@@ -207,6 +208,58 @@ bool Emulator::mount_sd(std::string file_name)
     return emmc.mount_sd(file_name);
 }
 
+void Emulator::load_and_run_elf(uint8_t *elf, uint64_t size)
+{
+    reset();
+
+    arm9_pu.add_physical_mapping(fcram, 0, 1024 * 1024 * 128);
+
+    uint32_t e_entry = *(uint32_t*)&elf[0x18];
+    uint32_t e_phoff = *(uint32_t*)&elf[0x1C];
+    uint32_t e_shoff = *(uint32_t*)&elf[0x20];
+    uint16_t e_phnum = *(uint16_t*)&elf[0x2C];
+    uint16_t e_shnum = *(uint16_t*)&elf[0x30];
+    uint16_t e_shstrndx = *(uint16_t*)&elf[0x32];
+
+    printf("Entry: $%08X\n", e_entry);
+    printf("Program header start: $%08X\n", e_phoff);
+    printf("Section header start: $%08X\n", e_shoff);
+    printf("Program header entries: %d\n", e_phnum);
+    printf("Section header entries: %d\n", e_shnum);
+    printf("Section header names index: %d\n", e_shstrndx);
+
+    for (unsigned int i = e_phoff; i < e_phoff + (e_phnum * 0x20); i += 0x20)
+    {
+        uint32_t p_offset = *(uint32_t*)&elf[i + 0x4];
+        uint32_t p_paddr = *(uint32_t*)&elf[i + 0xC];
+        uint32_t p_filesz = *(uint32_t*)&elf[i + 0x10];
+        uint32_t p_memsz = *(uint32_t*)&elf[i + 0x14];
+        printf("\nProgram header\n");
+        printf("p_type: $%08X\n", *(uint32_t*)&elf[i]);
+        printf("p_offset: $%08X\n", p_offset);
+        printf("p_vaddr: $%08X\n", *(uint32_t*)&elf[i + 0x8]);
+        printf("p_paddr: $%08X\n", p_paddr);
+        printf("p_filesz: $%08X\n", p_filesz);
+        printf("p_memsz: $%08X\n", p_memsz);
+
+        int mem_w = p_paddr;
+        for (unsigned int file_w = p_offset; file_w < (p_offset + p_filesz); file_w += 4)
+        {
+            uint32_t word = *(uint32_t*)&elf[file_w];
+            *(uint32_t*)&fcram[mem_w] = word;
+            mem_w += 4;
+        }
+    }
+
+    arm9.jp(e_entry, true);
+
+    //Switch to system mode
+    arm9.cps((1 << 17) | 0x1F);
+    arm9.set_register(REG_SP, e_entry);
+    //arm9.set_disassembly(true);
+    arm9.run(1024 * 1024);
+}
+
 void Emulator::gpu_memfill_event(uint64_t index)
 {
     gpu.do_memfill(index);
@@ -216,6 +269,7 @@ uint8_t Emulator::arm9_read8(uint32_t addr)
 {
     if (addr >= 0x08000000 && addr < 0x08100000)
         return arm9_RAM[addr & 0xFFFFF];
+
     if (addr >= 0x18000000 && addr < 0x18600000)
         return gpu.read_vram<uint8_t>(addr);
 
@@ -589,6 +643,7 @@ void Emulator::arm9_write32(uint32_t addr, uint32_t value)
 
     if (addr >= 0x10012100 && addr < 0x10012108)
     {
+        printf("TWL consoleid $%08X: $%08X\n", addr, value);
         *(uint32_t*)&twl_consoleid[addr & 0x7] = value;
         return;
     }
@@ -889,8 +944,8 @@ void Emulator::arm11_write32(int core, uint32_t addr, uint32_t value)
             pxi.write_cnt11(value & 0xFFFF);
             return;
         case 0x10163008:
-            if (value == 0x10a9b8)
-                arm9.set_disassembly(true);
+            //if (value == 0x10a9b8)
+                //arm9.set_disassembly(true);
             pxi.send_to_9(value);
             return;
         case 0x10202014:

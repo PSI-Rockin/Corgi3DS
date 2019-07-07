@@ -756,8 +756,7 @@ void thumb_cond_branch(ARM_CPU &cpu, uint16_t instr)
     int condition = (instr >> 8) & 0xF;
     if (condition == 0xF)
     {
-        EmuException::die("[Thumb_Interpreter] SWI not implemented\n");
-        //cpu.handle_SWI();
+        cpu.swi();
         return;
     }
 

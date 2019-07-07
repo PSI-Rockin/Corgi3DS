@@ -74,6 +74,8 @@ class Emulator
         bool mount_nand(std::string file_name);
         bool mount_sd(std::string file_name);
 
+        void load_and_run_elf(uint8_t* elf, uint64_t size);
+
         void gpu_memfill_event(uint64_t index);
 
         uint8_t arm9_read8(uint32_t addr);

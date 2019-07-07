@@ -69,7 +69,7 @@ void Timers::handle_overflow(int index)
     if (arm9_timers[index].overflow_irq)
         int9->assert_irq(8 + index);
 
-    arm9_timers[index].counter = arm9_timers[index].reload;
+    arm9_timers[index].counter = 0;
 
     if (index != 3)
     {
@@ -164,7 +164,8 @@ uint16_t Timers::get_control(int index)
 void Timers::set_counter(int index, uint16_t value)
 {
     printf("[Timer9] Set timer%d reload: $%04X\n", index, value);
-    arm9_timers[index].reload = value;
+    arm9_timers[index].counter = value;
+    arm9_timers[index].clocks = 0;
 }
 
 void Timers::set_control(int index, uint16_t value)
@@ -184,7 +185,7 @@ void Timers::set_control(int index, uint16_t value)
     if (!old_enabled && arm9_timers[index].enabled)
     {
         arm9_timers[index].clocks = 0;
-        arm9_timers[index].counter = arm9_timers[index].reload;
+        //arm9_timers[index].counter = arm9_timers[index].reload;
     }
 }
 

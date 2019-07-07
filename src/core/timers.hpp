@@ -7,7 +7,6 @@ struct Timer9
     uint32_t counter;
     uint32_t clocks;
     uint32_t prescalar;
-    uint16_t reload;
     bool countup;
     bool overflow_irq;
     bool enabled;

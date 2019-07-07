@@ -178,7 +178,9 @@ void AES::crypt_check()
         {
             int index = i << 2;
             if (!AES_CNT.out_word_order)
+            {
                 index = 12 - index;
+            }
 
             uint32_t value = *(uint32_t*)&crypt_results[index];
             if (!AES_CNT.out_big_endian)
@@ -210,7 +212,10 @@ void AES::write_input_fifo(uint32_t value)
     {
         temp_input_ctr = 0;
         for (int i = 0; i < 4; i++)
+        {
             input_fifo.push(*(uint32_t*)&temp_input_fifo[i * 4]);
+            printf("Input FIFO: $%08X\n", *(uint32_t*)&temp_input_fifo[i * 4]);
+        }
     }
 
     crypt_check();
@@ -330,13 +335,9 @@ void AES::write32(uint32_t addr, uint32_t value)
 {
     if (addr >= 0x10009020 && addr < 0x10009030)
     {
-        //printf("[AES] Write CTR $%08X: $%08X\n", addr, value);
+        printf("[AES] Write CTR $%08X: $%08X\n", addr, value);
 
-        //The CTR word order cannot be reversed
-        bool temp_order = AES_CNT.in_word_order;
-        AES_CNT.in_word_order = true;
-        input_vector((uint8_t*)AES_CTR, 3 - ((addr / 4) & 0x3), value, 4);
-        AES_CNT.in_word_order = temp_order;
+        input_vector((uint8_t*)AES_CTR, 3 - ((addr / 4) & 0x3), value, 4, true);
         AES_ctx_set_iv(&lib_aes_ctx, (uint8_t*)AES_CTR);
         return;
     }
@@ -353,15 +354,15 @@ void AES::write32(uint32_t addr, uint32_t value)
         {
             case 0:
                 printf("[AES] Write DSi KEY%d NORMAL: $%08X\n", key, value);
-                input_vector((uint8_t*)keys[key].normal, offset, value, 4);
+                input_vector((uint8_t*)keys[key].normal, offset, value, 4, true);
                 break;
             case 1:
                 printf("[AES] Write DSi KEY%d X: $%08X\n", key, value);
-                input_vector((uint8_t*)keys[key].x, offset, value, 4);
+                input_vector((uint8_t*)keys[key].x, offset, value, 4, true);
                 break;
             case 2:
                 printf("[AES] Write DSi KEY%d Y: $%08X\n", key, value);
-                input_vector((uint8_t*)keys[key].y, offset, value, 4);
+                input_vector((uint8_t*)keys[key].y, offset, value, 4, true);
 
                 //Keygen is done every time the keyslot is updated
                 gen_dsi_key(key);
@@ -375,7 +376,7 @@ void AES::write32(uint32_t addr, uint32_t value)
     {
         case 0x10009000:
             printf("[AES] Write CNT: $%08X\n", value);
-            if (AES_CNT.in_word_order != (value & (1 << 25)))
+            if ((AES_CNT.in_word_order << 25) ^ (value & (1 << 25)))
             {
                 //Flush key FIFOs
                 normal_ctr = 0;
@@ -406,6 +407,7 @@ void AES::write32(uint32_t addr, uint32_t value)
         case 0x10009004:
             mac_count = value & 0xFFFF;
             block_count = (value >> 16);
+            printf("[AES] MAC count: $%08X\n", mac_count);
             return;
         case 0x10009008:
             //printf("[AES] Write WRFIFO: $%08X\n", value);
@@ -451,10 +453,10 @@ void AES::write32(uint32_t addr, uint32_t value)
     printf("[AES] Unrecognized write32 $%08X: $%08X\n", addr, value);
 }
 
-void AES::input_vector(uint8_t *vector, int index, uint32_t value, int max_words)
+void AES::input_vector(uint8_t *vector, int index, uint32_t value, int max_words, bool force_order)
 {
     //Reverse word order
-    if (!AES_CNT.in_word_order)
+    if (!AES_CNT.in_word_order && !force_order)
         index = (max_words - 1) - index;
 
     if (!AES_CNT.in_big_endian)
