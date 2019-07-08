@@ -77,6 +77,7 @@ class Emulator
         void load_and_run_elf(uint8_t* elf, uint64_t size);
 
         void gpu_memfill_event(uint64_t index);
+        void try_ndma_transfer_event(uint64_t req);
 
         uint8_t arm9_read8(uint32_t addr);
         uint16_t arm9_read16(uint32_t addr);

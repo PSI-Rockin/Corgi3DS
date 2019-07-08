@@ -4,7 +4,7 @@
 #include "../common/common.hpp"
 #include "../emulator.hpp"
 
-DMA9::DMA9(Emulator* e, Interrupt9* int9) : e(e), int9(int9)
+DMA9::DMA9(Emulator* e, Interrupt9* int9, Scheduler* scheduler) : e(e), int9(int9), scheduler(scheduler)
 {
 
 }
@@ -28,6 +28,10 @@ void DMA9::reset()
     xdma_command = 0;
     xdma_param_count = 0;
     xdma_params_needed = 0;
+
+    xdma_ie = 0;
+    xdma_if = 0;
+    xdma_sev_if = 0;
 
     global_ndma_ctrl = 0;
 }
@@ -67,6 +71,27 @@ void DMA9::run_xdma()
             xdma_exec_instr(byte, i);
         }
     }
+}
+
+void DMA9::try_ndma_transfer(NDMA_Request req)
+{
+    scheduler->add_event(NDMA_TRY_TRANSFER, &Emulator::try_ndma_transfer_event, 1, (uint64_t)req);
+}
+
+void DMA9::try_ndma_transfer_event(NDMA_Request req)
+{
+    //printf("[DMA9] Try NDMA req%d\n", req);
+    for (int i = 0; i < 8; i++)
+    {
+        if (ndma_chan[i].busy && ndma_chan[i].startup_mode == req)
+        {
+            //printf("Success\n");
+            pending_ndma_reqs[req] = true;
+            return;
+        }
+    }
+    //printf("Fail\n");
+    pending_ndma_reqs[req] = false;
 }
 
 void DMA9::set_ndma_req(NDMA_Request req)
@@ -225,11 +250,31 @@ uint32_t DMA9::read32_xdma(uint32_t addr)
         return xdma_chan[index].state;
     }
 
+    if (addr >= 0x1000C400 && addr < 0x1000C500)
+    {
+        int index = (addr / 0x20) & 0x7;
+
+        switch (addr & 0x1F)
+        {
+            case 0x00:
+                return xdma_chan[index].source_addr;
+            case 0x04:
+                return xdma_chan[index].dest_addr;
+            case 0x10:
+                return xdma_chan[index].loop_ctr[0];
+            case 0x14:
+                return xdma_chan[index].loop_ctr[1];
+        }
+    }
+
     switch (addr)
     {
         case 0x1000C020:
             printf("[XDMA] Read IE: $%08X\n", xdma_ie);
             return xdma_ie;
+        case 0x1000C024:
+            printf("[XDMA] Read SEV IF: $%08X\n", xdma_sev_if);
+            return xdma_sev_if;
         case 0x1000C028:
             printf("[XDMA] Read IF: $%08X\n", xdma_if);
             return xdma_if;
@@ -323,6 +368,7 @@ void DMA9::write32_xdma(uint32_t addr, uint32_t value)
             return;
         case 0x1000C02C:
             printf("[XDMA] Write IF: $%08X\n", value);
+            xdma_sev_if &= ~value;
             xdma_if &= ~value;
             return;
         case 0x1000CD04:
@@ -383,6 +429,7 @@ void DMA9::xdma_exec_instr(uint8_t byte, int chan)
                 printf("[XDMA] DMAKILL\n");
                 xdma_chan[chan].state = XDMA_Chan::Status::STOP;
                 break;
+            case 0x08:
             case 0x0B:
                 printf("[XDMA] DMAST: chan%d\n", chan);
                 instr_st(chan, xdma_command & 0x3);
@@ -404,11 +451,14 @@ void DMA9::xdma_exec_instr(uint8_t byte, int chan)
                 xdma_params_needed = 1;
                 xdma_command_set = true;
                 break;
+            case 0x25:
             case 0x27:
                 //DMALDP
                 xdma_params_needed = 1;
                 xdma_command_set = true;
                 break;
+            case 0x30:
+            case 0x31:
             case 0x32:
                 //DMAWFP
                 xdma_params_needed = 1;
@@ -457,9 +507,12 @@ void DMA9::xdma_exec_instr(uint8_t byte, int chan)
                 case 0x22:
                     instr_lp(chan, (xdma_command >> 1) & 0x1);
                     break;
+                case 0x25:
                 case 0x27:
                     instr_ldp(chan, (xdma_command >> 1) & 0x1);
                     break;
+                case 0x30:
+                case 0x31:
                 case 0x32:
                     instr_wfp(chan);
                     break;
@@ -488,13 +541,15 @@ void DMA9::xdma_exec_instr(uint8_t byte, int chan)
 
 void DMA9::instr_st(int chan, uint8_t modifier)
 {
-    if ((modifier & 0x2) == 0)
-        EmuException::die("[XDMA] Single mode for ST");
+    if (modifier == 1)
+        return;
 
     if (xdma_chan[chan].ctrl.endian_swap_size)
         EmuException::die("[XDMA] Endian size for ST");
 
     int store_size = xdma_chan[chan].ctrl.dest_burst_size;
+    store_size *= xdma_chan[chan].ctrl.dest_burst_len;
+
     if (store_size & 0x3)
         EmuException::die("[XDMA] Store size not word aligned for ST");
 
@@ -503,7 +558,7 @@ void DMA9::instr_st(int chan, uint8_t modifier)
     for (int i = 0; i < store_size; i += 4)
     {
         uint32_t word = xdma_chan[chan].fifo.front();
-        //printf("[XDMA] Write32 $%08X: $%08X\n", addr + (multiplier * i), word);
+        printf("[XDMA] Store $%08X: $%08X\n", addr + (multiplier * i), word);
         e->arm9_write32(addr + (multiplier * i), word);
         xdma_chan[chan].fifo.pop();
     }
@@ -521,12 +576,14 @@ void DMA9::instr_lp(int chan, int loop_ctr_index)
 void DMA9::instr_ldp(int chan, bool burst)
 {
     if (!burst)
-        EmuException::die("[XDMA] Single mode for LDP");
+        return;
 
     if (xdma_chan[chan].ctrl.endian_swap_size)
         EmuException::die("[XDMA] Endian size for LDP");
 
     int load_size = xdma_chan[chan].ctrl.src_burst_size;
+    load_size *= xdma_chan[chan].ctrl.src_burst_len;
+
     if (load_size & 0x3)
         EmuException::die("[XDMA] Load size not word aligned for LDP");
 
@@ -538,6 +595,7 @@ void DMA9::instr_ldp(int chan, bool burst)
     for (int i = 0; i < load_size; i += 4)
     {
         uint32_t word = e->arm9_read32(addr + (i * multiplier));
+        //printf("[XDMA] Load $%08X: $%08X\n", addr + (i * multiplier), word);
         xdma_chan[chan].fifo.push(word);
     }
     xdma_chan[chan].source_addr += (load_size * multiplier);
@@ -563,6 +621,7 @@ void DMA9::instr_sev(int chan)
     if (xdma_ie & event)
     {
         xdma_if |= event;
+        xdma_sev_if |= event;
         int9->assert_irq(28);
     }
     //else
@@ -642,15 +701,17 @@ void DMA9::xdma_write_chan_ctrl(int chan, uint32_t value)
     printf("[XDMA] Write chan%d ctrl: $%08X\n", chan, value);
 
     xdma_chan[chan].ctrl.inc_src = value & 0x1;
-    xdma_chan[chan].ctrl.src_burst_size = ((value >> 4) & 0xF) + 1;
-    xdma_chan[chan].ctrl.src_burst_size <<= (value >> 1) & 0x7;
+    xdma_chan[chan].ctrl.src_burst_size = 1 << ((value >> 1) & 0x7);
+    xdma_chan[chan].ctrl.src_burst_len = ((value >> 4) & 0xF) + 1;
     xdma_chan[chan].ctrl.inc_dest = value & (1 << 14);
-    xdma_chan[chan].ctrl.dest_burst_size = ((value >> 18) & 0xF) + 1;
-    xdma_chan[chan].ctrl.dest_burst_size <<= (value >> 15) & 0x7;
+    xdma_chan[chan].ctrl.dest_burst_size = 1 << ((value >> 15) & 0x7);
+    xdma_chan[chan].ctrl.dest_burst_len = ((value >> 18) & 0xF) + 1;
     xdma_chan[chan].ctrl.endian_swap_size = (value >> 28) & 0x7;
 
     printf("Inc src: %d Inc dest: %d\n", xdma_chan[chan].ctrl.inc_src, xdma_chan[chan].ctrl.inc_dest);
     printf("Src burst size: %d\n", xdma_chan[chan].ctrl.src_burst_size);
+    printf("Src burst len: %d\n", xdma_chan[chan].ctrl.src_burst_len);
     printf("Dest burst size: %d\n", xdma_chan[chan].ctrl.dest_burst_size);
+    printf("Dest burst len: %d\n", xdma_chan[chan].ctrl.dest_burst_len);
     printf("Endian swap size: %d\n", xdma_chan[chan].ctrl.endian_swap_size);
 }

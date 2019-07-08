@@ -555,7 +555,7 @@ uint32_t EMMC::read_fifo32()
                     transfer_end();
                 else
                 {
-                    dma9->set_ndma_req(NDMA_MMC1);
+                    dma9->try_ndma_transfer(NDMA_MMC1);
                     transfer_size = data_block_len;
                     cur_transfer_drive->read((char*)transfer_buffer, transfer_size);
                 }
@@ -591,6 +591,7 @@ void EMMC::write_fifo32(uint32_t value)
                 }
                 else
                 {
+                    dma9->try_ndma_transfer(NDMA_MMC1);
                     transfer_size = data_block_len;
                     write_ready();
                 }

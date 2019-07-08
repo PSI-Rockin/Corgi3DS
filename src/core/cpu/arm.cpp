@@ -202,11 +202,28 @@ void ARM_CPU::jp(uint32_t addr, bool change_thumb_state)
             str_ptr++;
         }
     }
+
     if (id != 9 && gpr[15] >= 0xFFF00000 && (addr >= 0x00100000 && addr < 0x10000000))
     {
         //can_disassemble = true;
         uint32_t process_ptr = read32(0xFFFF9004);
         printf("Jumping to PID%d (addr: $%08X)\n", read32(process_ptr + 0xB4), addr);
+    }
+
+    if (addr == 0x8061b04)
+    {
+        printf("MEMCMP\n");
+        uint32_t ptr1 = gpr[0];
+        uint32_t ptr2 = gpr[1];
+        uint32_t size = gpr[2];
+
+        while (size)
+        {
+            printf("%02X %02X\n", read8(ptr1), read8(ptr2));
+            ptr1++;
+            ptr2++;
+            size--;
+        }
     }
 
     gpr[15] = addr;
@@ -634,8 +651,8 @@ uint8_t ARM_CPU::read8(uint32_t addr)
 
 uint16_t ARM_CPU::read16(uint32_t addr)
 {
-    //if ((addr & 0xFFF) > 0xFFE)
-        //EmuException::die("[ARM%d] Unaligned read16 on page boundary $%08X", id, addr);
+    if ((addr & 0xFFF) > 0xFFE)
+        EmuException::die("[ARM%d] Unaligned read16 on page boundary $%08X", id, addr);
     if (id == 9 && (addr & 0x1))
         EmuException::die("[ARM9] Unaligned read16 $%08X", addr);
     uint64_t mem = (uint64_t)tlb_map[addr / 4096];
@@ -662,10 +679,6 @@ uint16_t ARM_CPU::read16(uint32_t addr)
 
 uint32_t ARM_CPU::read32(uint32_t addr)
 {
-    if (addr >= 0x080B1EA0 && addr < 0x080B1EA0 + 0x30)
-    {
-        printf("[ARM9] Read32 blorp $%08X\n", addr - 0x080B1EA0);
-    }
     if (id == 9 && (addr & 0x3))
         EmuException::die("[ARM9] Unaligned read32 $%08X", addr);
     if ((addr & 0xFFF) > 0xFFC)
@@ -1208,7 +1221,7 @@ void ARM_CPU::rfe(uint32_t instr)
     update_reg_mode((PSR_MODE)(PSR & 0x1F));
     CPSR.set(PSR);
 
-    jp(PC, true);
+    jp(PC, false);
 }
 
 void ARM_CPU::vfp_load_store(uint32_t instr)

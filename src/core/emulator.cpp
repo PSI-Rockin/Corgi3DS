@@ -11,7 +11,7 @@ Emulator::Emulator() :
     app_cp15(0, &appcore, &app_mmu),
     sys_cp15(1, &syscore, &sys_mmu),
     aes(&dma9, &int9),
-    dma9(this, &int9),
+    dma9(this, &int9, &scheduler),
     emmc(&int9, &dma9),
     gpu(&scheduler, &mpcore_pmr),
     int9(&arm9),
@@ -115,6 +115,9 @@ void Emulator::run()
     i2c.update_time();
     printf("FRAME %d\n", frames);
     //arm9.set_disassembly(frames == 34);
+    //arm9.set_disassembly(frames == 26);
+    //syscore.set_disassembly(frames == 26);
+    //syscore.set_disassembly(frames == 33);
     for (int i = 0; i < 4000000 / 2; i++)
     {
         scheduler.calculate_cycles_to_run();
@@ -263,6 +266,11 @@ void Emulator::load_and_run_elf(uint8_t *elf, uint64_t size)
 void Emulator::gpu_memfill_event(uint64_t index)
 {
     gpu.do_memfill(index);
+}
+
+void Emulator::try_ndma_transfer_event(uint64_t index)
+{
+    dma9.try_ndma_transfer_event((NDMA_Request)index);
 }
 
 uint8_t Emulator::arm9_read8(uint32_t addr)

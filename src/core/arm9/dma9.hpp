@@ -50,8 +50,10 @@ enum XDMA_Request
 struct XDMA_Chan_CTRL
 {
     uint8_t endian_swap_size;
+    uint8_t dest_burst_len;
     uint16_t dest_burst_size;
     bool inc_dest;
+    uint8_t src_burst_len;
     uint16_t src_burst_size;
     bool inc_src;
 };
@@ -87,12 +89,14 @@ struct XDMA_Chan
 
 class Emulator;
 class Interrupt9;
+class Scheduler;
 
 class DMA9
 {
     private:
         Emulator* e;
         Interrupt9* int9;
+        Scheduler* scheduler;
 
         uint32_t global_ndma_ctrl;
 
@@ -103,7 +107,7 @@ class DMA9
 
         //XDMA channel 8 is the DMAC manager (unknown how this is different from other channels)
         XDMA_Chan xdma_chan[9];
-        uint32_t xdma_ie, xdma_if;
+        uint32_t xdma_ie, xdma_if, xdma_sev_if;
 
         uint32_t xdma_debug_instrs[2];
         bool xdma_command_set;
@@ -129,11 +133,14 @@ class DMA9
         void xdma_exec_debug();
         void xdma_exec_instr(uint8_t byte, int chan);
     public:
-        DMA9(Emulator* e, Interrupt9* int9);
+        DMA9(Emulator* e, Interrupt9* int9, Scheduler* scheduler);
 
         void reset();
         void process_ndma_reqs();
         void run_xdma();
+
+        void try_ndma_transfer(NDMA_Request req);
+        void try_ndma_transfer_event(NDMA_Request req);
 
         void set_ndma_req(NDMA_Request req);
         void clear_ndma_req(NDMA_Request req);

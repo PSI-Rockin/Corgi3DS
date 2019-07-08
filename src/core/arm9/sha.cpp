@@ -72,6 +72,8 @@ uint8_t SHA::read_hash(uint32_t addr)
 {
     int index = (addr / 4) & 0x7;
     int offset = addr & 0x3;
+    if (SHA_CNT.out_big_endian)
+        offset = 3 - offset;
     printf("[SHA] Read hash: $%08X $%02X\n", addr, (hash[index] >> (offset * 8)) & 0xFF);
     return (hash[index] >> (offset * 8)) & 0xFF;
 }
@@ -83,8 +85,9 @@ uint32_t SHA::read32(uint32_t addr)
     {
         int index = (addr / 4) & 0x7;
         uint32_t value = *(uint32_t*)&hash[index];
-        if (!SHA_CNT.out_big_endian)
+        if (SHA_CNT.out_big_endian)
             value = bswp32(value);
+        printf("[SHA] Read32 hash $%08X: $%08X\n", addr, value);
         return value;
     }
     if (addr >= 0x1000A080 && addr < 0x1000A0C0)
@@ -113,6 +116,9 @@ uint32_t SHA::read32(uint32_t addr)
             reg |= SHA_CNT.out_dma_enable << 10;
             printf("[SHA] Read32 SHA_CNT: $%08X\n", reg);
             break;
+        case 0x1000A004:
+            reg = message_len * 4;
+            break;
         default:
             printf("[SHA] Unrecognized read32 $%08X\n", addr);
     }
@@ -121,6 +127,13 @@ uint32_t SHA::read32(uint32_t addr)
 
 void SHA::write32(uint32_t addr, uint32_t value)
 {
+    if (addr >= 0x1000A040 && addr < 0x1000A060)
+    {
+        int index = (addr / 4) & 0x7;
+        *(uint32_t*)&hash[index] = bswp32(value);
+        printf("[SHA] Write32 hash $%08X: $%08X\n", addr, value);
+        return;
+    }
     if (addr >= 0x1000A080 && addr < 0x1000A0C0)
     {
         write_fifo(value);
@@ -157,6 +170,10 @@ void SHA::write32(uint32_t addr, uint32_t value)
             if (value & (1 << 1))
                 do_hash(true);
             return;
+        case 0x1000A004:
+            printf("[SHA] Write message len: $%08X\n", value);
+            message_len = value / 4;
+            return;
     }
     printf("[SHA] Unrecognized write32 $%08X: $%08X\n", addr, value);
 }
@@ -170,7 +187,7 @@ void SHA::write_fifo(uint32_t value)
         std::queue<uint32_t> empty;
         read_fifo.swap(empty);
     }
-    //printf("[SHA] Write FIFO: $%08X\n", value);
+    printf("[SHA] Write FIFO: $%08X\n", value);
     in_fifo.push(value);
     read_fifo.push(value);
     message_len++;
@@ -192,13 +209,13 @@ void SHA::write_fifo(uint32_t value)
 
 void SHA::do_hash(bool final_round)
 {
-    printf("[SHA] Do hash\n");
     switch (SHA_CNT.mode)
     {
         case 0x0:
             do_sha256(final_round);
             break;
         case 0x2:
+        case 0x3:
             do_sha1(final_round);
             break;
         default:
@@ -230,7 +247,7 @@ void SHA::do_sha256(bool final_round)
 
         if (round_size >= 14)
         {
-            EmuException::die("[SHA] 14 or above\n");
+            //EmuException::die("[SHA] 14 or above\n");
             _sha256();
 
             //Not enough space to store the message variable. We need to do another round
@@ -247,11 +264,11 @@ void SHA::do_sha256(bool final_round)
             _sha256();
         }
 
-        if (SHA_CNT.out_big_endian)
+        /*if (SHA_CNT.out_big_endian)
         {
             for (int i = 0; i < 8; i++)
                 hash[i] = bswp32(hash[i]);
-        }
+        }*/
     }
     else
     {
@@ -303,12 +320,6 @@ void SHA::do_sha1(bool final_round)
         {
             messages[15] = len_lo;
             _sha1();
-        }
-
-        if (SHA_CNT.out_big_endian)
-        {
-            for (int i = 0; i < 8; i++)
-                hash[i] = bswp32(hash[i]);
         }
     }
     else
