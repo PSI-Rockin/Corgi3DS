@@ -13,7 +13,8 @@ enum EVENT_ID
     NDMA_TRANSFER,
     NDMA_TRY_TRANSFER,
     XDMA_TRANSFER,
-    GPU_MEMFILL
+    GPU_MEMFILL,
+    I2C_TRANSFER
 };
 
 struct CycleCount

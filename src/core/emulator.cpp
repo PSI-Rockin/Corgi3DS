@@ -14,6 +14,7 @@ Emulator::Emulator() :
     dma9(this, &int9, &scheduler),
     emmc(&int9, &dma9),
     gpu(&scheduler, &mpcore_pmr),
+    i2c(&mpcore_pmr, &scheduler),
     int9(&arm9),
     mpcore_pmr(&appcore, &syscore, &timers),
     pxi(&mpcore_pmr, &int9),
@@ -114,10 +115,8 @@ void Emulator::run()
     static int frames = 0;
     i2c.update_time();
     printf("FRAME %d\n", frames);
-    //arm9.set_disassembly(frames == 34);
-    //arm9.set_disassembly(frames == 26);
-    //syscore.set_disassembly(frames == 26);
-    //syscore.set_disassembly(frames == 33);
+    //syscore.set_disassembly(frames == 196);
+    //syscore.set_disassembly(frames == 67);
     for (int i = 0; i < 4000000 / 2; i++)
     {
         scheduler.calculate_cycles_to_run();
@@ -271,6 +270,11 @@ void Emulator::gpu_memfill_event(uint64_t index)
 void Emulator::try_ndma_transfer_event(uint64_t index)
 {
     dma9.try_ndma_transfer_event((NDMA_Request)index);
+}
+
+void Emulator::i2c_transfer_event(uint64_t index)
+{
+    i2c.do_transfer(index);
 }
 
 uint8_t Emulator::arm9_read8(uint32_t addr)
@@ -774,6 +778,8 @@ uint32_t Emulator::arm11_read32(int core, uint32_t addr)
         return gpu.read32(addr);
     if (addr >= 0x18000000 && addr < 0x18600000)
         return gpu.read_vram<uint32_t>(addr);
+    if (addr >= 0x10101000 && addr < 0x10102000)
+        return hash.read32(addr);
     if (addr >= 0x10202000 && addr < 0x10203000)
     {
         printf("[LCD] Unrecognized read $%08X\n", addr);
@@ -782,6 +788,11 @@ uint32_t Emulator::arm11_read32(int core, uint32_t addr)
     if (addr >= 0x10142000 && addr < 0x10144000)
     {
         printf("[SPI] Unrecognized read32 $%08X\n", addr);
+        return 0;
+    }
+    if (addr >= 0x10147000 && addr < 0x10148000)
+    {
+        printf("[GPIO] Unrecognized read32 $%08X\n", addr);
         return 0;
     }
     if (addr >= 0x10160000 && addr < 0x10161000)
@@ -909,6 +920,11 @@ void Emulator::arm11_write32(int core, uint32_t addr, uint32_t value)
         mpcore_pmr.write32(core, addr, value);
         return;
     }
+    if (addr >= 0x10101000 && addr < 0x10102000)
+    {
+        hash.write32(addr, value);
+        return;
+    }
     if (addr >= 0x10200000 && addr < 0x10201000)
     {
         printf("[CDMA] Unrecognized write32 $%08X: $%08X\n", addr, value);
@@ -919,6 +935,11 @@ void Emulator::arm11_write32(int core, uint32_t addr, uint32_t value)
         printf("[LCD] Unrecognized write32 $%08X: $%08X\n", addr, value);
         return;
     }
+    if (addr >= 0x10301000 && addr < 0x10302000)
+    {
+        hash.write_fifo(value);
+        return;
+    }
     if (addr >= 0x10400000 && addr < 0x10402000)
     {
         gpu.write32(addr, value);
@@ -927,6 +948,11 @@ void Emulator::arm11_write32(int core, uint32_t addr, uint32_t value)
     if (addr >= 0x10142000 && addr < 0x10144000)
     {
         printf("[SPI] Unrecognized write32 $%08X: $%08X\n", addr, value);
+        return;
+    }
+    if (addr >= 0x10147000 && addr < 0x10148000)
+    {
+        printf("[GPIO] Unrecognized write32 $%08X: $%08X\n", addr, value);
         return;
     }
     if (addr >= 0x10160000 && addr < 0x10161000)

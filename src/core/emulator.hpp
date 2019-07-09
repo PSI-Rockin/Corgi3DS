@@ -9,6 +9,7 @@
 #include "arm9/sha.hpp"
 
 #include "arm11/gpu.hpp"
+#include "arm11/hash.hpp"
 #include "arm11/mpcore_pmr.hpp"
 
 #include "cpu/arm.hpp"
@@ -46,6 +47,7 @@ class Emulator
         DMA9 dma9;
         EMMC emmc;
         GPU gpu;
+        HASH hash;
         I2C i2c;
         Interrupt9 int9;
         MPCore_PMR mpcore_pmr;
@@ -78,6 +80,7 @@ class Emulator
 
         void gpu_memfill_event(uint64_t index);
         void try_ndma_transfer_event(uint64_t req);
+        void i2c_transfer_event(uint64_t index);
 
         uint8_t arm9_read8(uint32_t addr);
         uint16_t arm9_read16(uint32_t addr);

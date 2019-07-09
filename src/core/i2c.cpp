@@ -1,12 +1,15 @@
 #include <cstring>
 #include <cstdio>
 #include <ctime>
+#include "arm11/mpcore_pmr.hpp"
 #include "common/common.hpp"
 #include "i2c.hpp"
+#include "scheduler.hpp"
+#include "emulator.hpp"
 
 #define itob(i) ((i)/10*16 + (i)%10)    /* u_char to BCD */
 
-I2C::I2C()
+I2C::I2C(MPCore_PMR* pmr, Scheduler* scheduler) : pmr(pmr), scheduler(scheduler)
 {
 
 }
@@ -15,6 +18,7 @@ void I2C::reset()
 {
     memset(cnt, 0, sizeof(cnt));
     memset(devices, 0, sizeof(devices));
+    mcu_counter = 0;
 }
 
 uint8_t I2C::read8(uint32_t addr)
@@ -68,15 +72,20 @@ int I2C::get_id(uint32_t addr)
 uint8_t I2C::get_cnt(int id)
 {
     uint8_t reg = 0;
+    reg |= cnt[id].stop;
+    reg |= cnt[id].start << 1;
     reg |= cnt[id].ack_flag << 4;
     reg |= cnt[id].read_dir << 5;
     reg |= cnt[id].irq_enable << 6;
+    reg |= cnt[id].busy << 7;
     return reg;
 }
 
 void I2C::set_cnt(int id, uint8_t value)
 {
     printf("[I2C%d] Set CNT: $%02X\n", id, value);
+    cnt[id].stop = value & 0x1;
+    cnt[id].start = value & 0x2;
     cnt[id].ack_flag &= ~((value & (1 << 4)) != 0);
     cnt[id].read_dir = value & (1 << 5);
     cnt[id].irq_enable = value & (1 << 6);
@@ -84,41 +93,64 @@ void I2C::set_cnt(int id, uint8_t value)
     if (value & (1 << 7))
     {
         cnt[id].ack_flag = true;
-        if (value & 0x2)
+        cnt[id].busy = true;
+        scheduler->add_event(I2C_TRANSFER, &Emulator::i2c_transfer_event, 20000, id);
+    }
+}
+
+void I2C::do_transfer(int id)
+{
+    cnt[id].busy = false;
+    if (cnt[id].start)
+    {
+        uint8_t dev = data[id] & ~0x1;
+        if (!cnt[id].device_selected)
         {
-            uint8_t dev = data[id] & ~0x1;
-            if (!cnt[id].device_selected)
-            {
-                devices[id][dev].reg_selected = false;
-                printf("[I2C%d] Selecting device $%02X\n", id, dev);
-            }
-            cnt[id].device_selected = true;
-            cnt[id].cur_device = dev;
+            devices[id][dev].reg_selected = false;
+            printf("[I2C%d] Selecting device $%02X\n", id, dev);
+        }
+        cnt[id].device_selected = true;
+        cnt[id].cur_device = dev;
+    }
+    else
+    {
+        uint8_t cur_dev = cnt[id].cur_device;
+        if (!devices[id][cur_dev].reg_selected)
+        {
+            devices[id][cur_dev].reg_selected = true;
+            devices[id][cur_dev].cur_reg = data[id];
+
+            printf("[I2C%d] Selecting device $%02X reg $%02X\n", id, cur_dev, data[id]);
         }
         else
         {
-            uint8_t cur_dev = cnt[id].cur_device;
-            if (!devices[id][cur_dev].reg_selected)
-            {
-                devices[id][cur_dev].reg_selected = true;
-                devices[id][cur_dev].cur_reg = data[id];
-
-                printf("[I2C%d] Selecting device $%02X reg $%02X\n", id, cur_dev, data[id]);
-            }
+            if (cnt[id].read_dir)
+                data[id] = read_device(id, cur_dev);
             else
-            {
-                if (cnt[id].read_dir)
-                    data[id] = read_device(id, cur_dev);
-                else
-                    write_device(id, cur_dev, data[id]);
+                write_device(id, cur_dev, data[id]);
 
-                devices[id][cur_dev].cur_reg++;
-            }
-            if (value & 0x1)
-            {
-                devices[id][cur_dev].reg_selected = false;
-                cnt[id].device_selected = false;
-            }
+            devices[id][cur_dev].cur_reg++;
+        }
+        if (cnt[id].stop)
+        {
+            devices[id][cur_dev].reg_selected = false;
+            cnt[id].device_selected = false;
+        }
+    }
+
+    if (cnt[id].irq_enable)
+    {
+        switch (id)
+        {
+            case 0:
+                pmr->assert_hw_irq(0x54);
+                break;
+            case 1:
+                pmr->assert_hw_irq(0x55);
+                break;
+            case 2:
+                pmr->assert_hw_irq(0x5C);
+                break;
         }
     }
 }
@@ -178,10 +210,14 @@ uint8_t I2C::read_mcu(uint8_t reg_id)
 
     switch (reg_id)
     {
+        case 0x00:
+            return 0x04; //Version high
+        case 0x01:
+            return 0x59; //Version low
         case 0x0B:
             return 0xFF; //battery percent
         case 0x0F:
-            return 0x2; //bit 1 = shell state
+            return 0x02; //bit 1 = shell state
         default:
             printf("[I2C_MCU] Unrecognized read register $%02X\n", reg_id);
     }
@@ -190,8 +226,18 @@ uint8_t I2C::read_mcu(uint8_t reg_id)
 
 void I2C::write_mcu(uint8_t reg_id, uint8_t value)
 {
+    if (mcu_counter)
+    {
+        mcu_counter--;
+        return;
+    }
     switch (reg_id)
     {
+        case 0x07:
+            //The registers 05, 06, and 07 are used to unlock the MCU's FIRM so that it can be written to.
+            //A FIRM is 0x4000 bytes, so we have to ignore that many writes.
+            mcu_counter = 0x4000;
+            break;
         case 0x20:
             //Poweroff
             if (value & 0x1)

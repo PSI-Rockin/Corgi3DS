@@ -214,7 +214,7 @@ void AES::write_input_fifo(uint32_t value)
         for (int i = 0; i < 4; i++)
         {
             input_fifo.push(*(uint32_t*)&temp_input_fifo[i * 4]);
-            printf("Input FIFO: $%08X\n", *(uint32_t*)&temp_input_fifo[i * 4]);
+            //printf("Input FIFO: $%08X\n", *(uint32_t*)&temp_input_fifo[i * 4]);
         }
     }
 

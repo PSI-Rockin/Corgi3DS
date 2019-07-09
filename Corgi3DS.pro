@@ -38,7 +38,9 @@ SOURCES += src/qt/main.cpp \
     src/core/scheduler.cpp \
     src/core/cpu/vfp.cpp \
     src/core/cpu/vfp_disasm.cpp \
-    src/core/cpu/vfp_interpreter.cpp
+    src/core/cpu/vfp_interpreter.cpp \
+    src/core/sha_engine.cpp \
+    src/core/arm11/hash.cpp
 
 HEADERS += \
     src/core/emulator.hpp \
@@ -66,7 +68,9 @@ HEADERS += \
     src/core/common/exceptions.hpp \
     src/core/cpu/mmu.hpp \
     src/core/scheduler.hpp \
-    src/core/cpu/vfp.hpp
+    src/core/cpu/vfp.hpp \
+    src/core/sha_engine.hpp \
+    src/core/arm11/hash.hpp
 
 INCLUDEPATH += /usr/local/include
 

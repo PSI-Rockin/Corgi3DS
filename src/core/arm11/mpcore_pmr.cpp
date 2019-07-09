@@ -274,6 +274,10 @@ void MPCore_PMR::write8(int core, uint32_t addr, uint8_t value)
             private_int_priority[core][addr - 0x17E01400] = value >> 4;
         else
             global_int_priority[addr - 0x17E01420] = value >> 4;
+
+        //2 cores
+        for (int i = 0; i < 2; i++)
+            check_if_can_assert_irq(i);
         return;
     }
     if (addr >= 0x17E01820 && addr < 0x17E01880)
@@ -373,7 +377,7 @@ void MPCore_PMR::write32(int core, uint32_t addr, uint32_t value)
     if (addr >= 0x17E01820 && addr < 0x17E01880)
     {
         value &= 0x0F0F0F0F;
-        *(uint32_t*)&global_int_priority[addr - 0x17E01820] = value;
+        *(uint32_t*)&global_int_targets[addr - 0x17E01820] = value;
         return;
     }
     switch (addr)

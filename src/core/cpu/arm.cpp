@@ -120,7 +120,7 @@ void ARM_CPU::run(int cycles)
                 if (can_disassemble)
                 {
                     printf("[$%08X] $%04X  %s\n", gpr[15] - 4, instr, ARM_Disasm::disasm_thumb(*this, instr).c_str());
-                    //print_state();
+                    print_state();
                 }
                 ARM_Interpreter::interpret_thumb(*this, instr);
             }
@@ -135,7 +135,7 @@ void ARM_CPU::run(int cycles)
                 if (can_disassemble)
                 {
                     printf("[$%08X] $%08X  %s\n", gpr[15] - 8, instr, ARM_Disasm::disasm_arm(*this, instr).c_str());
-                    //print_state();
+                    print_state();
                 }
                 ARM_Interpreter::interpret_arm(*this, instr);
             }
@@ -203,27 +203,15 @@ void ARM_CPU::jp(uint32_t addr, bool change_thumb_state)
         }
     }
 
-    if (id != 9 && gpr[15] >= 0xFFF00000 && (addr >= 0x00100000 && addr < 0x10000000))
+    if (id != 9 && gpr[15] >= 0x40000000 && ((addr >= 0x00100000 && addr < 0x10000000) || (addr >= 0x14000000 && addr < 0x18000000)))
     {
         //can_disassemble = true;
         uint32_t process_ptr = read32(0xFFFF9004);
         printf("Jumping to PID%d (addr: $%08X)\n", read32(process_ptr + 0xB4), addr);
-    }
-
-    if (addr == 0x8061b04)
-    {
-        printf("MEMCMP\n");
-        uint32_t ptr1 = gpr[0];
-        uint32_t ptr2 = gpr[1];
-        uint32_t size = gpr[2];
-
-        while (size)
-        {
-            printf("%02X %02X\n", read8(ptr1), read8(ptr2));
-            ptr1++;
-            ptr2++;
-            size--;
-        }
+        /*if (read32(process_ptr + 0xB4) == 5)
+            can_disassemble = true;
+        else
+            can_disassemble = false;*/
     }
 
     gpr[15] = addr;
@@ -319,6 +307,16 @@ void ARM_CPU::swi()
         //printf("SVC $%02X, PID%d\n", op, read32(process_ptr + 0xB4));
         printf("SVC $%02X!\n", op);
         //printf("SVC $%04X!\n", gpr[7]);
+        if (op == 0x32)
+        {
+            uint32_t tls = cp15->mrc(0, 0xD, 0x3, 0x0);
+            uint32_t header = read32(tls + 0x80);
+            printf("SendSyncRequest: $%08X\n", header);
+            if (header == 0x10140)
+            {
+                printf("Program ID: %08X %08X\n", read32(tls + 0x84), read32(tls + 0x88));
+            }
+        }
     }
     /*if (gpr[7] == 4)
     {
@@ -403,7 +401,7 @@ void ARM_CPU::set_int_signal(bool pending)
         int_check();
     }
     int_pending = pending;
-    printf("[ARM%d] Set int signal: %d\n", id, pending);
+    //printf("[ARM%d] Set int signal: %d\n", id, pending);
 }
 
 void ARM_CPU::halt()
@@ -767,14 +765,6 @@ void ARM_CPU::write16(uint32_t addr, uint16_t value)
 
 void ARM_CPU::write32(uint32_t addr, uint32_t value)
 {
-    if (addr >= 0x080B7BC0 && addr < 0x080B7BC0 + 0x200)
-    {
-        printf("[ARM9] Write32 blorp $%08X: $%08X\n", addr, value);
-    }
-    if (addr >= 0x080D6800 && addr < 0x080D6800 + 0x200)
-    {
-        printf("[ARM9] Write32 NDMA buffer $%08X: $%08X\n", addr, value);
-    }
     if (id == 9 && (addr & 0x3))
         EmuException::die("[ARM9] Unaligned write32 $%08X: $%08X", addr, value);
     if ((addr & 0xFFF) > 0xFFC)
