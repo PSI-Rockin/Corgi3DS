@@ -1488,6 +1488,7 @@ void arm_store_ex_byte(ARM_CPU &cpu, uint32_t instr)
     if (cpu.has_exclusive(addr))
     {
         cpu.write8(addr, cpu.get_register(source) & 0xFF);
+        cpu.clear_global_exclusives(addr);
         cpu.set_register(dest, 0);
     }
     else
@@ -1519,6 +1520,7 @@ void arm_store_ex_halfword(ARM_CPU &cpu, uint32_t instr)
     if (cpu.has_exclusive(addr))
     {
         cpu.write16(addr, cpu.get_register(source) & 0xFFFF);
+        cpu.clear_global_exclusives(addr);
         cpu.set_register(dest, 0);
     }
     else
@@ -1550,6 +1552,7 @@ void arm_store_ex_word(ARM_CPU &cpu, uint32_t instr)
     if (cpu.has_exclusive(addr))
     {
         cpu.write32(addr, cpu.get_register(source));
+        cpu.clear_global_exclusives(addr);
         cpu.set_register(dest, 0);
     }
     else
@@ -1583,6 +1586,8 @@ void arm_store_ex_doubleword(ARM_CPU &cpu, uint32_t instr)
     {
         cpu.write32(addr, cpu.get_register(source));
         cpu.write32(addr + 4, cpu.get_register(source + 1));
+        cpu.clear_global_exclusives(addr);
+        cpu.clear_global_exclusives(addr + 4);
         cpu.set_register(dest, 0);
     }
     else

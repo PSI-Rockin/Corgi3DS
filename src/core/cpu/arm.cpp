@@ -120,7 +120,7 @@ void ARM_CPU::run(int cycles)
                 if (can_disassemble)
                 {
                     printf("[$%08X] $%04X  %s\n", gpr[15] - 4, instr, ARM_Disasm::disasm_thumb(*this, instr).c_str());
-                    print_state();
+                    //print_state();
                 }
                 ARM_Interpreter::interpret_thumb(*this, instr);
             }
@@ -135,7 +135,7 @@ void ARM_CPU::run(int cycles)
                 if (can_disassemble)
                 {
                     printf("[$%08X] $%08X  %s\n", gpr[15] - 8, instr, ARM_Disasm::disasm_arm(*this, instr).c_str());
-                    print_state();
+                    //print_state();
                 }
                 ARM_Interpreter::interpret_arm(*this, instr);
             }
