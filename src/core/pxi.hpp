@@ -29,6 +29,9 @@ class PXI
 
         std::ofstream log;
 
+        bool ready_for_hle;
+        bool sending_hle_cmd;
+        uint32_t hle_cmd_buffer[16];
         PXI_CNT cnt9, cnt11;
 
         std::queue<uint32_t> recv9, recv11;

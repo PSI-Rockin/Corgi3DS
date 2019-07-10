@@ -3,7 +3,10 @@
 #include <fstream>
 #include "arm11/mpcore_pmr.hpp"
 #include "arm9/interrupt9.hpp"
+#include "p9_hle.hpp"
 #include "pxi.hpp"
+
+#define LOG_P9_HLE
 
 PXI::PXI(MPCore_PMR* mpcore, Interrupt9* int9) : mpcore(mpcore), int9(int9)
 {
@@ -17,6 +20,8 @@ PXI::~PXI()
 
 void PXI::reset()
 {
+    ready_for_hle = false;
+    sending_hle_cmd = false;
     if (!log.is_open())
         log.open("pxi_log.txt");
     memset(&sync9, 0, sizeof(sync9));
@@ -94,7 +99,13 @@ void PXI::write_sync11(uint32_t value)
     sync11.local_irq = value & (1 << 31);
 
     if ((value & (1 << 30)) && sync9.local_irq)
+    {
+        //The ARM11 only sends IRQs to the ARM9 when doing PXI.
+        //This allows us to detect when we can log P9 commands.
+        ready_for_hle = true;
+        sending_hle_cmd = true;
         int9->assert_irq(12);
+    }
 }
 
 void PXI::write_cnt9(uint16_t value)
@@ -130,7 +141,7 @@ void PXI::write_cnt11(uint16_t value)
 {
     printf("[PXI] Write CNT11: $%04X\n", value);
 
-    /*if (!cnt11.recv_not_empty_irq && (value & (1 << 10)))
+    if (!cnt11.recv_not_empty_irq && (value & (1 << 10)))
     {
         if (recv11.size() != 0)
             int9->assert_irq(14);
@@ -140,7 +151,7 @@ void PXI::write_cnt11(uint16_t value)
     {
         if (recv11.size() == 0)
             int9->assert_irq(13);
-    }*/
+    }
 
     cnt11.send_empty_irq = value & (1 << 2);
     cnt11.recv_not_empty_irq = value & (1 << 10);
@@ -159,6 +170,23 @@ uint32_t PXI::read_msg9()
 {
     if (recv9.size())
     {
+#ifdef LOG_P9_HLE
+        if (sending_hle_cmd)
+        {
+            int cnt = recv9.size();
+            for (int i = 0; i < cnt; i++)
+            {
+                hle_cmd_buffer[i] = recv9.front();
+                recv9.pop();
+            }
+
+            log << P9_HLE::get_function_name(hle_cmd_buffer, cnt) << std::endl;
+
+            for (int i = 0; i < cnt; i++)
+                recv9.push(hle_cmd_buffer[i]);
+            sending_hle_cmd = false;
+        }
+#endif
         last_recv9 = recv9.front();
         recv9.pop();
         if (!recv9.size() && cnt11.send_empty_irq)
@@ -177,14 +205,14 @@ uint32_t PXI::read_msg11()
         if (!recv11.size() && cnt9.send_empty_irq)
             int9->assert_irq(13);
     }
-    log << "[PXI] Read from ARM9: " << std::hex << last_recv11 << std::endl;
+    //log << "[PXI] Read from ARM9: " << std::hex << last_recv11 << std::endl;
     printf("[PXI11] Read $%08X\n", last_recv11);
     return last_recv11;
 }
 
 void PXI::send_to_9(uint32_t value)
 {
-    log << "[PXI] Send to ARM9: " << std::hex << value << std::endl;
+    //log << "[PXI] Send to ARM9: " << std::hex << value << std::endl;
     printf("[PXI] Send to 9: $%08X (%d)\n", value, recv9.size());
     recv9.push(value);
     if (recv9.size() == 1 && cnt9.recv_not_empty_irq)
