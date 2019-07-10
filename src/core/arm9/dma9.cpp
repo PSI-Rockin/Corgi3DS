@@ -429,6 +429,10 @@ void DMA9::xdma_exec_instr(uint8_t byte, int chan)
                 printf("[XDMA] DMAKILL\n");
                 xdma_chan[chan].state = XDMA_Chan::Status::STOP;
                 break;
+            case 0x04:
+                printf("[XDMA] DMALD: chan%d\n", chan);
+                instr_ld(chan, xdma_command & 0x3);
+                break;
             case 0x08:
             case 0x0B:
                 printf("[XDMA] DMAST: chan%d\n", chan);
@@ -539,6 +543,31 @@ void DMA9::xdma_exec_instr(uint8_t byte, int chan)
     }
 }
 
+void DMA9::instr_ld(int chan, uint8_t modifier)
+{
+    if (modifier == 1)
+        return;
+
+    if (xdma_chan[chan].ctrl.endian_swap_size)
+        EmuException::die("[XDMA] Endian size for LD");
+
+    int load_size = xdma_chan[chan].ctrl.src_burst_size;
+    load_size *= xdma_chan[chan].ctrl.src_burst_len;
+
+    if (load_size & 0x3)
+        EmuException::die("[XDMA] Load size not word aligned for LD");
+
+    int multiplier = (int)xdma_chan[chan].ctrl.inc_src;
+    uint32_t addr = xdma_chan[chan].source_addr;
+    for (int i = 0; i < load_size; i += 4)
+    {
+        uint32_t word = e->arm9_read32(addr + (multiplier * i));
+        xdma_chan[chan].fifo.push(word);
+    }
+
+    xdma_chan[chan].source_addr += (load_size * multiplier);
+}
+
 void DMA9::instr_st(int chan, uint8_t modifier)
 {
     if (modifier == 1)
@@ -558,7 +587,7 @@ void DMA9::instr_st(int chan, uint8_t modifier)
     for (int i = 0; i < store_size; i += 4)
     {
         uint32_t word = xdma_chan[chan].fifo.front();
-        printf("[XDMA] Store $%08X: $%08X\n", addr + (multiplier * i), word);
+        //printf("[XDMA] Store $%08X: $%08X\n", addr + (multiplier * i), word);
         e->arm9_write32(addr + (multiplier * i), word);
         xdma_chan[chan].fifo.pop();
     }

@@ -12,16 +12,17 @@ void vfp_load_store(ARM_CPU& cpu, VFP &vfp, uint32_t instr)
     bool u = (instr >> 23) & 0x1;
     bool w = (instr >> 21) & 0x1;
     bool l = (instr >> 20) & 0x1;
+    bool is_double = ((instr >> 8) & 0xF) == 11;
 
-    uint16_t op = (p << 3) | (u << 2) | (w << 1) | l;
+    uint16_t op = (is_double << 4) | (l << 3) | (p << 2) | (u << 1) | w;
 
     switch (op)
     {
-        case 0x06:
+        case 0x13:
             return vfp_store_block_double(cpu, vfp, instr);
         default:
             //EmuException::die("[VFP_Interpreter] Undefined load/store instr $%04X\n", op);
-            printf("[VFP_Interpreter] Undefined load/store instr $%04X\n", op);
+            printf("[VFP_Interpreter] Undefined load/store instr $%04X ($%08X)\n", op, instr);
     }
 }
 

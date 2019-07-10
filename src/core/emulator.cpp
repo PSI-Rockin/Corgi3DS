@@ -116,6 +116,7 @@ void Emulator::run()
     i2c.update_time();
     printf("FRAME %d\n", frames);
     //syscore.set_disassembly(frames == 196);
+    //arm9.set_disassembly(frames == 41);
     for (int i = 0; i < 4000000 / 2; i++)
     {
         scheduler.calculate_cycles_to_run();

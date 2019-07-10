@@ -118,6 +118,7 @@ class DMA9
 
         void run_ndma(int chan);
 
+        void instr_ld(int chan, uint8_t modifier);
         void instr_st(int chan, uint8_t modifier);
         void instr_lp(int chan, int loop_ctr_index);
         void instr_ldp(int chan, bool burst);

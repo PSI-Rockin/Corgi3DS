@@ -90,10 +90,15 @@ enum THUMB_INSTR
     THUMB_SP_REL_STORE,
     THUMB_SP_REL_LOAD,
     THUMB_OFFSET_SP,
+
     THUMB_SXTH,
     THUMB_SXTB,
     THUMB_UXTH,
     THUMB_UXTB,
+    THUMB_REV,
+    THUMB_REV16,
+    THUMB_REVSH,
+
     THUMB_LOAD_ADDRESS,
     THUMB_POP,
     THUMB_PUSH,
@@ -151,6 +156,7 @@ namespace ARM_Disasm
 
     std::string vfp_load_store(uint32_t instr);
     std::string vfp_load_store_block(uint32_t instr);
+    std::string vfp_load_store_single(uint32_t instr);
 
     std::string disasm_thumb(ARM_CPU& cpu, uint16_t instr);
     std::string thumb_move_shift(uint16_t instr);
@@ -169,6 +175,7 @@ namespace ARM_Disasm
     std::string thumb_sp_rel_load_store(uint16_t instr);
     std::string thumb_offset_sp(uint16_t instr);
     std::string thumb_extend_op(uint16_t instr);
+    std::string thumb_rev(uint16_t instr);
     std::string thumb_branch(ARM_CPU& cpu, uint16_t instr);
     std::string thumb_cond_branch(ARM_CPU& cpu, uint16_t instr);
     std::string thumb_long_branch(ARM_CPU& cpu, uint16_t instr);

@@ -207,11 +207,25 @@ void ARM_CPU::jp(uint32_t addr, bool change_thumb_state)
     {
         //can_disassemble = true;
         uint32_t process_ptr = read32(0xFFFF9004);
-        printf("Jumping to PID%d (addr: $%08X)\n", read32(process_ptr + 0xB4), addr);
-        /*if (read32(process_ptr + 0xB4) == 5)
+        uint32_t pid = read32(process_ptr + 0xB4);
+        printf("Jumping to PID%d (addr: $%08X)\n", pid, addr);
+        if (addr & 0xFFFFF)
+        {
+            uint32_t prev_instr = read32(addr - 4);
+            if (prev_instr == 0xEF000032)
+            {
+                uint32_t error = read32(cp15->mrc(0, 0xD, 3, 0) + 0x84);
+                if (error & (1 << 31))
+                    printf("Error: $%08X\n", error);
+            }
+        }
+        if (pid == 15)
+        {
             can_disassemble = true;
+
+        }
         else
-            can_disassemble = false;*/
+            can_disassemble = false;
     }
 
     gpr[15] = addr;
@@ -312,10 +326,6 @@ void ARM_CPU::swi()
             uint32_t tls = cp15->mrc(0, 0xD, 0x3, 0x0);
             uint32_t header = read32(tls + 0x80);
             printf("SendSyncRequest: $%08X\n", header);
-            if (header == 0x10140)
-            {
-                printf("Program ID: %08X %08X\n", read32(tls + 0x84), read32(tls + 0x88));
-            }
         }
     }
     /*if (gpr[7] == 4)
