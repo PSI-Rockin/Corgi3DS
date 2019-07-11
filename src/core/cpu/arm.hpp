@@ -89,10 +89,12 @@ class ARM_CPU
         uint8_t read8(uint32_t addr);
         uint16_t read16(uint32_t addr);
         uint32_t read32(uint32_t addr);
+        uint64_t read64(uint32_t addr);
 
         void write8(uint32_t addr, uint8_t value);
         void write16(uint32_t addr, uint16_t value);
         void write32(uint32_t addr, uint32_t value);
+        void write64(uint32_t addr, uint64_t value);
 
         bool has_exclusive(uint32_t addr);
         void set_exclusive(uint32_t addr, uint32_t size);
@@ -146,7 +148,9 @@ class ARM_CPU
         void srs(uint32_t instr);
         void rfe(uint32_t instr);
 
+        void vfp_single_transfer(uint32_t instr);
         void vfp_load_store(uint32_t instr);
+        void vfp_data_processing(uint32_t instr);
 
         uint32_t mrc(int coprocessor_id, int operation_mode, int CP_reg,
                      int coprocessor_info, int coprocessor_operand);

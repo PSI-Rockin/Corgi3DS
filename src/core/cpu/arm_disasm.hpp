@@ -17,6 +17,7 @@ enum ARM_INSTR
     ARM_SXTB,
     ARM_SXTH,
     ARM_UXTB,
+    ARM_UXTAB,
     ARM_UXTH,
     ARM_UXTAH,
     ARM_REV,
@@ -131,6 +132,7 @@ namespace ARM_Disasm
     std::string arm_sxtb(uint32_t instr);
     std::string arm_sxth(uint32_t instr);
     std::string arm_uxtb(uint32_t instr);
+    std::string arm_uxtab(uint32_t instr);
     std::string arm_uxth(uint32_t instr);
     std::string arm_uxtah(uint32_t instr);
     std::string arm_rev(uint32_t instr);
@@ -154,9 +156,14 @@ namespace ARM_Disasm
     std::string arm_load_store_block(uint32_t instr);
     std::string arm_cop_transfer(uint32_t instr);
 
+    std::string vfp_single_transfer(uint32_t instr);
+    std::string vfp_mov_fpr_gpr(uint32_t instr);
+    std::string vfp_mov_sys_reg(uint32_t instr);
     std::string vfp_load_store(uint32_t instr);
     std::string vfp_load_store_block(uint32_t instr);
     std::string vfp_load_store_single(uint32_t instr);
+    std::string vfp_data_processing(uint32_t instr);
+    std::string vfp_data_extended(uint32_t instr);
 
     std::string disasm_thumb(ARM_CPU& cpu, uint16_t instr);
     std::string thumb_move_shift(uint16_t instr);

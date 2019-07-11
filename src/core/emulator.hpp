@@ -59,6 +59,8 @@ class Emulator
 
         uint32_t config_bootenv;
 
+        uint8_t dsp_mem_config[16];
+
         uint16_t HID_PAD;
 
         uint8_t sysprot9, sysprot11;

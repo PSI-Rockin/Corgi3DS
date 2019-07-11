@@ -64,6 +64,9 @@ void interpret_arm(ARM_CPU &cpu, uint32_t instr)
         case ARM_UXTB:
             arm_uxtb(cpu, instr);
             break;
+        case ARM_UXTAB:
+            arm_uxtab(cpu, instr);
+            break;
         case ARM_UXTH:
             arm_uxth(cpu, instr);
             break;
@@ -164,7 +167,22 @@ void interpret_arm(ARM_CPU &cpu, uint32_t instr)
         }
             break;
         case ARM_COP_REG_TRANSFER:
-            arm_cop_transfer(cpu, instr);
+        {
+            int id = (instr >> 8) & 0xF;
+            if (id == 10 || id == 11)
+                cpu.vfp_single_transfer(instr);
+            else
+                arm_cop_transfer(cpu, instr);
+        }
+            break;
+        case ARM_COP_DATA_OP:
+        {
+            int id = (instr >> 8) & 0xF;
+            if (id == 10 || id == 11)
+                cpu.vfp_data_processing(instr);
+            else
+                EmuException::die("[ARM_Interpreter] Undefined instr $%08X\n", instr);
+        }
             break;
         case ARM_NOP:
         case ARM_YIELD:
@@ -322,6 +340,19 @@ void arm_uxtb(ARM_CPU &cpu, uint32_t instr)
     uint32_t source_reg = rotr32(cpu.get_register(source), rot * 8);
 
     cpu.set_register(dest, source_reg & 0xFF);
+}
+
+void arm_uxtab(ARM_CPU &cpu, uint32_t instr)
+{
+    int source1 = (instr >> 16) & 0xF;
+    int source2 = instr & 0xF;
+    int rot = (instr >> 10) & 0x3;
+    int dest = (instr >> 12) & 0xF;
+
+    uint32_t source1_reg = cpu.get_register(source1);
+    uint32_t source2_reg = rotr32(cpu.get_register(source2), rot * 8) & 0xFF;
+
+    cpu.set_register(dest, source1_reg + source2_reg);
 }
 
 void arm_uxth(ARM_CPU &cpu, uint32_t instr)

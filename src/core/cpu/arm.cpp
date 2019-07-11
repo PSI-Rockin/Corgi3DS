@@ -325,7 +325,9 @@ void ARM_CPU::swi()
         {
             uint32_t tls = cp15->mrc(0, 0xD, 0x3, 0x0);
             uint32_t header = read32(tls + 0x80);
-            printf("SendSyncRequest: $%08X\n", header);
+            uint32_t process_ptr = read32(0xFFFF9004);
+            uint32_t pid = read32(process_ptr + 0xB4);
+            printf("(PID%d) SendSyncRequest: $%08X\n", pid, header);
         }
     }
     /*if (gpr[7] == 4)
@@ -713,6 +715,13 @@ uint32_t ARM_CPU::read32(uint32_t addr)
     return e->arm11_read32(id - 11, addr);
 }
 
+uint64_t ARM_CPU::read64(uint32_t addr)
+{
+    uint64_t value = read32(addr + 4);
+    value <<= 32ULL;
+    return value | read32(addr);
+}
+
 void ARM_CPU::write8(uint32_t addr, uint8_t value)
 {
     if (addr >= 0x080B7BC0 && addr < 0x080B7BC0 + 0x200)
@@ -803,6 +812,12 @@ void ARM_CPU::write32(uint32_t addr, uint32_t value)
         e->arm9_write32(addr, value);
     else
         e->arm11_write32(id - 11, addr, value);
+}
+
+void ARM_CPU::write64(uint32_t addr, uint64_t value)
+{
+    write32(addr, value & 0xFFFFFFFF);
+    write32(addr + 4, value >> 32);
 }
 
 bool ARM_CPU::has_exclusive(uint32_t addr)
@@ -1224,9 +1239,19 @@ void ARM_CPU::rfe(uint32_t instr)
     jp(PC, false);
 }
 
+void ARM_CPU::vfp_single_transfer(uint32_t instr)
+{
+    ARM_Interpreter::vfp_single_transfer(*this, *vfp, instr);
+}
+
 void ARM_CPU::vfp_load_store(uint32_t instr)
 {
     ARM_Interpreter::vfp_load_store(*this, *vfp, instr);
+}
+
+void ARM_CPU::vfp_data_processing(uint32_t instr)
+{
+    ARM_Interpreter::vfp_data_processing(*this, *vfp, instr);
 }
 
 uint32_t ARM_CPU::mrc(int coprocessor_id, int operation_mode, int CP_reg,

@@ -707,6 +707,8 @@ void Emulator::arm9_write32(uint32_t addr, uint32_t value)
 
 uint8_t Emulator::arm11_read8(int core, uint32_t addr)
 {
+    if (addr >= 0x10140000 && addr < 0x10140010)
+        return dsp_mem_config[addr & 0xF];
     if (addr >= 0x10144000 && addr < 0x10145000)
         return i2c.read8(addr);
     if (addr >= 0x10147000 && addr < 0x10148000)
@@ -722,12 +724,20 @@ uint8_t Emulator::arm11_read8(int core, uint32_t addr)
         return mpcore_pmr.read8(core, addr);
     switch (addr)
     {
+        case 0x1014010C:
+            return 0;
+        case 0x10140180:
+            return 0; //WiFi power
         case 0x10141204:
             return 1; //GPU power
         case 0x10141208:
             return 0; //Unk GPU power reg
         case 0x10141220:
             return 0; //Enable FCRAM?
+        case 0x10141224:
+            return 0; //Camera power
+        case 0x10141230:
+            return 0; //DSP power
         case 0x10163000:
         case 0x10163001:
         case 0x10163002:
@@ -740,6 +750,21 @@ uint8_t Emulator::arm11_read8(int core, uint32_t addr)
 
 uint16_t Emulator::arm11_read16(int core, uint32_t addr)
 {
+    if (addr >= 0x10103000 && addr < 0x10104000)
+    {
+        printf("[CSND] Unrecognized read16 $%08X\n", addr);
+        return 0;
+    }
+    if (addr >= 0x10120000 && addr < 0x10122000)
+    {
+        printf("[Y2R] Unrecognized read16 $%08X\n", addr);
+        return 0;
+    }
+    if (addr >= 0x10145000 && addr < 0x10146000)
+    {
+        printf("[CODEC] Unrecognized read16 $%08X\n", addr);
+        return 0;
+    }
     if (addr >= 0x10147000 && addr < 0x10148000)
     {
         printf("[GPIO] Unrecognized read16 $%08X\n", addr);
@@ -769,6 +794,16 @@ uint32_t Emulator::arm11_read32(int core, uint32_t addr)
 {
     if (addr >= 0x17E00000 && addr < 0x17E02000)
         return mpcore_pmr.read32(core, addr);
+    if (addr >= 0x10103000 && addr < 0x10104000)
+    {
+        printf("[CSND] Unrecognized read32 $%08X\n", addr);
+        return 0;
+    }
+    if (addr >= 0x10120000 && addr < 0x10122000)
+    {
+        printf("[Y2R] Unrecognized read32 $%08X\n", addr);
+        return 0;
+    }
     if (addr >= 0x10200000 && addr < 0x10201000)
     {
         printf("[CDMA] Unrecognized read32 $%08X\n", addr);
@@ -826,9 +861,11 @@ void Emulator::arm11_write8(int core, uint32_t addr, uint8_t value)
         return;
     }
 
-    //Mapping data to DSP
     if (addr >= 0x10140000 && addr < 0x10140010)
+    {
+        dsp_mem_config[addr & 0xF] = value;
         return;
+    }
 
     if (addr >= 0x10144000 && addr < 0x10145000)
     {
@@ -854,11 +891,17 @@ void Emulator::arm11_write8(int core, uint32_t addr, uint8_t value)
             return;
         case 0x1014010C:
             return;
+        case 0x10140180:
+            return;
         case 0x10141204:
             return;
         case 0x10141208:
             return;
         case 0x10141220:
+            return;
+        case 0x10141224:
+            return;
+        case 0x10141230:
             return;
         case 0x10163001:
         {
@@ -883,9 +926,24 @@ void Emulator::arm11_write16(int core, uint32_t addr, uint16_t value)
         mpcore_pmr.write16(core, addr, value);
         return;
     }
+    if (addr >= 0x10103000 && addr < 0x10104000)
+    {
+        printf("[CSND] Unrecognized write16 $%08X: $%04X\n", addr, value);
+        return;
+    }
+    if (addr >= 0x10120000 && addr < 0x10122000)
+    {
+        printf("[Y2R] Unrecognized write16 $%08X: $%04X\n", addr, value);
+        return;
+    }
     if (addr >= 0x10144000 && addr < 0x10145000)
     {
         printf("[I2C] Unrecognized write16 $%08X: $%04X\n", addr, value);
+        return;
+    }
+    if (addr >= 0x10145000 && addr < 0x10146000)
+    {
+        printf("[CODEC] Unrecognized write16 $%08X: $%04X\n", addr, value);
         return;
     }
     if (addr >= 0x10147000 && addr < 0x10148000)
@@ -923,6 +981,16 @@ void Emulator::arm11_write32(int core, uint32_t addr, uint32_t value)
     if (addr >= 0x10101000 && addr < 0x10102000)
     {
         hash.write32(addr, value);
+        return;
+    }
+    if (addr >= 0x10103000 && addr < 0x10104000)
+    {
+        printf("[CSND] Unrecognized write32 $%08X: $%08X\n", addr, value);
+        return;
+    }
+    if (addr >= 0x10120000 && addr < 0x10122000)
+    {
+        printf("[Y2R] Unrecognized write32 $%08X: $%08X\n", addr, value);
         return;
     }
     if (addr >= 0x10200000 && addr < 0x10201000)

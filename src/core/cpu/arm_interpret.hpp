@@ -17,6 +17,7 @@ namespace ARM_Interpreter
     void arm_sxtb(ARM_CPU& cpu, uint32_t instr);
     void arm_sxth(ARM_CPU& cpu, uint32_t instr);
     void arm_uxtb(ARM_CPU& cpu, uint32_t instr);
+    void arm_uxtab(ARM_CPU& cpu, uint32_t instr);
     void arm_uxth(ARM_CPU& cpu, uint32_t instr);
     void arm_uxtah(ARM_CPU& cpu, uint32_t instr);
     void arm_rev(ARM_CPU& cpu, uint32_t instr);
@@ -48,8 +49,37 @@ namespace ARM_Interpreter
     void arm_store_block(ARM_CPU& cpu, uint32_t instr);
     void arm_cop_transfer(ARM_CPU& cpu, uint32_t instr);
 
+    void vfp_single_transfer(ARM_CPU& cpu, VFP& vfp, uint32_t instr);
+    void vfp_mov_fpr_gpr(ARM_CPU& cpu, VFP& vfp, uint32_t instr);
+    void vfp_mov_sys_reg(ARM_CPU& cpu, VFP& vfp, uint32_t instr);
+
     void vfp_load_store(ARM_CPU& cpu, VFP& vfp, uint32_t instr);
-    void vfp_store_block_double(ARM_CPU& cpu, VFP& vfp, uint32_t instr);
+    void vfp_load_single(ARM_CPU& cpu, VFP& vfp, uint32_t instr);
+    void vfp_store_single(ARM_CPU& cpu, VFP& vfp, uint32_t instr);
+    void vfp_load_block(ARM_CPU& cpu, VFP& vfp, uint32_t instr);
+    void vfp_store_block(ARM_CPU& cpu, VFP& vfp, uint32_t instr);
+
+    void vfp_data_processing(ARM_CPU& cpu, VFP& vfp, uint32_t instr);
+    void vfp_mac(ARM_CPU& cpu, VFP& vfp, uint32_t instr);
+    void vfp_nmac(ARM_CPU& cpu, VFP& vfp, uint32_t instr);
+    void vfp_nmsc(ARM_CPU& cpu, VFP& vfp, uint32_t instr);
+    void vfp_mul(ARM_CPU& cpu, VFP& vfp, uint32_t instr);
+    void vfp_nmul(ARM_CPU& cpu, VFP& vfp, uint32_t instr);
+    void vfp_add(ARM_CPU& cpu, VFP& vfp, uint32_t instr);
+    void vfp_sub(ARM_CPU& cpu, VFP& vfp, uint32_t instr);
+    void vfp_div(ARM_CPU& cpu, VFP& vfp, uint32_t instr);
+
+    void vfp_data_extended(ARM_CPU& cpu, VFP& vfp, uint32_t instr);
+    void vfp_cpy(ARM_CPU& cpu, VFP& vfp, uint32_t instr);
+    void vfp_neg(ARM_CPU& cpu, VFP& vfp, uint32_t instr);
+    void vfp_abs(ARM_CPU& cpu, VFP& vfp, uint32_t instr);
+    void vfp_cmps(ARM_CPU& cpu, VFP& vfp, uint32_t instr);
+    void vfp_cmpes(ARM_CPU& cpu, VFP& vfp, uint32_t instr);
+    void vfp_sqrt(ARM_CPU& cpu, VFP& vfp, uint32_t instr);
+    void vfp_fuito(ARM_CPU& cpu, VFP& vfp, uint32_t instr);
+    void vfp_fsito(ARM_CPU& cpu, VFP& vfp, uint32_t instr);
+    void vfp_ftoui(ARM_CPU& cpu, VFP& vfp, uint32_t instr);
+    void vfp_ftosi(ARM_CPU& cpu, VFP& vfp, uint32_t instr);
 
     void interpret_thumb(ARM_CPU& cpu, uint16_t instr);
     void thumb_move_shift(ARM_CPU& cpu, uint16_t instr);
