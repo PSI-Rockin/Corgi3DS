@@ -56,6 +56,7 @@ class ARM_CPU
         bool can_disassemble;
         bool int_pending;
         bool event_pending;
+        int cycles_ran;
         uint64_t local_exclusive_start, local_exclusive_end;
 
         VFP* vfp;
@@ -81,6 +82,7 @@ class ARM_CPU
         void run(int cycles);
         void print_state();
         int get_id();
+        int get_cycles_ran();
 
         bool is_halted();
         uint32_t get_PC();
@@ -174,6 +176,11 @@ inline bool ARM_CPU::is_halted()
 inline int ARM_CPU::get_id()
 {
     return id;
+}
+
+inline int ARM_CPU::get_cycles_ran()
+{
+    return cycles_ran;
 }
 
 inline uint32_t ARM_CPU::get_register(int id)

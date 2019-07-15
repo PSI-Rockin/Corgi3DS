@@ -183,6 +183,7 @@ namespace ARM_Disasm
     std::string thumb_offset_sp(uint16_t instr);
     std::string thumb_extend_op(uint16_t instr);
     std::string thumb_rev(uint16_t instr);
+    std::string thumb_rev16(uint16_t instr);
     std::string thumb_branch(ARM_CPU& cpu, uint16_t instr);
     std::string thumb_cond_branch(ARM_CPU& cpu, uint16_t instr);
     std::string thumb_long_branch(ARM_CPU& cpu, uint16_t instr);

@@ -101,6 +101,9 @@ void interpret_thumb(ARM_CPU &cpu, uint16_t instr)
         case THUMB_REV:
             thumb_rev(cpu, instr);
             break;
+        case THUMB_REV16:
+            thumb_rev16(cpu, instr);
+            break;
         case THUMB_BRANCH:
             thumb_branch(cpu, instr);
             break;
@@ -747,6 +750,18 @@ void thumb_rev(ARM_CPU &cpu, uint16_t instr)
     uint32_t source_reg = cpu.get_register(source);
 
     cpu.set_register(dest, bswp32(source_reg));
+}
+
+void thumb_rev16(ARM_CPU &cpu, uint16_t instr)
+{
+    int dest = instr & 0x7;
+    int source = (instr >> 3) & 0x7;
+    uint32_t source_reg = cpu.get_register(source);
+
+    uint32_t h1 = bswp16(source_reg & 0xFFFF);
+    uint32_t h2 = bswp16(source_reg >> 16);
+
+    cpu.set_register(dest, h1 | (h2 << 16));
 }
 
 void thumb_branch(ARM_CPU &cpu, uint16_t instr)

@@ -12,6 +12,8 @@ THUMB_INSTR decode_thumb(uint16_t instr)
         {
             case 0x00:
                 return THUMB_REV;
+            case 0x01:
+                return THUMB_REV16;
             default:
                 return THUMB_UNDEFINED;
         }
@@ -172,6 +174,8 @@ string disasm_thumb(ARM_CPU& cpu, uint16_t instr)
             return thumb_extend_op(instr);
         case THUMB_REV:
             return thumb_rev(instr);
+        case THUMB_REV16:
+            return thumb_rev16(instr);
         case THUMB_BRANCH:
             return thumb_branch(cpu, instr);
         case THUMB_COND_BRANCH:
@@ -569,6 +573,17 @@ string thumb_rev(uint16_t instr)
     uint32_t source = (instr >> 3) & 0x7;
 
     output << "rev ";
+    output << ARM_CPU::get_reg_name(dest) << ", " << ARM_CPU::get_reg_name(source);
+    return output.str();
+}
+
+string thumb_rev16(uint16_t instr)
+{
+    stringstream output;
+    uint32_t dest = instr & 0x7;
+    uint32_t source = (instr >> 3) & 0x7;
+
+    output << "rev16 ";
     output << ARM_CPU::get_reg_name(dest) << ", " << ARM_CPU::get_reg_name(source);
     return output.str();
 }

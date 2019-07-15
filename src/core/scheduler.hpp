@@ -1,21 +1,7 @@
 #ifndef SCHEDULER_HPP
 #define SCHEDULER_HPP
+#include <functional>
 #include <list>
-
-class Emulator;
-
-typedef void(Emulator::*event_func)(uint64_t param);
-
-enum EVENT_ID
-{
-    TIMER9_INT,
-    TIMER11_INT,
-    NDMA_TRANSFER,
-    NDMA_TRY_TRANSFER,
-    XDMA_TRANSFER,
-    GPU_MEMFILL,
-    I2C_TRANSFER
-};
 
 struct CycleCount
 {
@@ -25,11 +11,10 @@ struct CycleCount
 
 struct SchedulerEvent
 {
-    EVENT_ID id;
     int64_t time_registered;
     int64_t time_to_run;
     uint64_t param;
-    event_func func;
+    std::function<void(uint64_t)> func;
 };
 
 class Scheduler
@@ -52,8 +37,8 @@ class Scheduler
         int get_cycles9_to_run();
         void reset();
 
-        void add_event(EVENT_ID id, event_func func, int64_t cycles, uint64_t param = 0);
-        void process_events(Emulator* e);
+        void add_event(std::function<void(uint64_t)> func, int64_t cycles, uint64_t param = 0);
+        void process_events();
 };
 
 inline int Scheduler::get_cycles11_to_run()

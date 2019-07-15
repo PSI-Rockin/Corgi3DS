@@ -161,7 +161,7 @@ void GPU::write32(uint32_t addr, uint32_t value)
                     memfill[index].busy = true;
 
                     //TODO: How long does a memfill take? We just assume a constant value for now
-                    scheduler->add_event(GPU_MEMFILL, &Emulator::gpu_memfill_event, 10000, index);
+                    scheduler->add_event([this](uint64_t param) { this->do_memfill(param);}, 10000, index);
                 }
                 break;
         }
@@ -176,6 +176,19 @@ void GPU::write32(uint32_t addr, uint32_t value)
     {
         write32_fb(1, addr, value);
         return;
+    }
+    switch (addr)
+    {
+        case 0x0C18:
+            //PPF IRQ
+            if (value & 0x1)
+                pmr->assert_hw_irq(0x2C);
+            break;
+        case 0x18F0:
+            //P3D IRQ
+            if (value & 0x1)
+                pmr->assert_hw_irq(0x2D);
+            break;
     }
     printf("[GPU] Unrecognized write32 $%08X: $%08X\n", addr, value);
 }

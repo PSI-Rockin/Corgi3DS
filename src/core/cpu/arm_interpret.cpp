@@ -905,17 +905,10 @@ void arm_load_word(ARM_CPU &cpu, uint32_t instr)
         uint32_t word;
 
         //Split unaligned accesses into two reads to prevent issues if physical pages are not contiguous
-        if (cpu.get_id() != 9 && (address & 0x3))
-        {
-            uint32_t word1 = cpu.read32(address & ~0x3);
-            uint32_t word2 = cpu.read32((address + 4) & ~0x3);
-            int low_bits = address & 0x3;
-
-            word = word1 >> (low_bits * 8);
-            word |= word2 << ((4 - low_bits) * 8);
-        }
-        else
+        if (cpu.get_id() == 9 && (address & 0x3))
             word = cpu.rotr32(cpu.read32(address & ~0x3), (address & 0x3) * 8, false);
+        else
+            word = cpu.read32(address);
 
         if (is_writing_back && base != destination)
             cpu.set_register(base, address);
@@ -928,17 +921,10 @@ void arm_load_word(ARM_CPU &cpu, uint32_t instr)
     else
     {
         uint32_t word;
-        if (cpu.get_id() != 9 && (address & 0x3))
-        {
-            uint32_t word1 = cpu.read32(address & ~0x3);
-            uint32_t word2 = cpu.read32((address + 4) & ~0x3);
-            int low_bits = address & 0x3;
-
-            word = word1 >> (low_bits * 8);
-            word |= word2 << ((4 - low_bits) * 8);
-        }
-        else
+        if (cpu.get_id() == 9 && (address & 0x3))
             word = cpu.rotr32(cpu.read32(address & ~0x3), (address & 0x3) * 8, false);
+        else
+            word = cpu.read32(address);
 
         if (destination == REG_PC)
             cpu.jp(word, true);

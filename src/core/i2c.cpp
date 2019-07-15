@@ -19,6 +19,9 @@ void I2C::reset()
     memset(cnt, 0, sizeof(cnt));
     memset(devices, 0, sizeof(devices));
     mcu_counter = 0;
+
+    memset(mcu_int_mask, 0, sizeof(mcu_int_mask));
+    memset(mcu_int_pending, 0, sizeof(mcu_int_pending));
 }
 
 uint8_t I2C::read8(uint32_t addr)
@@ -94,7 +97,7 @@ void I2C::set_cnt(int id, uint8_t value)
     {
         cnt[id].ack_flag = true;
         cnt[id].busy = true;
-        scheduler->add_event(I2C_TRANSFER, &Emulator::i2c_transfer_event, 20000, id);
+        scheduler->add_event([this](uint64_t param) { this->do_transfer(param);}, 20000, id);
     }
 }
 
@@ -155,6 +158,12 @@ void I2C::do_transfer(int id)
     }
 }
 
+void I2C::mcu_interrupt(int id)
+{
+    mcu_int_pending[id / 8] |= 1 << (id & 0x7);
+    pmr->assert_hw_irq(0x71);
+}
+
 void I2C::update_time()
 {
     time_t raw_time;
@@ -202,6 +211,13 @@ void I2C::write_device(int id, uint8_t device, uint8_t value)
 
 uint8_t I2C::read_mcu(uint8_t reg_id)
 {
+    if (reg_id >= 0x10 && reg_id < 0x14)
+    {
+        uint8_t value = mcu_int_pending[reg_id & 0x3];
+        mcu_int_pending[reg_id & 0x3] = 0;
+        return value;
+    }
+
     if (reg_id >= 0x30 && reg_id < 0x37)
     {
         printf("Read time: $%02X\n", mcu_time[reg_id - 0x30]);
@@ -246,6 +262,13 @@ void I2C::write_mcu(uint8_t reg_id, uint8_t value)
             //Reboot
             if (value & 0x4)
                 EmuException::reboot();
+            break;
+        case 0x22:
+            for (int i = 0; i < 6; i++)
+            {
+                if (value & (1 << i))
+                    scheduler->add_event([this](uint64_t param) { this->mcu_interrupt(param); }, 1000 * 1000, 24 + i);
+            }
             break;
         default:
             printf("[I2C_MCU] Unrecognized write register $%02X\n", reg_id);

@@ -1,5 +1,4 @@
 #include <algorithm>
-#include "emulator.hpp"
 #include "scheduler.hpp"
 
 Scheduler::Scheduler()
@@ -16,7 +15,7 @@ void Scheduler::reset()
 
 void Scheduler::calculate_cycles_to_run()
 {
-    const static int MAX_CYCLES = 2;
+    const static int MAX_CYCLES = 64;
 
     cycles11_to_run = 0;
 
@@ -37,11 +36,10 @@ void Scheduler::calculate_cycles_to_run()
         cycles9_to_run++;
 }
 
-void Scheduler::add_event(EVENT_ID id, event_func func, int64_t cycles, uint64_t param)
+void Scheduler::add_event(std::function<void(uint64_t)> func, int64_t cycles, uint64_t param)
 {
     SchedulerEvent event;
 
-    event.id = id;
     event.func = func;
     event.time_registered = -1; //TODO
     event.time_to_run = cycles11.count + cycles;
@@ -52,7 +50,7 @@ void Scheduler::add_event(EVENT_ID id, event_func func, int64_t cycles, uint64_t
     events.push_back(event);
 }
 
-void Scheduler::process_events(Emulator* e)
+void Scheduler::process_events()
 {
     cycles11.count += cycles11_to_run;
     cycles9.count += cycles9_to_run;
@@ -63,7 +61,7 @@ void Scheduler::process_events(Emulator* e)
         {
             if (it->time_to_run <= closest_event_time)
             {
-                (e->*it->func)(it->param);
+                it->func(it->param);
                 it = events.erase(it);
             }
             else

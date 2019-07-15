@@ -41,7 +41,9 @@ SOURCES += src/qt/main.cpp \
     src/core/cpu/vfp_interpreter.cpp \
     src/core/sha_engine.cpp \
     src/core/arm11/hash.cpp \
-    src/core/p9_hle.cpp
+    src/core/p9_hle.cpp \
+    src/core/arm11/dsp.cpp \
+    src/core/arm9/cartridge.cpp
 
 HEADERS += \
     src/core/emulator.hpp \
@@ -72,7 +74,9 @@ HEADERS += \
     src/core/cpu/vfp.hpp \
     src/core/sha_engine.hpp \
     src/core/arm11/hash.hpp \
-    src/core/p9_hle.hpp
+    src/core/p9_hle.hpp \
+    src/core/arm11/dsp.hpp \
+    src/core/arm9/cartridge.hpp
 
 INCLUDEPATH += /usr/local/include
 

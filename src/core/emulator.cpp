@@ -11,6 +11,7 @@ Emulator::Emulator() :
     app_cp15(0, &appcore, &app_mmu),
     sys_cp15(1, &syscore, &sys_mmu),
     aes(&dma9, &int9),
+    cartridge(&dma9, &int9),
     dma9(this, &int9, &scheduler),
     emmc(&int9, &dma9),
     gpu(&scheduler, &mpcore_pmr),
@@ -57,10 +58,12 @@ void Emulator::reset(bool cold_boot)
 
     HID_PAD = 0xFFF;
 
+    dsp.reset();
     gpu.reset(vram);
     i2c.reset();
 
     aes.reset();
+    cartridge.reset();
     dma9.reset();
     emmc.reset();
     pxi.reset();
@@ -70,6 +73,9 @@ void Emulator::reset(bool cold_boot)
 
     if (cold_boot)
         config_bootenv = 0;
+
+    config_cardctrl2 = 0;
+    card_reset = 0;
 
     arm9_pu.reset();
     app_mmu.reset();
@@ -115,21 +121,23 @@ void Emulator::run()
     static int frames = 0;
     i2c.update_time();
     printf("FRAME %d\n", frames);
-    //syscore.set_disassembly(frames == 196);
-    //arm9.set_disassembly(frames == 41);
-    for (int i = 0; i < 4000000 / 2; i++)
+    int cycles = 0;
+    if (frames == 700)
+        EmuException::die("bkpt");
+    while (cycles < 4000000)
     {
         scheduler.calculate_cycles_to_run();
         int cycles11 = scheduler.get_cycles11_to_run();
         int cycles9 = scheduler.get_cycles9_to_run();
+        cycles += cycles11;
         appcore.run(cycles11);
         syscore.run(cycles11);
         arm9.run(cycles9);
-        timers.run();
-        timers.run();
+        timers.run(cycles11);
+        dsp.run(cycles9);
         dma9.process_ndma_reqs();
         dma9.run_xdma();
-        scheduler.process_events(this);
+        scheduler.process_events();
     }
     //VBLANK
     mpcore_pmr.assert_hw_irq(0x2A);
@@ -210,6 +218,11 @@ bool Emulator::mount_sd(std::string file_name)
     return emmc.mount_sd(file_name);
 }
 
+bool Emulator::mount_cartridge(std::string file_name)
+{
+    return cartridge.mount(file_name);
+}
+
 void Emulator::load_and_run_elf(uint8_t *elf, uint64_t size)
 {
     reset();
@@ -262,21 +275,6 @@ void Emulator::load_and_run_elf(uint8_t *elf, uint64_t size)
     arm9.run(1024 * 1024);
 }
 
-void Emulator::gpu_memfill_event(uint64_t index)
-{
-    gpu.do_memfill(index);
-}
-
-void Emulator::try_ndma_transfer_event(uint64_t index)
-{
-    dma9.try_ndma_transfer_event((NDMA_Request)index);
-}
-
-void Emulator::i2c_transfer_event(uint64_t index)
-{
-    i2c.do_transfer(index);
-}
-
 uint8_t Emulator::arm9_read8(uint32_t addr)
 {
     if (addr >= 0x08000000 && addr < 0x08100000)
@@ -317,9 +315,24 @@ uint8_t Emulator::arm9_read8(uint32_t addr)
         case 0x10000008:
             return 0; //AES related
         case 0x1000000C:
-            return 0; //card select
+            return config_cardselect;
         case 0x10000010:
-            return 1; //Cartridge not inserted
+        {
+            uint8_t reg = config_cardctrl2;
+
+            if (!cartridge.card_inserted())
+                reg |= 1;
+
+            if (card_reset)
+            {
+                card_reset--;
+                if (!card_reset)
+                    config_cardctrl2 = 0;
+            }
+
+            //printf("[ARM9] Read8 CARD_CFG2: $%02X\n", reg);
+            return reg;
+        }
         case 0x10000200:
             return 0; //New3DS memory hidden
         case 0x10008000:
@@ -361,12 +374,15 @@ uint16_t Emulator::arm9_read16(uint32_t addr)
         return 0;
     }
 
+    if (addr >= 0x10164000 && addr < 0x10165000)
+        return cartridge.read16_ntr(addr);
+
     switch (addr)
     {
         case 0x10000004:
             return 0; //debug control?
         case 0x1000000C:
-            return 0; //card select
+            return config_cardselect; //card select
         case 0x10000020:
             return 0;
         case 0x10000FFC:
@@ -393,10 +409,7 @@ uint32_t Emulator::arm9_read32(uint32_t addr)
         return dma9.read32_ndma(addr);
 
     if (addr >= 0x10004000 && addr < 0x10006000)
-    {
-        printf("[ARM9] Unrecognized read32 from CTRCARD $%08X\n", addr);
-        return 0;
-    }
+        return cartridge.read32_ctr(addr);
 
     if (addr >= 0x10006000 && addr < 0x10007000)
         return emmc.read32(addr);
@@ -414,8 +427,11 @@ uint32_t Emulator::arm9_read32(uint32_t addr)
         return dma9.read32_xdma(addr);
 
     if (addr >= 0x1000D800 && addr < 0x1000E000)
+        return cartridge.read32_spicard(addr);
+
+    if (addr >= 0x10011000 && addr < 0x10012000)
     {
-        printf("[ARM9] Unrecognized read32 from SPICARD $%08X\n", addr);
+        printf("[ARM9] Unrecognized read32 from PRNG $%08X\n", addr);
         return 0;
     }
 
@@ -423,10 +439,7 @@ uint32_t Emulator::arm9_read32(uint32_t addr)
         return *(uint32_t*)&otp[addr & 0xFF];
 
     if (addr >= 0x10164000 && addr < 0x10165000)
-    {
-        printf("[ARM9] Unrecognized read32 from NTRCARD $%08X\n", addr);
-        return 0;
-    }
+        return cartridge.read32_ntr(addr);
 
     if (addr >= 0x1FF80000 && addr < 0x20000000)
         return *(uint32_t*)&axi_RAM[addr & 0x7FFFF];
@@ -469,9 +482,19 @@ void Emulator::arm9_write8(uint32_t addr, uint8_t value)
         i2c.write8(addr, value);
         return;
     }
-    if (addr >= 0x10160000 && addr < 0x10170000)
+    if (addr >= 0x10160000 && addr < 0x10161000)
     {
         printf("[SPI2] Unrecognized write8 $%08X: $%02X\n", addr, value);
+        return;
+    }
+    if (addr >= 0x10164000 && addr < 0x10165000)
+    {
+        cartridge.write8_ntr(addr, value);
+        return;
+    }
+    if (addr >= 0x10004000 && addr < 0x10005000)
+    {
+        cartridge.write8_ctr(addr, value);
         return;
     }
     if (addr >= 0x1000B000 && addr < 0x1000C000)
@@ -525,6 +548,10 @@ void Emulator::arm9_write8(uint32_t addr, uint8_t value)
         case 0x10000008:
             return;
         case 0x10000010:
+            printf("[ARM9] Write8 CARD_CFG2: $%02X\n", value);
+            config_cardctrl2 = value;
+            if ((value & 0x0C) == 0x0C)
+                card_reset = 10;
             return;
         case 0x10000200:
             return; //supposed to control how much FCRAM N3DS has - ignore because we do O3DS for now
@@ -562,9 +589,19 @@ void Emulator::arm9_write16(uint32_t addr, uint16_t value)
         printf("[A9 I2C] Unrecognized write16 $%08X: $%04X\n", addr, value);
         return;
     }
-    if (addr >= 0x10160000 && addr < 0x10170000)
+    if (addr >= 0x10160000 && addr < 0x10161000)
     {
         printf("[SPI2] Unrecognized write16 $%08X: $%04X\n", addr, value);
+        return;
+    }
+    if (addr >= 0x10161000 && addr < 0x10162000)
+    {
+        printf("[A9 I2C] Unrecognized write16 $%08X: $%04X\n", addr, value);
+        return;
+    }
+    if (addr >= 0x10164000 && addr < 0x10165000)
+    {
+        cartridge.write16_ntr(addr, value);
         return;
     }
     switch (addr)
@@ -572,7 +609,9 @@ void Emulator::arm9_write16(uint32_t addr, uint16_t value)
         case 0x10000004:
             return;
         case 0x1000000C:
-            return; //card select
+            printf("[CFG9] Write cardselect: $%04X\n", value);
+            config_cardselect = value;
+            return;
         case 0x10000012:
             return;
         case 0x10000014:
@@ -581,6 +620,9 @@ void Emulator::arm9_write16(uint32_t addr, uint16_t value)
             return;
         case 0x10008004:
             pxi.write_cnt9(value);
+            return;
+        case 0x10009004:
+            aes.write_mac_count(value);
             return;
         case 0x10009006:
             aes.write_block_count(value);
@@ -619,7 +661,7 @@ void Emulator::arm9_write32(uint32_t addr, uint32_t value)
     }
     if (addr >= 0x10004000 && addr < 0x10006000)
     {
-        printf("[ARM9] Unrecognized write32 to CTRCARD $%08X: $%08X\n", addr, value);
+        cartridge.write32_ctr(addr, value);
         return;
     }
     if (addr >= 0x10006000 && addr < 0x10007000)
@@ -649,7 +691,7 @@ void Emulator::arm9_write32(uint32_t addr, uint32_t value)
     }
     if (addr >= 0x1000D800 && addr < 0x1000E000)
     {
-        printf("[ARM9] Unrecognized write32 to SPICARD $%08X: $%08X\n", addr, value);
+        cartridge.write32_spicard(addr, value);
         return;
     }
 
@@ -662,7 +704,7 @@ void Emulator::arm9_write32(uint32_t addr, uint32_t value)
 
     if (addr >= 0x10164000 && addr < 0x10165000)
     {
-        printf("[ARM9] Unrecognized write32 to NTRCARD $%08X: $%08X\n", addr, value);
+        cartridge.write32_ntr(addr, value);
         return;
     }
 
@@ -760,6 +802,11 @@ uint16_t Emulator::arm11_read16(int core, uint32_t addr)
         printf("[Y2R] Unrecognized read16 $%08X\n", addr);
         return 0;
     }
+    if (addr >= 0x10122000 && addr < 0x10123000)
+    {
+        printf("[WIFI] Unrecognized read16 $%08X\n", addr);
+        return 0;
+    }
     if (addr >= 0x10145000 && addr < 0x10146000)
     {
         printf("[CODEC] Unrecognized read16 $%08X\n", addr);
@@ -775,6 +822,8 @@ uint16_t Emulator::arm11_read16(int core, uint32_t addr)
         printf("[I2C] Unrecognized read8 $%08X\n", addr);
         return 0;
     }
+    /*if (addr >= 0x10203000 && addr < 0x10204000)
+        return dsp.read16(addr);*/
     switch (addr)
     {
         case 0x101401C0:
@@ -833,6 +882,11 @@ uint32_t Emulator::arm11_read32(int core, uint32_t addr)
     if (addr >= 0x10160000 && addr < 0x10161000)
     {
         printf("[SPI] Unrecognized read32 $%08X\n", addr);
+        return 0;
+    }
+    if (addr >= 0x1020F000 && addr < 0x10210000)
+    {
+        printf("[AXI] Unrecognized read32 $%08X\n", addr);
         return 0;
     }
     switch (addr)
@@ -936,6 +990,11 @@ void Emulator::arm11_write16(int core, uint32_t addr, uint16_t value)
         printf("[Y2R] Unrecognized write16 $%08X: $%04X\n", addr, value);
         return;
     }
+    if (addr >= 0x10122000 && addr < 0x10123000)
+    {
+        printf("[WIFI] Unrecognized write16 $%08X: $%04X\n", addr, value);
+        return;
+    }
     if (addr >= 0x10144000 && addr < 0x10145000)
     {
         printf("[I2C] Unrecognized write16 $%08X: $%04X\n", addr, value);
@@ -954,6 +1013,11 @@ void Emulator::arm11_write16(int core, uint32_t addr, uint16_t value)
     if (addr >= 0x10161000 && addr < 0x10162000)
     {
         printf("[I2C] Unrecognized write16 $%08X: $%04X\n", addr, value);
+        return;
+    }
+    if (addr >= 0x10203000 && addr < 0x10204000)
+    {
+        dsp.write16(addr, value);
         return;
     }
     switch (addr)
@@ -1001,6 +1065,11 @@ void Emulator::arm11_write32(int core, uint32_t addr, uint32_t value)
     if (addr >= 0x10202000 && addr < 0x10203000)
     {
         printf("[LCD] Unrecognized write32 $%08X: $%08X\n", addr, value);
+        return;
+    }
+    if (addr >= 0x1020F000 && addr < 0x10210000)
+    {
+        printf("[AXI] Unrecognized write32 $%08X: $%08X\n", addr, value);
         return;
     }
     if (addr >= 0x10301000 && addr < 0x10302000)

@@ -17,14 +17,14 @@ void Timers::reset()
     memset(arm11_timers, 0, sizeof(arm11_timers));
 }
 
-void Timers::run()
+void Timers::run(int cycles)
 {
     for (int i = 0; i < 4; i++)
     {
         if (arm9_timers[i].enabled && !arm9_timers[i].countup)
         {
-            arm9_timers[i].clocks++;
-            if (arm9_timers[i].clocks >= arm9_timers[i].prescalar)
+            arm9_timers[i].clocks += cycles >> 1;
+            while (arm9_timers[i].clocks >= arm9_timers[i].prescalar)
             {
                 arm9_timers[i].counter++;
                 arm9_timers[i].clocks -= arm9_timers[i].prescalar;
@@ -39,8 +39,8 @@ void Timers::run()
     {
         if (arm11_timers[i].enabled)
         {
-            arm11_timers[i].clocks++;
-            if (arm11_timers[i].clocks >= arm11_timers[i].prescalar)
+            arm11_timers[i].clocks += cycles;
+            while (arm11_timers[i].clocks >= arm11_timers[i].prescalar)
             {
                 arm11_timers[i].counter--;
                 arm11_timers[i].clocks -= arm11_timers[i].prescalar;
@@ -194,10 +194,13 @@ uint32_t Timers::arm11_get_load(int id)
     return arm11_timers[id].load;
 }
 
-uint32_t Timers::arm11_get_counter(int id)
+uint32_t Timers::arm11_get_counter(int id, int delta)
 {
-    printf("[Timers] Read ARM11 timer%d counter: $%08X\n", id, arm11_timers[id].counter);
-    return arm11_timers[id].counter;
+    uint32_t counter = arm11_timers[id].counter;
+    if (arm11_timers[id].enabled)
+        counter -= delta / arm11_timers[id].prescalar;
+    printf("[Timers] Read ARM11 timer%d counter: $%08X (%d)\n", id, counter, delta);
+    return counter;
 }
 
 uint32_t Timers::arm11_get_control(int id)

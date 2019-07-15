@@ -37,6 +37,9 @@ class I2C
 
         int mcu_counter;
 
+        uint8_t mcu_int_pending[4];
+        uint8_t mcu_int_mask[4];
+
         int get_id(uint32_t addr);
 
         uint8_t get_cnt(int id);
@@ -54,6 +57,7 @@ class I2C
         void update_time();
 
         void do_transfer(int id);
+        void mcu_interrupt(int id);
 
         uint8_t read8(uint32_t addr);
         void write8(uint32_t addr, uint8_t value);

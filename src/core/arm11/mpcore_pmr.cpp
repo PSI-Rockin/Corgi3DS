@@ -130,7 +130,7 @@ void MPCore_PMR::check_if_can_assert_irq(int core)
 
                 //Preemption check
                 if (priority < active_priority)
-                    EmuException::die("[PMR%d] PREEMPTION!");
+                    EmuException::die("[PMR%d] PREEMPTION!", core);
                 else
                     return;
             }
@@ -189,7 +189,10 @@ uint32_t MPCore_PMR::read32(int core, uint32_t addr)
                 return timers->arm11_get_load(timer_id);
             case 0x04:
             case 0x24:
-                return timers->arm11_get_counter(timer_id);
+                //2 cores
+                if (core == 0)
+                    return timers->arm11_get_counter(timer_id, appcore->get_cycles_ran());
+                return timers->arm11_get_counter(timer_id, syscore->get_cycles_ran());
             case 0x08:
             case 0x28:
                 return timers->arm11_get_control(timer_id);

@@ -107,6 +107,7 @@ void ARM_CPU::run(int cycles)
     try
     {
         int cycles_to_run = cycles;
+        cycles_ran = 0;
         while (!halted && cycles_to_run)
         {
             if (CPSR.thumb)
@@ -139,6 +140,7 @@ void ARM_CPU::run(int cycles)
                 }
                 ARM_Interpreter::interpret_arm(*this, instr);
             }
+            cycles_ran++;
             cycles_to_run--;
         }
     }
@@ -203,6 +205,14 @@ void ARM_CPU::jp(uint32_t addr, bool change_thumb_state)
         }
     }
 
+    if (addr == 0x1060B8 && (gpr[15] - 8 == 0x106054))
+    {
+        uint32_t process_ptr = read32(0xFFFF9004);
+        uint32_t pid = read32(process_ptr + 0xB4);
+        if (pid == 15)
+            return;
+    }
+
     if (id != 9 && gpr[15] >= 0x40000000 && ((addr >= 0x00100000 && addr < 0x10000000) || (addr >= 0x14000000 && addr < 0x18000000)))
     {
         //can_disassemble = true;
@@ -219,7 +229,7 @@ void ARM_CPU::jp(uint32_t addr, bool change_thumb_state)
                     printf("Error: $%08X\n", error);
             }
         }
-        if (pid == 15)
+        if (pid == 20)
         {
             can_disassemble = true;
 
@@ -692,7 +702,17 @@ uint32_t ARM_CPU::read32(uint32_t addr)
     if (id == 9 && (addr & 0x3))
         EmuException::die("[ARM9] Unaligned read32 $%08X", addr);
     if ((addr & 0xFFF) > 0xFFC)
-        EmuException::die("[ARM%d] Unaligned read32 on page boundary $%08X", id, addr);
+    {
+        //Handle unaligned reads on page boundaries by reading two words, as pages might be noncontiguous
+        uint32_t word1 = read32(addr & ~0x3);
+        uint32_t word2 = read32((addr + 4) & ~0x3);
+
+        int low_bits = addr & 0x3;
+
+        uint32_t word = word1 >> (low_bits * 8);
+        word |= word2 << ((4 - low_bits) * 8);
+        return word;
+    }
     uint64_t mem = (uint64_t)tlb_map[addr / 4096];
     if (!(mem & (1UL << 62UL)))
     {
@@ -710,6 +730,7 @@ uint32_t ARM_CPU::read32(uint32_t addr)
     }
     else
         addr = (mem & 0xFFFFF000) + (addr & 0xFFF);
+
     if (id == 9)
         return e->arm9_read32(addr);
     return e->arm11_read32(id - 11, addr);
@@ -724,10 +745,6 @@ uint64_t ARM_CPU::read64(uint32_t addr)
 
 void ARM_CPU::write8(uint32_t addr, uint8_t value)
 {
-    if (addr >= 0x080B7BC0 && addr < 0x080B7BC0 + 0x200)
-    {
-        printf("[ARM9] Write8 blorp $%08X: $%02X\n", addr, value);
-    }
     uint64_t mem = (uint64_t)tlb_map[addr / 4096];
     if (!(mem & (1UL << 61UL)))
     {

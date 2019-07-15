@@ -72,6 +72,15 @@ int main(int argc, char** argv)
         return 1;
     }
 
+    if (argc > 7)
+    {
+        if (!e.mount_cartridge(argv[7]))
+        {
+            printf("Failed to open %s\n", argv[7]);
+            return 1;
+        }
+    }
+
     cid.read((char*)&cid_rom, sizeof(cid_rom));
     cid.close();
 

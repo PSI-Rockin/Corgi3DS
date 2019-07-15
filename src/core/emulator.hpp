@@ -2,12 +2,14 @@
 #define EMULATOR_HPP
 #include <cstdint>
 #include "arm9/aes.hpp"
+#include "arm9/cartridge.hpp"
 #include "arm9/dma9.hpp"
 #include "arm9/emmc.hpp"
 #include "arm9/interrupt9.hpp"
 #include "arm9/rsa.hpp"
 #include "arm9/sha.hpp"
 
+#include "arm11/dsp.hpp"
 #include "arm11/gpu.hpp"
 #include "arm11/hash.hpp"
 #include "arm11/mpcore_pmr.hpp"
@@ -43,8 +45,11 @@ class Emulator
         CP15 arm9_cp15, app_cp15, sys_cp15;
         MMU arm9_pu, app_mmu, sys_mmu;
         VFP app_vfp, sys_vfp;
+
         AES aes;
+        Cartridge cartridge;
         DMA9 dma9;
+        DSP dsp;
         EMMC emmc;
         GPU gpu;
         HASH hash;
@@ -58,6 +63,10 @@ class Emulator
         Timers timers;
 
         uint32_t config_bootenv;
+        uint16_t config_cardselect;
+
+        uint8_t config_cardctrl2;
+        int card_reset;
 
         uint8_t dsp_mem_config[16];
 
@@ -77,12 +86,9 @@ class Emulator
         void load_roms(uint8_t* boot9, uint8_t* boot11, uint8_t* otp, uint8_t* cid);
         bool mount_nand(std::string file_name);
         bool mount_sd(std::string file_name);
+        bool mount_cartridge(std::string file_name);
 
         void load_and_run_elf(uint8_t* elf, uint64_t size);
-
-        void gpu_memfill_event(uint64_t index);
-        void try_ndma_transfer_event(uint64_t req);
-        void i2c_transfer_event(uint64_t index);
 
         uint8_t arm9_read8(uint32_t addr);
         uint16_t arm9_read16(uint32_t addr);

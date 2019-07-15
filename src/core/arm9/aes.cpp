@@ -156,6 +156,9 @@ void AES::crypt_check()
     {
         switch (AES_CNT.mode)
         {
+            case 0x0:
+                decrypt_ccm();
+                break;
             case 0x2:
             case 0x3:
                 crypt_ctr();
@@ -219,6 +222,19 @@ void AES::write_input_fifo(uint32_t value)
     }
 
     crypt_check();
+}
+
+void AES::decrypt_ccm()
+{
+    printf("[AES] Decrypt CCM\n");
+
+    for (int i = 0; i < 4; i++)
+    {
+        *(uint32_t*)&crypt_results[i * 4] = input_fifo.front();
+        input_fifo.pop();
+    }
+
+    AES_CNT.mac_status = true;
 }
 
 void AES::crypt_ctr()
@@ -311,6 +327,12 @@ uint32_t AES::read32(uint32_t addr)
             printf("[AES] Unrecognized read32 $%08X\n", addr);
     }
     return reg;
+}
+
+void AES::write_mac_count(uint16_t value)
+{
+    printf("[AES] MAC count: $%04X\n", value);
+    mac_count = value;
 }
 
 void AES::write_block_count(uint16_t value)

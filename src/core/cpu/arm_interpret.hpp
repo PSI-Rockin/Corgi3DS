@@ -112,6 +112,7 @@ namespace ARM_Interpreter
     void thumb_uxth(ARM_CPU& cpu, uint16_t instr);
     void thumb_uxtb(ARM_CPU& cpu, uint16_t instr);
     void thumb_rev(ARM_CPU& cpu, uint16_t instr);
+    void thumb_rev16(ARM_CPU& cpu, uint16_t instr);
     void thumb_branch(ARM_CPU& cpu, uint16_t instr);
     void thumb_cond_branch(ARM_CPU& cpu, uint16_t instr);
     void thumb_long_branch_prep(ARM_CPU& cpu, uint16_t instr);

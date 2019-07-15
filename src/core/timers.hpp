@@ -47,13 +47,13 @@ class Timers
         Timers(Interrupt9* int9, MPCore_PMR* pmr, Emulator* e);
 
         void reset();
-        void run();
+        void run(int cycles);
 
         uint16_t arm9_read16(uint32_t addr);
         void arm9_write16(uint32_t addr, uint16_t value);
 
         uint32_t arm11_get_load(int id);
-        uint32_t arm11_get_counter(int id);
+        uint32_t arm11_get_counter(int id, int delta);
         uint32_t arm11_get_control(int id);
         uint32_t arm11_get_int_status(int id);
 

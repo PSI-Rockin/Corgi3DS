@@ -75,7 +75,11 @@ void DMA9::run_xdma()
 
 void DMA9::try_ndma_transfer(NDMA_Request req)
 {
-    scheduler->add_event(NDMA_TRY_TRANSFER, &Emulator::try_ndma_transfer_event, 1, (uint64_t)req);
+    scheduler->add_event(
+                [this](uint64_t param) { this->try_ndma_transfer_event((NDMA_Request)param); },
+                1,
+                (uint64_t)req
+                );
 }
 
 void DMA9::try_ndma_transfer_event(NDMA_Request req)

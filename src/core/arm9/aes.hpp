@@ -68,6 +68,7 @@ class AES
         void crypt_check();
         void input_vector(uint8_t* vector, int index, uint32_t value, int max_words, bool force_order = false);
 
+        void decrypt_ccm();
         void crypt_ctr();
         void decrypt_cbc();
         void encrypt_cbc();
@@ -83,6 +84,7 @@ class AES
         uint8_t read_keycnt();
         uint32_t read32(uint32_t addr);
 
+        void write_mac_count(uint16_t value);
         void write_block_count(uint16_t value);
         void write_keysel(uint8_t value);
         void write_keycnt(uint8_t value);
