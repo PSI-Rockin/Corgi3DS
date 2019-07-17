@@ -7,7 +7,6 @@ MMU::MMU()
     user_mapping = nullptr;
     privileged_mapping = nullptr;
     direct_mapping = nullptr;
-    asid_mapping = nullptr;
 }
 
 MMU::~MMU()
@@ -15,7 +14,6 @@ MMU::~MMU()
     delete[] user_mapping;
     delete[] privileged_mapping;
     delete[] direct_mapping;
-    delete[] asid_mapping;
 }
 
 void MMU::reset()
@@ -26,8 +24,6 @@ void MMU::reset()
         privileged_mapping = new uint8_t*[1024 * 1024];
     if (!direct_mapping)
         direct_mapping = new uint8_t*[1024 * 1024];
-    if (!asid_mapping)
-        asid_mapping = new uint16_t[1024 * 1024];
 
     whole_tlb_invalidated = true;
 
@@ -42,8 +38,6 @@ void MMU::reset()
         addr |= 0xFUL << 60UL;
         direct_mapping[i] = (uint8_t*)addr;
     }
-
-    memset(asid_mapping, 0xFF, 1024 * 1024 * sizeof(uint16_t));
 
     l1_table_base[0] = 0;
     l1_table_base[1] = 0;
@@ -101,32 +95,31 @@ void MMU::invalidate_tlb()
     whole_tlb_invalidated = true;
     memset(privileged_mapping, 0, 1024 * 1024 * sizeof(uint8_t*));
     memset(user_mapping, 0, 1024 * 1024 * sizeof(uint8_t*));
-    memset(asid_mapping, 0xFF, 1024 * 1024 * sizeof(uint16_t));
 }
 
-void MMU::invalidate_tlb_by_asid(uint8_t value)
+void MMU::invalidate_tlb_by_table(int index)
 {
-    for (int i = 0; i < 1024 * 1024; i++)
+    uint32_t start = 0;
+    uint32_t size = 0;
+    uint32_t cutoff = l1_table_cutoff * 64;
+    if (index == 0)
+        size = cutoff;
+    else
     {
-        if (asid_mapping[i] == value)
-        {
-            asid_mapping[i] = 0xFFFF;
-            privileged_mapping[i] = nullptr;
-            user_mapping[i] = nullptr;
-        }
+        start = cutoff;
+        size = (1024 * 1024) - cutoff;
     }
+
+    memset(privileged_mapping + start, 0, size * sizeof(uint8_t*));
+    memset(user_mapping + start, 0, size * sizeof(uint8_t*));
 }
 
 void MMU::invalidate_tlb_by_addr(uint32_t value)
 {
     uint32_t addr = value / 4096;
 
-    if (asid_mapping[addr] == (value & 0xFF))
-    {
-        asid_mapping[addr] = 0xFFFF;
-        privileged_mapping[addr] = nullptr;
-        user_mapping[addr] = nullptr;
-    }
+    privileged_mapping[addr] = nullptr;
+    user_mapping[addr] = nullptr;
 }
 
 void MMU::reload_tlb_section(uint32_t addr)
@@ -165,18 +158,19 @@ void MMU::reload_tlb_section(uint32_t addr)
         uint8_t apx = (entry >> 10) & 0x3;
         if (entry & (1 << 18))
         {
+            addr &= ~0xFFFFFF;
             paddr = entry & 0xFF000000;
 
-            remap_mmu_region(addr, 1024 * 1024 * 16, paddr, apx, exec_never, false);
+            remap_mmu_region(addr, 1024 * 1024 * 16, paddr, apx, exec_never);
         }
         else
         {
+
             if (entry & (1 << 15))
                 apx |= 1 << 2;
-            bool nonglobal = entry & (1 << 17);
             paddr = entry & 0xFFF00000;
 
-            remap_mmu_region(addr, 1024 * 1024, paddr, apx, exec_never, nonglobal);
+            remap_mmu_region(addr, 1024 * 1024, paddr, apx, exec_never);
         }
     }
     else
@@ -195,8 +189,6 @@ void MMU::reload_tlb_section(uint32_t addr)
             if (l2_entry & (1 << 9))
                 apx |= 1 << 2;
 
-            bool nonglobal = l2_entry & (1 << 11);
-
             //printf("[$%08X] $%08X - ", addr, l2_entry);
 
             if (!type)
@@ -211,8 +203,8 @@ void MMU::reload_tlb_section(uint32_t addr)
             {
                 uint32_t paddr = l2_entry & 0xFFFF0000;
 
-                //printf("64 KB $%08X (APX=%d) (nG=%d)\n", paddr, apx, nonglobal);
-                remap_mmu_region(addr, 1024 * 64, paddr, apx, false, nonglobal);
+                //printf("64 KB $%08X (APX=%d)\n", paddr, apx);
+                remap_mmu_region(addr, 1024 * 64, paddr, apx, false);
 
                 i += 60;
                 page += 16;
@@ -222,8 +214,8 @@ void MMU::reload_tlb_section(uint32_t addr)
             {
                 uint32_t paddr = l2_entry & ~0xFFF;
                 bool exec_never = (l2_entry & 0x1) != 0;
-                //printf("4 KB $%08X (XN=%d) (APX=%d) (nG=%d)\n", paddr, exec_never, apx, nonglobal);
-                remap_mmu_region(addr, 1024 * 4, paddr, apx, exec_never, nonglobal);
+                //printf("4 KB $%08X (XN=%d) (APX=%d) (nG=%d)\n", paddr, exec_never, apx);
+                remap_mmu_region(addr, 1024 * 4, paddr, apx, exec_never);
                 page++;
                 addr += 1024 * 4;
             }
@@ -284,7 +276,7 @@ void MMU::reload_tlb_by_table(int index)
                 paddr = entry & 0xFF000000;
                 //printf("Supersection $%08X (XN=%d) (APX=%d)\n", paddr, exec_never, apx);
 
-                remap_mmu_region(pc, 1024 * 1024 * 16, paddr, apx, exec_never, false);
+                remap_mmu_region(pc, 1024 * 1024 * 16, paddr, apx, exec_never);
 
                 pc += 1024 * 1024 * 16;
                 addr += 64 - 4;
@@ -293,11 +285,10 @@ void MMU::reload_tlb_by_table(int index)
             {
                 if (entry & (1 << 15))
                     apx |= 1 << 2;
-                bool nonglobal = entry & (1 << 17);
                 paddr = entry & 0xFFF00000;
-                //printf("Section $%08X (XN=%d) (APX=%d) (nG=%d)\n", paddr, exec_never, apx, nonglobal);
+                //printf("Section $%08X (XN=%d) (APX=%d) (nG=%d)\n", paddr, exec_never, apx);
 
-                remap_mmu_region(pc, 1024 * 1024, paddr, apx, exec_never, nonglobal);
+                remap_mmu_region(pc, 1024 * 1024, paddr, apx, exec_never);
                 pc += 1024 * 1024;
             }
         }
@@ -318,8 +309,6 @@ void MMU::reload_tlb_by_table(int index)
                 if (l2_entry & (1 << 9))
                     apx |= 1 << 2;
 
-                bool nonglobal = l2_entry & (1 << 11);
-
                 if (!type)
                 {
                     //printf("Unmapped\n");
@@ -330,9 +319,9 @@ void MMU::reload_tlb_by_table(int index)
                 else if (type == 1)
                 {
                     uint32_t paddr = l2_entry & 0xFFFF0000;
-                    //printf("64 KB $%08X (APX=%d) (nG=%d)\n", paddr, apx, nonglobal);
+                    //printf("64 KB $%08X (APX=%d) (nG=%d)\n", paddr, apx);
 
-                    remap_mmu_region(pc, 1024 * 64, paddr, apx, false, nonglobal);
+                    remap_mmu_region(pc, 1024 * 64, paddr, apx, false);
 
                     pc += 1024 * 64;
                     i += 60;
@@ -341,8 +330,8 @@ void MMU::reload_tlb_by_table(int index)
                 {
                     uint32_t paddr = l2_entry & ~0xFFF;
                     bool exec_never = (l2_entry & 0x1) != 0;
-                    //printf("4 KB $%08X (XN=%d) (APX=%d) (nG=%d)\n", paddr, exec_never, apx, nonglobal);
-                    remap_mmu_region(pc, 1024 * 4, paddr, apx, exec_never, nonglobal);
+                    //printf("4 KB $%08X (XN=%d) (APX=%d) (nG=%d)\n", paddr, exec_never, apx);
+                    remap_mmu_region(pc, 1024 * 4, paddr, apx, exec_never);
                     pc += 1024 * 4;
                 }
             }
@@ -353,24 +342,22 @@ void MMU::reload_tlb_by_table(int index)
 
 void MMU::reload_tlb(uint32_t addr)
 {
-    if (whole_tlb_invalidated)
+    /*if (whole_tlb_invalidated)
     {
         reload_tlb_by_table(0);
         reload_tlb_by_table(1);
         whole_tlb_invalidated = false;
     }
-    else
+    else*/
         reload_tlb_section(addr);
 }
 
 void MMU::remap_mmu_region(uint32_t base, uint32_t size, uint64_t paddr,
-                           uint8_t apx, bool exec_never, bool nonglobal)
+                           uint8_t apx, bool exec_never)
 {
     base /= 4096;
     size /= 4096;
     paddr /= 4096;
-
-    //apx &= ~0x4;
 
     uint64_t priv_perm = get_privileged_apx_perms(apx);
     if (exec_never)
@@ -386,11 +373,6 @@ void MMU::remap_mmu_region(uint32_t base, uint32_t size, uint64_t paddr,
         mapping &= ~(0x7UL << 60UL);
 
         privileged_mapping[base + i] = (uint8_t*)(mapping | priv_perm);
-
-        if (nonglobal)
-            asid_mapping[base + i] = asid;
-        else
-            asid_mapping[base + i] = 0xFFFF;
     }
 }
 
@@ -415,7 +397,7 @@ void MMU::set_l1_table_base(int index, uint32_t value)
     uint32_t mask = 0x3FFF;
     mask >>= l1_table_control;
     l1_table_base[index] = value & ~mask;
-    invalidate_tlb();
+    invalidate_tlb_by_table(index);
 }
 
 void MMU::set_l1_table_control(uint32_t value)

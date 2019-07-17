@@ -231,7 +231,7 @@ void ARM_CPU::jp(uint32_t addr, bool change_thumb_state)
         }
         if (pid == 20)
         {
-            can_disassemble = true;
+            //can_disassemble = true;
 
         }
         else
@@ -338,22 +338,13 @@ void ARM_CPU::swi()
             uint32_t process_ptr = read32(0xFFFF9004);
             uint32_t pid = read32(process_ptr + 0xB4);
             printf("(PID%d) SendSyncRequest: $%08X\n", pid, header);
+            /*if (header == 0x1100C2)
+            {
+                gpr[0] = 0;
+                return;
+            }*/
         }
     }
-    /*if (gpr[7] == 4)
-    {
-        //can_disassemble = false;
-        uint32_t buf = gpr[1];
-        uint32_t count = gpr[2];
-
-        printf("SYS_WRITE: ");
-        while (count)
-        {
-            printf("%c", read8(buf));
-            buf++;
-            count--;
-        }
-    }*/
     if (op == 0x3C)
     {
         EmuException::die("[ARM%d] svcBreak called!", id);

@@ -122,8 +122,6 @@ void Emulator::run()
     i2c.update_time();
     printf("FRAME %d\n", frames);
     int cycles = 0;
-    if (frames == 700)
-        EmuException::die("bkpt");
     while (cycles < 4000000)
     {
         scheduler.calculate_cycles_to_run();
@@ -804,6 +802,9 @@ uint16_t Emulator::arm11_read16(int core, uint32_t addr)
     }
     if (addr >= 0x10122000 && addr < 0x10123000)
     {
+        //These addresses are read a bunch of times, which causes slowdown as WiFi is stubbed
+        if (addr == 0x1012201C || addr == 0x1012202C)
+            return 0;
         printf("[WIFI] Unrecognized read16 $%08X\n", addr);
         return 0;
     }

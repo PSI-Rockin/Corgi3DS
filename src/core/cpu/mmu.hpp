@@ -43,10 +43,6 @@ class MMU
         //Follows the same rules as above, except permissions are set to RWX.
         uint8_t** direct_mapping;
 
-        //List of ASIDs - set to 0xFFFF if the page is marked as global
-        //This is safe as the maximum ASID is 0xFF
-        uint16_t* asid_mapping;
-
         //Current ASID
         uint8_t asid;
 
@@ -65,7 +61,7 @@ class MMU
         void reload_tlb_section(uint32_t addr);
         void reload_tlb_by_table(int index);
         void remap_mmu_region(uint32_t base, uint32_t size, uint64_t paddr,
-                              uint8_t apx, bool exec_never, bool nonglobal);
+                              uint8_t apx, bool exec_never);
 
         MMU_Perm get_user_apx_perms(uint8_t apx);
         MMU_Perm get_privileged_apx_perms(uint8_t apx);
@@ -82,7 +78,7 @@ class MMU
         uint8_t** get_direct_mapping();
 
         void invalidate_tlb();
-        void invalidate_tlb_by_asid(uint8_t value);
+        void invalidate_tlb_by_table(int index);
         void invalidate_tlb_by_addr(uint32_t value);
         void reload_tlb(uint32_t addr);
         void reload_pu();

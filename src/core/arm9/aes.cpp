@@ -189,7 +189,7 @@ void AES::crypt_check()
             if (!AES_CNT.out_big_endian)
                 value = bswp32(value);
 
-            printf("Output FIFO: $%08X\n", value);
+            //printf("Output FIFO: $%08X\n", value);
             output_fifo.push(value);
         }
 
@@ -239,7 +239,7 @@ void AES::decrypt_ccm()
 
 void AES::crypt_ctr()
 {
-    printf("[AES] Crypt CTR\n");
+    //printf("[AES] Crypt CTR\n");
 
     for (int i = 0; i < 4; i++)
     {
