@@ -205,13 +205,13 @@ void ARM_CPU::jp(uint32_t addr, bool change_thumb_state)
         }
     }
 
-    if (addr == 0x1060B8 && (gpr[15] - 8 == 0x106054))
+    /*if (addr == 0x1060B8 && (gpr[15] - 8 == 0x106054))
     {
         uint32_t process_ptr = read32(0xFFFF9004);
         uint32_t pid = read32(process_ptr + 0xB4);
         if (pid == 15)
             return;
-    }
+    }*/
 
     if (id != 9 && gpr[15] >= 0x40000000 && ((addr >= 0x00100000 && addr < 0x10000000) || (addr >= 0x14000000 && addr < 0x18000000)))
     {
@@ -229,7 +229,7 @@ void ARM_CPU::jp(uint32_t addr, bool change_thumb_state)
                     printf("Error: $%08X\n", error);
             }
         }
-        if (pid == 20)
+        if (pid == 18)
         {
             //can_disassemble = true;
 

@@ -2,7 +2,7 @@ QT += core gui multimedia
 greaterThan(QT_MAJOR_VERSION, 4) : QT += widgets
 
 TEMPLATE = app
-CONFIG += console c++11
+CONFIG += console c++14
 CONFIG -= app_bundle
 
 QMAKE_CFLAGS_RELEASE -= -O
@@ -43,7 +43,8 @@ SOURCES += src/qt/main.cpp \
     src/core/arm11/hash.cpp \
     src/core/p9_hle.cpp \
     src/core/arm11/dsp.cpp \
-    src/core/arm9/cartridge.cpp
+    src/core/arm9/cartridge.cpp \
+    src/core/arm11/dsp_interpreter.cpp
 
 HEADERS += \
     src/core/emulator.hpp \
@@ -76,7 +77,10 @@ HEADERS += \
     src/core/arm11/hash.hpp \
     src/core/p9_hle.hpp \
     src/core/arm11/dsp.hpp \
-    src/core/arm9/cartridge.hpp
+    src/core/arm9/cartridge.hpp \
+    src/core/arm11/dsp_interpreter.hpp \
+    src/core/arm11/dsp_reg.hpp \
+    src/core/arm11/dsp_signextend.hpp
 
 INCLUDEPATH += /usr/local/include
 

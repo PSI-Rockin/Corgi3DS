@@ -58,7 +58,8 @@ void Emulator::reset(bool cold_boot)
 
     HID_PAD = 0xFFF;
 
-    dsp.reset();
+    dsp.reset(dsp_mem);
+    dsp.set_cpu_interrupt_sender([this] {this->mpcore_pmr.assert_hw_irq(0x4A);});
     gpu.reset(vram);
     i2c.reset();
 
@@ -823,8 +824,8 @@ uint16_t Emulator::arm11_read16(int core, uint32_t addr)
         printf("[I2C] Unrecognized read8 $%08X\n", addr);
         return 0;
     }
-    /*if (addr >= 0x10203000 && addr < 0x10204000)
-        return dsp.read16(addr);*/
+    if (addr >= 0x10203000 && addr < 0x10204000)
+        return dsp.read16(addr);
     switch (addr)
     {
         case 0x101401C0:
