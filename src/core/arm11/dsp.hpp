@@ -4,18 +4,6 @@
 #include <functional>
 #include "dsp_reg.hpp"
 
-struct DSP_APBP
-{
-    uint16_t cmd[3], reply[3];
-    bool cmd_ready[3];
-    bool reply_ready[3];
-
-    bool reply_int_enable[3];
-
-    uint16_t dsp_sema_recv, cpu_sema_recv;
-    uint16_t dsp_sema_mask, cpu_sema_mask;
-};
-
 struct DSP_ST0
 {
     bool fr;
@@ -107,6 +95,9 @@ struct DSP_AR
 
 struct DSP_TIMER
 {
+    bool enabled;
+    uint8_t prescalar;
+    uint8_t countup_mode;
     uint32_t restart_value;
     uint32_t counter;
 };
@@ -120,6 +111,26 @@ struct DSP_MIU
 
     bool zsp;
     bool page_mode;
+};
+
+struct DSP_APBP
+{
+    uint16_t cmd[3], reply[3];
+    bool cmd_ready[3];
+    bool reply_ready[3];
+
+    bool reply_int_enable[3];
+
+    uint16_t dsp_sema_recv, cpu_sema_recv;
+    uint16_t dsp_sema_mask, cpu_sema_mask;
+};
+
+struct DSP_AHBM
+{
+    uint8_t burst[3];
+    uint8_t data_type[3];
+    bool transfer_dir[3];
+    uint8_t chan_connection[3];
 };
 
 struct DSP_DMA
@@ -141,6 +152,8 @@ struct DSP_DMA
     uint16_t size[3][8];
     uint16_t src_step[3][8];
     uint16_t dest_step[3][8];
+    uint8_t src_space[8];
+    uint8_t dest_space[8];
 };
 
 struct DSP_ICU
@@ -193,6 +206,7 @@ class DSP
         DSP_TIMER timers[2];
         DSP_MIU miu;
         DSP_APBP apbp;
+        DSP_AHBM ahbm;
         DSP_DMA dma;
         DSP_ICU icu;
 
@@ -221,7 +235,6 @@ class DSP
         uint32_t convert_addr(uint16_t addr);
         uint64_t trunc_to_40(uint64_t value);
         uint64_t saturate(uint64_t value);
-        void set_acc(DSP_REG acc, uint64_t value);
         void set_ar(int index, uint16_t value);
         void set_arp(int index, uint16_t value);
 
@@ -229,6 +242,7 @@ class DSP
         void int_check();
         void do_irq(uint32_t addr, uint8_t type);
 
+        void do_timer_overflow(int index);
         void apbp_send_cmd(int index, uint16_t value);
     public:
         DSP();
@@ -273,6 +287,7 @@ class DSP
         uint16_t get_repc();
         uint16_t get_mixp();
         void set_reg16(DSP_REG reg, uint16_t value);
+        void set_acc(DSP_REG acc, uint64_t value);
         void set_acc_lo(DSP_REG acc, uint16_t value);
         void set_acc_hi(DSP_REG acc, uint16_t value);
         void set_acc_flags(uint64_t value);
@@ -327,6 +342,8 @@ class DSP
         uint16_t step_addr(uint8_t rn, uint16_t value, uint8_t step, bool dmod);
         uint16_t offset_addr(uint8_t rn, uint16_t addr, uint8_t offset, bool dmod);
 
+        void set_fv(bool f);
+        void set_fvl(bool f);
         void set_fz(bool f);
         void set_fc(bool f);
         void set_fm(bool f);
@@ -444,6 +461,16 @@ inline void DSP::set_repc(uint16_t value)
 inline void DSP::set_mixp(uint16_t value)
 {
     mixp = value;
+}
+
+inline void DSP::set_fv(bool f)
+{
+    stt0.fv = f;
+}
+
+inline void DSP::set_fvl(bool f)
+{
+    stt0.fvl = f;
 }
 
 inline void DSP::set_fz(bool f)

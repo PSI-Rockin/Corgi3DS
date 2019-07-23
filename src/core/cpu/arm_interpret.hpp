@@ -54,6 +54,7 @@ namespace ARM_Interpreter
     void vfp_mov_sys_reg(ARM_CPU& cpu, VFP& vfp, uint32_t instr);
 
     void vfp_load_store(ARM_CPU& cpu, VFP& vfp, uint32_t instr);
+    void vfp_load_store_two(ARM_CPU& cpu, VFP& vfp, uint32_t instr);
     void vfp_load_single(ARM_CPU& cpu, VFP& vfp, uint32_t instr);
     void vfp_store_single(ARM_CPU& cpu, VFP& vfp, uint32_t instr);
     void vfp_load_block(ARM_CPU& cpu, VFP& vfp, uint32_t instr);
@@ -62,6 +63,7 @@ namespace ARM_Interpreter
     void vfp_data_processing(ARM_CPU& cpu, VFP& vfp, uint32_t instr);
     void vfp_mac(ARM_CPU& cpu, VFP& vfp, uint32_t instr);
     void vfp_nmac(ARM_CPU& cpu, VFP& vfp, uint32_t instr);
+    void vfp_msc(ARM_CPU& cpu, VFP& vfp, uint32_t instr);
     void vfp_nmsc(ARM_CPU& cpu, VFP& vfp, uint32_t instr);
     void vfp_mul(ARM_CPU& cpu, VFP& vfp, uint32_t instr);
     void vfp_nmul(ARM_CPU& cpu, VFP& vfp, uint32_t instr);
@@ -76,6 +78,7 @@ namespace ARM_Interpreter
     void vfp_cmps(ARM_CPU& cpu, VFP& vfp, uint32_t instr);
     void vfp_cmpes(ARM_CPU& cpu, VFP& vfp, uint32_t instr);
     void vfp_sqrt(ARM_CPU& cpu, VFP& vfp, uint32_t instr);
+    void vfp_cvt(ARM_CPU& cpu, VFP& vfp, uint32_t instr);
     void vfp_fuito(ARM_CPU& cpu, VFP& vfp, uint32_t instr);
     void vfp_fsito(ARM_CPU& cpu, VFP& vfp, uint32_t instr);
     void vfp_ftoui(ARM_CPU& cpu, VFP& vfp, uint32_t instr);

@@ -107,6 +107,12 @@ void vfp_load_store(ARM_CPU& cpu, VFP &vfp, uint32_t instr)
 
     switch (op)
     {
+        case 0x00:
+        case 0x08:
+        case 0x10:
+        case 0x18:
+            vfp_load_store_two(cpu, vfp, instr);
+            break;
         case 0x0A:
         case 0x1A:
         case 0x0B:
@@ -122,13 +128,72 @@ void vfp_load_store(ARM_CPU& cpu, VFP &vfp, uint32_t instr)
             vfp_store_block(cpu, vfp, instr);
             break;
         case 0x06:
+        case 0x0C:
+        case 0x16:
+        case 0x1C:
             vfp_store_single(cpu, vfp, instr);
             break;
         case 0x0E:
+        case 0x1E:
             vfp_load_single(cpu, vfp, instr);
             break;
         default:
             EmuException::die("[VFP_Interpreter] Undefined load/store instr $%04X ($%08X)\n", op, instr);
+    }
+}
+
+void vfp_load_store_two(ARM_CPU &cpu, VFP &vfp, uint32_t instr)
+{
+    uint32_t reg2 = (instr >> 16) & 0xF;
+    uint32_t reg1 = (instr >> 12) & 0xF;
+
+    uint32_t fp_reg = instr & 0xF;
+
+    bool fp_low_bit = (instr >> 5) & 0x1;
+    bool load = (instr >> 20) & 0x1;
+    bool is_double = (instr >> 8) & 0x1;
+
+    if (load)
+    {
+        if (is_double)
+        {
+            uint64_t d = vfp.get_reg64(fp_reg);
+
+            cpu.set_register(reg2, d >> 32);
+            cpu.set_register(reg1, d & 0xFFFFFFFF);
+        }
+        else
+        {
+            fp_reg <<= 1;
+            fp_reg |= fp_low_bit;
+
+            uint32_t s1 = vfp.get_reg32(fp_reg);
+            uint32_t s2 = vfp.get_reg32(fp_reg + 1);
+
+            cpu.set_register(reg2, s2);
+            cpu.set_register(reg1, s1);
+        }
+    }
+    else
+    {
+        if (is_double)
+        {
+            uint64_t d = cpu.get_register(reg1);
+            d |= (uint64_t)cpu.get_register(reg2) << 32ULL;
+
+            vfp.set_reg64(fp_reg, d);
+        }
+        else
+        {
+            fp_reg <<= 1;
+            fp_reg |= fp_low_bit;
+
+            uint32_t s1 = cpu.get_register(reg1);
+            uint32_t s2 = cpu.get_register(reg2);
+
+            vfp.set_reg32(fp_reg, s1);
+            vfp.set_reg32(fp_reg + 1, s2);
+        }
     }
 }
 
@@ -317,6 +382,9 @@ void vfp_data_processing(ARM_CPU &cpu, VFP &vfp, uint32_t instr)
         case 0x1:
             vfp_nmac(cpu, vfp, instr);
             break;
+        case 0x2:
+            vfp_msc(cpu, vfp, instr);
+            break;
         case 0x3:
             vfp_nmsc(cpu, vfp, instr);
             break;
@@ -410,6 +478,41 @@ void vfp_nmac(ARM_CPU &cpu, VFP &vfp, uint32_t instr)
         float c = vfp.get_float(reg2);
 
         vfp.set_float(dest, a - (b * c));
+    }
+}
+
+void vfp_msc(ARM_CPU &cpu, VFP &vfp, uint32_t instr)
+{
+    int dest = (instr >> 12) & 0xF;
+    int reg1 = (instr >> 16) & 0xF;
+    int reg2 = instr & 0xF;
+    bool dest_low_bit = (instr >> 22) & 0x1;
+    bool reg1_low_bit = (instr >> 7) & 0x1;
+    bool reg2_low_bit = (instr >> 5) & 0x1;
+    bool is_double = (instr >> 8) & 0x1;
+
+    if (is_double)
+    {
+        double a = vfp.get_double(dest);
+        double b = vfp.get_double(reg1);
+        double c = vfp.get_double(reg2);
+
+        vfp.set_double(dest, -a + (b * c));
+    }
+    else
+    {
+        dest <<= 1;
+        reg1 <<= 1;
+        reg2 <<= 1;
+        dest |= dest_low_bit;
+        reg1 |= reg1_low_bit;
+        reg2 |= reg2_low_bit;
+
+        float a = vfp.get_float(dest);
+        float b = vfp.get_float(reg1);
+        float c = vfp.get_float(reg2);
+
+        vfp.set_float(dest, -a + (b * c));
     }
 }
 
@@ -635,6 +738,9 @@ void vfp_data_extended(ARM_CPU &cpu, VFP &vfp, uint32_t instr)
         case 0x14:
             vfp_cmpes(cpu, vfp, instr);
             break;
+        case 0x17:
+            vfp_cvt(cpu, vfp, instr);
+            break;
         case 0x18:
             vfp_fsito(cpu, vfp, instr);
             break;
@@ -779,6 +885,32 @@ void vfp_cmpes(ARM_CPU &cpu, VFP &vfp, uint32_t instr)
         float a = vfp.get_float(reg1);
         float b = vfp.get_float(reg2);
         vfp.cmp(a, b);
+    }
+}
+
+void vfp_cvt(ARM_CPU &cpu, VFP &vfp, uint32_t instr)
+{
+    int reg1 = (instr >> 12) & 0xF;
+    int reg2 = instr & 0xF;
+    bool reg1_low_bit = (instr >> 22) & 0x1;
+    bool reg2_low_bit = (instr >> 5) & 0x1;
+    bool is_double = (instr >> 8) & 0x1;
+
+    if (is_double)
+    {
+        reg1 <<= 1;
+        reg1 |= reg1_low_bit;
+
+        double source_reg = vfp.get_double(reg2);
+        vfp.set_float(reg1, source_reg);
+    }
+    else
+    {
+        reg2 <<= 1;
+        reg2 |= reg2_low_bit;
+
+        float source_reg = vfp.get_float(reg2);
+        vfp.set_double(reg1, source_reg);
     }
 }
 

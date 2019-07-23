@@ -211,7 +211,10 @@ void ARM_CPU::jp(uint32_t addr, bool change_thumb_state)
         uint32_t pid = read32(process_ptr + 0xB4);
         if (pid == 15)
             return;
-    }*/
+    }
+
+    if (addr == 0x004187D4)
+        printf("Error: $%08X\n", read32(gpr[4]));*/
 
     if (id != 9 && gpr[15] >= 0x40000000 && ((addr >= 0x00100000 && addr < 0x10000000) || (addr >= 0x14000000 && addr < 0x18000000)))
     {
@@ -228,8 +231,13 @@ void ARM_CPU::jp(uint32_t addr, bool change_thumb_state)
                 if (error & (1 << 31))
                     printf("Error: $%08X\n", error);
             }
+            else if ((prev_instr & 0x0F000000) == 0x0F000000)
+            {
+                if (gpr[0] & (1 << 31))
+                    printf("Error: $%08X\n", gpr[0]);
+            }
         }
-        if (pid == 18)
+        if (pid == 38)
         {
             //can_disassemble = true;
 
@@ -350,7 +358,7 @@ void ARM_CPU::swi()
         EmuException::die("[ARM%d] svcBreak called!", id);
     }
     //print_state();
-    //can_disassemble = true;
+    can_disassemble = false;
 
     uint32_t value = CPSR.get();
     SPSR[PSR_SUPERVISOR].set(value);

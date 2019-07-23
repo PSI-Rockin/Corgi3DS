@@ -297,6 +297,9 @@ string vfp_data_extended(uint32_t instr)
         case 0x14:
             output << "fcmpe";
             break;
+        case 0x17:
+            output << "fcvt";
+            break;
         case 0x18:
             output << "fsito";
             break;

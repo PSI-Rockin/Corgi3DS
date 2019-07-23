@@ -18,6 +18,8 @@ void DSP::reset(uint8_t* dsp_mem)
 
     this->dsp_mem = dsp_mem;
 
+    memset(timers, 0, sizeof(timers));
+
     miu.mmio_base = 0x8000;
     miu.xpage = 0;
     miu.ypage = 0;
@@ -31,6 +33,11 @@ void DSP::reset(uint8_t* dsp_mem)
     apbp.cpu_sema_mask = 0;
     apbp.dsp_sema_recv = 0;
     apbp.dsp_sema_mask = 0;
+
+    memset(ahbm.burst, 0, sizeof(ahbm.burst));
+    memset(ahbm.chan_connection, 0, sizeof(ahbm.chan_connection));
+    memset(ahbm.data_type, 0, sizeof(ahbm.data_type));
+    memset(ahbm.transfer_dir, 0, sizeof(ahbm.transfer_dir));
 
     dma.arm_addr = 0;
     dma.fifo_started = false;
@@ -52,6 +59,15 @@ void DSP::run(int cycles)
     {
         while (cycles)
         {
+            for (int i = 0; i < 2; i++)
+            {
+                if (timers[i].enabled)
+                {
+                    timers[i].counter--;
+                    if (timers[i].counter == 0)
+                        do_timer_overflow(i);
+                }
+            }
             if (halted)
             {
                 int_check();
@@ -124,6 +140,7 @@ void DSP::print_state()
     printf("fz:%d fm:%d fn:%d fv:%d fc:%d fe:%d fvl:%d flm:%d\n",
            stt0.fz, stt0.fm, stt0.fn, stt0.fv, stt0.fc, stt0.fe, stt0.fvl, stt0.flm);
     printf("x0:$%04X x1:$%04X y0:$%04X y1:$%04X\n", x[0], x[1], y[0], y[1]);
+    printf("lp:%d bcn:%d\n", stt2.lp, stt2.bcn);
     for (int i = 0; i < 8; i++)
         printf("r%d:$%04X ", i, r[i]);
     printf("\n");
@@ -262,6 +279,12 @@ void DSP::write16(uint32_t addr, uint16_t value)
             apbp.reply_int_enable[2] = (value >> 11) & 0x1;
             dma.mem_type = (value >> 12) & 0xF;
 
+            for (int i = 0; i < 3; i++)
+            {
+                if (apbp.reply_int_enable[i] && apbp.reply_ready[i])
+                    send_arm_interrupt();
+            }
+
             if (!old_start && dma.fifo_started)
             {
                 switch (dma.fifo_len)
@@ -348,13 +371,45 @@ uint16_t DSP::read_data_word(uint16_t addr)
     {
         //Read from MMIO
         addr &= 0x7FF;
+        if (addr >= 0x0E2 && addr < 0x0E2 + (4 * 6))
+        {
+            //AHBM config registers
+            int index = (addr - 0x0E2) / 6;
+            int reg = (addr - 0x0E2) % 6;
+
+            uint16_t value = 0;
+
+            switch (reg)
+            {
+                case 0:
+                    value |= ahbm.burst[index] << 1;
+                    value |= ahbm.data_type[index] << 4;
+                    return value;
+                case 2:
+                    return ahbm.transfer_dir[index] << 8;
+                case 4:
+                    return ahbm.chan_connection[index];
+                default:
+                    EmuException::die("[DSP_AHBM] Unrecognized read16 reg %d\n", reg);
+            }
+        }
         switch (addr)
         {
             case 0x01A:
                 return 0xC902; //chip ID
+            case 0x028:
+                return timers[0].counter & 0xFFFF;
+            case 0x02A:
+                return timers[0].counter >> 16;
+            case 0x038:
+                return timers[1].counter & 0xFFFF;
+            case 0x03A:
+                return timers[1].counter >> 16;
             case 0x0CA:
                 apbp.cmd_ready[2] = false;
                 return apbp.cmd[2];
+            case 0x0D2:
+                return apbp.dsp_sema_recv;
             case 0x0D6:
             {
                 uint16_t reg = 0;
@@ -368,6 +423,8 @@ uint16_t DSP::read_data_word(uint16_t addr)
                 printf("[DSP] Read STS: $%04X\n", reg);
                 return reg;
             }
+            case 0x0E0:
+                return 0;
             case 0x10E:
                 return miu.xpage;
             case 0x110:
@@ -394,6 +451,8 @@ uint16_t DSP::read_data_word(uint16_t addr)
                 return dma.chan_enable;
             case 0x1BE:
                 return dma.channel;
+            case 0x1DA:
+                return dma.src_space[dma.channel] | (dma.dest_space[dma.channel] << 4);
             case 0x1DC:
                 return 0;
             case 0x200:
@@ -413,6 +472,8 @@ uint16_t DSP::read_data_word(uint16_t addr)
                 return icu.int_mode;
             case 0x210:
                 return icu.int_polarity;
+            case 0x280:
+                return 0; //TODO: BTDMP IRQ for receive enable
             case 0x2A0:
                 return 0; //TODO: BTDMP IRQ for transmit enable
             case 0x2C2:
@@ -446,6 +507,28 @@ void DSP::write_data_word(uint16_t addr, uint16_t value)
     if (addr >= miu.mmio_base && addr < miu.mmio_base + 0x800)
     {
         addr &= 0x7FF;
+        if (addr >= 0x0E2 && addr < 0x0E2 + (4 * 6))
+        {
+            int index = (addr - 0x0E2) / 6;
+            int reg = (addr - 0x0E2) % 6;
+
+            switch (reg)
+            {
+                case 0:
+                    ahbm.burst[index] = (value >> 1) & 0x3;
+                    ahbm.data_type[index] = (value >> 4) & 0x3;
+                    break;
+                case 2:
+                    ahbm.transfer_dir[index] = (value >> 8) & 0x1;
+                    break;
+                case 4:
+                    ahbm.chan_connection[index] = value & 0xFF;
+                    break;
+                default:
+                    EmuException::die("[DSP_AHBM] Unrecognized write16 reg %d\n", reg);
+            }
+            return;
+        }
         if (addr >= 0x212 && addr < 0x212 + (16 * 4))
         {
             int id = (addr - 0x212) / 4;
@@ -475,7 +558,20 @@ void DSP::write_data_word(uint16_t addr, uint16_t value)
         switch (addr)
         {
             case 0x020:
-                printf("[DSP_TIMER0] Write CTRL: $%04X\n", value);
+            case 0x030:
+            {
+                int index = (addr - 0x20) / 0x10;
+                printf("[DSP_TIMER%d] Write CTRL: $%04X\n", index, value);
+
+                timers[index].prescalar = value & 0x3;
+                timers[index].countup_mode = (value >> 2) & 0x7;
+                timers[index].enabled = (value >> 9) & 0x1;
+
+                if (value & (1 << 10))
+                {
+                    timers[index].counter = timers[index].restart_value;
+                }
+            }
                 break;
             case 0x024:
                 printf("[DSP_TIMER0] Write RESTART_L: $%04X\n", value);
@@ -487,8 +583,18 @@ void DSP::write_data_word(uint16_t addr, uint16_t value)
                 timers[0].restart_value &= 0xFFFF;
                 timers[0].restart_value |= value << 16;
                 break;
+            case 0x034:
+                printf("[DSP_TIMER1] Write RESTART_L: $%04X\n", value);
+                timers[1].restart_value &= ~0xFFFF;
+                timers[1].restart_value |= value;
+                break;
+            case 0x036:
+                printf("[DSP_TIMER1] Write RESTART_H: $%04X\n", value);
+                timers[1].restart_value &= 0xFFFF;
+                timers[1].restart_value |= value << 16;
+                break;
             case 0x0C0:
-                printf("[DSP] Write REPLY0: $%04X\n", value);
+                printf("[DSP_APBP] Write REPLY0: $%04X\n", value);
                 apbp.reply[0] = value;
                 apbp.reply_ready[0] = true;
 
@@ -496,7 +602,7 @@ void DSP::write_data_word(uint16_t addr, uint16_t value)
                     send_arm_interrupt();
                 break;
             case 0x0C4:
-                printf("[DSP] Write REPLY1: $%04X\n", value);
+                printf("[DSP_APBP] Write REPLY1: $%04X\n", value);
 
                 apbp.reply[1] = value;
                 apbp.reply_ready[1] = true;
@@ -505,7 +611,7 @@ void DSP::write_data_word(uint16_t addr, uint16_t value)
                     send_arm_interrupt();
                 break;
             case 0x0C8:
-                printf("[DSP] Write REPLY2: $%04X\n", value);
+                printf("[DSP_APBP] Write REPLY2: $%04X\n", value);
                 apbp.reply[2] = value;
                 apbp.reply_ready[2] = true;
 
@@ -513,7 +619,7 @@ void DSP::write_data_word(uint16_t addr, uint16_t value)
                     send_arm_interrupt();
                 break;
             case 0x0CC:
-                printf("[DSP] Write CPU_SEMA_RECV: $%04X\n", value);
+                printf("[DSP_APBP] Write CPU_SEMA_RECV: $%04X\n", value);
             {
                 uint16_t old_sema = apbp.cpu_sema_recv;
                 uint16_t mask = ~apbp.cpu_sema_mask;
@@ -523,6 +629,10 @@ void DSP::write_data_word(uint16_t addr, uint16_t value)
 
                 apbp.cpu_sema_recv = value;
             }
+                break;
+            case 0x0D0:
+                printf("[DSP_APBP] Write DSP_SEMA_ACK: $%04X\n", value);
+                apbp.dsp_sema_recv &= ~value;
                 break;
             case 0x10E:
                 miu.xpage = value & 0xFF;
@@ -599,6 +709,11 @@ void DSP::write_data_word(uint16_t addr, uint16_t value)
             case 0x1D8:
                 printf("[DSP_DMA] Write DST_STEP2_%d: $%04X\n", dma.channel, value);
                 dma.dest_step[2][dma.channel] = value;
+                break;
+            case 0x1DA:
+                printf("[DSP_DMA] Write 0x1DA_%d: $%04X\n", dma.channel, value);
+                dma.src_space[dma.channel] = value & 0xF;
+                dma.dest_space[dma.channel] = (value >> 4) & 0xF;
                 break;
             case 0x1DC:
                 printf("[DSP_DMA] Write 0x1DC: $%04X\n", value);
@@ -1505,7 +1620,7 @@ uint16_t DSP::restore_block_repeat(uint16_t addr)
 {
     if (stt2.lp)
     {
-        EmuException::die("[DSP] Verify restore_block_repeat!");
+        //EmuException::die("[DSP] Verify restore_block_repeat!");
         DSP_BKREP_ELEMENT temp[4];
 
         for (int i = 0; i < stt2.bcn; i++)
@@ -1900,6 +2015,7 @@ void DSP::set_arp(int index, uint16_t value)
 
 void DSP::assert_dsp_irq(int id)
 {
+    printf("[DSP] Assert IRQ: $%02X\n", id);
     icu.int_pending |= 1 << id;
 }
 
@@ -1958,6 +2074,26 @@ void DSP::do_irq(uint32_t addr, uint8_t type)
         stt2.int_pending[type] = true;
         if (mod3.int_ctx_switch[type])
             save_context();
+    }
+}
+
+void DSP::do_timer_overflow(int index)
+{
+    assert_dsp_irq(0xA - index);
+
+    switch (timers[index].countup_mode)
+    {
+        case 0:
+            timers[index].enabled = false;
+            break;
+        case 1:
+            timers[index].counter = timers[index].restart_value;
+            break;
+        case 2:
+            break;
+        default:
+            EmuException::die("[DSP_TIMER%d] Unrecognized countup mode %d in do_timer_overflow",
+                              index, timers[index].countup_mode);
     }
 }
 

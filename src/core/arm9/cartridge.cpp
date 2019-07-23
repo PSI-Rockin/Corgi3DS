@@ -152,7 +152,7 @@ void Cartridge::process_spicard_cmd()
             break;
         case 0x03:
             //TODO: Read from the save file
-            memset(spi_output_buffer, 0, 0x200);
+            memset(spi_output_buffer, 0xFF, 0x200);
             break;
         case 0x9F:
             *(uint32_t*)&spi_output_buffer[0] = 0x1122C2;

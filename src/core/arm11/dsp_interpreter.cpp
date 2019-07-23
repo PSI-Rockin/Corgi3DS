@@ -127,6 +127,9 @@ DSP_INSTR decode(uint16_t instr)
     if ((instr & ~0x0010) == 0xD381)
         return DSP_CALLA_AX;
 
+    if ((instr & ~0x07FF) == 0x1000)
+        return DSP_CALLR;
+
     if (instr == 0xD380)
         return DSP_CNTX_S;
 
@@ -213,6 +216,9 @@ DSP_INSTR decode(uint16_t instr)
 
     if ((instr & ~0x00FF) == 0x0C00)
         return DSP_REP_IMM;
+
+    if ((instr & ~0x0C6F) == 0xD280)
+        return DSP_SHFC;
 
     if ((instr & ~0x003F & ~0x0180 & ~0x0C00) == 0x9240)
         return DSP_SHFI;
@@ -402,6 +408,9 @@ DSP_INSTR decode(uint16_t instr)
 
     if ((instr & ~0x0E7F) == 0x4080)
         return DSP_MOVSI;
+
+    if ((instr & ~0x0118) == 0x8660)
+        return DSP_MAX_GT;
 
     return DSP_UNDEFINED;
 }
@@ -636,6 +645,20 @@ DSP_REG get_rnold(uint8_t rnold)
     return get_register(rnold & 0x7);
 }
 
+DSP_REG get_counter_acc(DSP_REG acc)
+{
+    switch (acc)
+    {
+        case DSP_REG_A0:
+            return DSP_REG_A1;
+        case DSP_REG_A1:
+            return DSP_REG_A0;
+        default:
+            EmuException::die("[DSP_Interpreter] Unrecognized acc %d in get_counter_acc", acc);
+            return DSP_REG_UNK;
+    }
+}
+
 void interpret(DSP &dsp, uint16_t instr)
 {
     switch (decode(instr))
@@ -738,6 +761,9 @@ void interpret(DSP &dsp, uint16_t instr)
         case DSP_CALLA_AX:
             calla_ax(dsp, instr);
             break;
+        case DSP_CALLR:
+            callr(dsp, instr);
+            break;
         case DSP_CNTX_S:
             cntx_s(dsp, instr);
             break;
@@ -824,6 +850,9 @@ void interpret(DSP &dsp, uint16_t instr)
             break;
         case DSP_REP_IMM:
             rep_imm(dsp, instr);
+            break;
+        case DSP_SHFC:
+            shfc(dsp, instr);
             break;
         case DSP_SHFI:
             shfi(dsp, instr);
@@ -1008,6 +1037,9 @@ void interpret(DSP &dsp, uint16_t instr)
         case DSP_MOVSI:
             movsi(dsp, instr);
             break;
+        case DSP_MAX_GT:
+            max_gt(dsp, instr);
+            break;
         default:
             EmuException::die("[DSP_Interpreter] Unrecognized instr $%04X", instr);
     }
@@ -1104,6 +1136,16 @@ void do_alm_op(DSP &dsp, DSP_REG acc, uint64_t value, uint8_t op)
             value = SignExtend<16, uint64_t>(value);
             result = dsp.get_add_sub_result(acc_value, value, false);
             dsp.saturate_acc_with_flag(acc, result);
+            break;
+        case 0x4:
+            //TST0
+            acc_value &= 0xFFFF;
+            dsp.set_fz((acc_value & value) == 0);
+            break;
+        case 0x5:
+            //TST1
+            acc_value &= 0xFFFF;
+            dsp.set_fz((~acc_value & value) == 0);
             break;
         case 0x6:
             //CMP
@@ -1445,6 +1487,20 @@ void moda4(DSP &dsp, uint16_t instr)
                 dsp.set_acc_and_flag(acc, value);
             }
                 break;
+            case 0x9:
+                //NEG
+            {
+                uint64_t value = dsp.get_acc(acc);
+                dsp.set_fc(value != 0);
+                if (value == 0xFFFFFF8000000000ULL)
+                {
+                    dsp.set_fv(true);
+                    dsp.set_fvl(true);
+                }
+                uint64_t result = SignExtend<40, uint64_t>(~value + 1);
+                dsp.saturate_acc_with_flag(acc, result);
+            }
+                break;
             case 0xC:
                 //CLRR
                 dsp.saturate_acc_with_flag(acc, 0x8000);
@@ -1594,6 +1650,20 @@ void calla_ax(DSP &dsp, uint16_t instr)
 
     dsp.push_pc();
     dsp.set_pc(dsp.get_acc(ax) & 0x3FFFF);
+}
+
+void callr(DSP &dsp, uint16_t instr)
+{
+    int16_t offset = (instr >> 4) & 0x7F;
+    offset = SignExtend<7>(offset);
+    uint8_t cond = instr & 0xF;
+
+    if (dsp.meets_condition(cond))
+    {
+        dsp.push_pc();
+        uint32_t new_addr = dsp.get_pc() + offset;
+        dsp.set_pc(new_addr);
+    }
 }
 
 void cntx_s(DSP &dsp, uint16_t instr)
@@ -1825,6 +1895,19 @@ void rep_imm(DSP &dsp, uint16_t instr)
 {
     uint8_t value = instr & 0xFF;
     dsp.repeat(value);
+}
+
+void shfc(DSP &dsp, uint16_t instr)
+{
+    DSP_REG a = get_ab_reg((instr >> 10) & 0x3);
+    DSP_REG b = get_ab_reg((instr >> 5) & 0x3);
+    uint8_t cond = instr & 0xF;
+
+    if (dsp.meets_condition(cond))
+    {
+        uint64_t value = dsp.get_acc(a);
+        dsp.shift_reg_40(value, b, dsp.get_sv());
+    }
 }
 
 void shfi(DSP &dsp, uint16_t instr)
@@ -2410,6 +2493,27 @@ void movsi(DSP &dsp, uint16_t instr)
     imm = SignExtend<5>(imm);
 
     dsp.shift_reg_40(value, ab, imm);
+}
+
+void max_gt(DSP &dsp, uint16_t instr)
+{
+    DSP_REG ax = get_ax_reg((instr >> 8) & 0x1);
+    DSP_REG counter = get_counter_acc(ax);
+
+    uint64_t u = dsp.get_acc(ax);
+    uint64_t v = dsp.get_acc(counter);
+    uint64_t d = v - u;
+
+    uint16_t r0 = dsp.rn_and_modify(0, (instr >> 3) & 0x3, false);
+
+    if (((d >> 63) & 0x1) == 0 && d != 0)
+    {
+        dsp.set_mixp(r0);
+        dsp.set_acc(ax, v);
+        dsp.set_fm(true);
+    }
+    else
+        dsp.set_fm(false);
 }
 
 };

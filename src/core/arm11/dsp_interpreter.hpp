@@ -54,6 +54,7 @@ enum DSP_INSTR
 
     DSP_CALL,
     DSP_CALLA_AX,
+    DSP_CALLR,
 
     DSP_CNTX_S,
     DSP_CNTX_R,
@@ -89,6 +90,7 @@ enum DSP_INSTR
 
     DSP_REP_IMM,
 
+    DSP_SHFC,
     DSP_SHFI,
 
     DSP_TSTB_RN_STEP,
@@ -166,6 +168,8 @@ enum DSP_INSTR
     DSP_MOVS_REG_AB,
     DSP_MOVSI,
 
+    DSP_MAX_GT,
+
     DSP_UNDEFINED
 };
 
@@ -186,6 +190,7 @@ namespace DSP_Interpreter
     DSP_REG get_ararp_reg(uint8_t ararp);
     DSP_REG get_ararpsttmod_reg(uint8_t ararpsttmod);
     DSP_REG get_rnold(uint8_t rnold);
+    DSP_REG get_counter_acc(DSP_REG acc);
 
     void interpret(DSP& dsp, uint16_t instr);
 
@@ -238,6 +243,7 @@ namespace DSP_Interpreter
 
     void call(DSP& dsp, uint16_t instr);
     void calla_ax(DSP& dsp, uint16_t instr);
+    void callr(DSP& dsp, uint16_t instr);
 
     void cntx_s(DSP& dsp, uint16_t instr);
     void cntx_r(DSP& dsp, uint16_t instr);
@@ -273,6 +279,7 @@ namespace DSP_Interpreter
 
     void rep_imm(DSP& dsp, uint16_t instr);
 
+    void shfc(DSP& dsp, uint16_t instr);
     void shfi(DSP& dsp, uint16_t instr);
 
     void tstb_rn_step(DSP& dsp, uint16_t instr);
@@ -348,6 +355,8 @@ namespace DSP_Interpreter
     void movs_rn_step_ab(DSP& dsp, uint16_t instr);
     void movs_reg_ab(DSP& dsp, uint16_t instr);
     void movsi(DSP& dsp, uint16_t instr);
+
+    void max_gt(DSP& dsp, uint16_t instr);
 };
 
 #endif // DSP_INTERPRETER_HPP
