@@ -14,7 +14,7 @@ Emulator::Emulator() :
     cartridge(&dma9, &int9),
     dma9(this, &int9, &scheduler),
     emmc(&int9, &dma9),
-    gpu(&scheduler, &mpcore_pmr),
+    gpu(this, &scheduler, &mpcore_pmr),
     i2c(&mpcore_pmr, &scheduler),
     int9(&arm9),
     mpcore_pmr(&appcore, &syscore, &timers),
@@ -123,6 +123,8 @@ void Emulator::run()
     i2c.update_time();
     printf("FRAME %d\n", frames);
     int cycles = 0;
+    //syscore.set_disassembly(frames == 688);
+    //arm9.set_disassembly(frames == 11);
     while (cycles < 4000000)
     {
         scheduler.calculate_cycles_to_run();
@@ -140,6 +142,7 @@ void Emulator::run()
     }
     //VBLANK
     mpcore_pmr.assert_hw_irq(0x2A);
+    mpcore_pmr.assert_hw_irq(0x2B);
     frames++;
     gpu.render_frame();
 }
@@ -763,6 +766,8 @@ uint8_t Emulator::arm11_read8(int core, uint32_t addr)
         return i2c.read8(addr);
     if (addr >= 0x17E00000 && addr < 0x17E02000)
         return mpcore_pmr.read8(core, addr);
+    if (addr >= 0x18000000 && addr < 0x18600000)
+        return gpu.read_vram<uint8_t>(addr);
     switch (addr)
     {
         case 0x1014010C:
@@ -822,6 +827,11 @@ uint16_t Emulator::arm11_read16(int core, uint32_t addr)
     if (addr >= 0x10161000 && addr < 0x10162000)
     {
         printf("[I2C] Unrecognized read8 $%08X\n", addr);
+        return 0;
+    }
+    if (addr >= 0x10162000 && addr < 0x10163000)
+    {
+        printf("[MIC] Unrecognized read16 $%08X\n", addr);
         return 0;
     }
     if (addr >= 0x10203000 && addr < 0x10204000)
@@ -886,11 +896,18 @@ uint32_t Emulator::arm11_read32(int core, uint32_t addr)
         printf("[SPI] Unrecognized read32 $%08X\n", addr);
         return 0;
     }
+    if (addr >= 0x10162000 && addr < 0x10163000)
+    {
+        printf("[MIC] Unrecognized read32 $%08X\n", addr);
+        return 0;
+    }
     if (addr >= 0x1020F000 && addr < 0x10210000)
     {
         printf("[AXI] Unrecognized read32 $%08X\n", addr);
         return 0;
     }
+    if (addr >= 0x20000000 && addr < 0x28000000)
+        return *(uint32_t*)&fcram[addr & 0x07FFFFFF];
     switch (addr)
     {
         case 0x10141200:
@@ -938,6 +955,12 @@ void Emulator::arm11_write8(int core, uint32_t addr, uint8_t value)
     if (addr >= 0x10148000 && addr < 0x10149000)
     {
         i2c.write8(addr, value);
+        return;
+    }
+
+    if (addr >= 0x18000000 && addr < 0x18600000)
+    {
+        gpu.write_vram<uint8_t>(addr, value);
         return;
     }
 
@@ -1015,6 +1038,11 @@ void Emulator::arm11_write16(int core, uint32_t addr, uint16_t value)
     if (addr >= 0x10161000 && addr < 0x10162000)
     {
         printf("[I2C] Unrecognized write16 $%08X: $%04X\n", addr, value);
+        return;
+    }
+    if (addr >= 0x10162000 && addr < 0x10163000)
+    {
+        printf("[MIC] Unrecognized write16 $%08X: $%04X\n", addr, value);
         return;
     }
     if (addr >= 0x10203000 && addr < 0x10204000)

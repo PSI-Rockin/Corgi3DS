@@ -22,12 +22,35 @@ struct MemoryFill
     bool finished;
 };
 
+struct TransferEngine
+{
+    uint32_t input_addr;
+    uint32_t output_addr;
+    uint32_t flags;
+
+    uint32_t tc_size;
+    uint32_t tc_input_width, tc_output_width;
+    uint32_t tc_input_gap, tc_output_gap;
+
+    bool busy;
+    bool finished;
+};
+
+struct CommandEngine
+{
+    uint32_t size;
+    uint32_t input_addr;
+    bool busy;
+};
+
+class Emulator;
 class Scheduler;
 class MPCore_PMR;
 
 class GPU
 {
     private:
+        Emulator* e;
         Scheduler* scheduler;
         MPCore_PMR* pmr;
         uint8_t* vram;
@@ -38,17 +61,23 @@ class GPU
 
         MemoryFill memfill[2];
 
+        TransferEngine dma;
+        CommandEngine cmd_engine;
+
         uint32_t read32_fb(int index, uint32_t addr);
         void write32_fb(int index, uint32_t addr, uint32_t value);
 
+        void do_transfer_engine_dma(uint64_t param);
+        void do_command_engine_dma(uint64_t param);
+        void do_memfill(int index);
+
         void render_fb_pixel(uint8_t* screen, int fb_index, int x, int y);
     public:
-        GPU(Scheduler* scheduler, MPCore_PMR* pmr);
+        GPU(Emulator* e, Scheduler* scheduler, MPCore_PMR* pmr);
         ~GPU();
 
         void reset(uint8_t* vram);
         void render_frame();
-        void do_memfill(int index);
 
         template <typename T> T read_vram(uint32_t addr);
         template <typename T> void write_vram(uint32_t addr, T value);

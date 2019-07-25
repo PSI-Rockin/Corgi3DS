@@ -711,18 +711,18 @@ void thumb_sxth(ARM_CPU &cpu, uint16_t instr)
 {
     int dest = instr & 0x7;
     int source = (instr >> 3) & 0x7;
-    int32_t source_reg = (int16_t)(cpu.get_register(source) & 0xFFFF);
+    uint32_t source_reg = cpu.get_register(source);
 
-    cpu.set_register(dest, source_reg & 0xFFFF);
+    cpu.set_register(dest, (int32_t)(int16_t)(source_reg & 0xFFFF));
 }
 
 void thumb_sxtb(ARM_CPU &cpu, uint16_t instr)
 {
     int dest = instr & 0x7;
     int source = (instr >> 3) & 0x7;
-    int32_t source_reg = (int8_t)(cpu.get_register(source) & 0xFF);
+    uint32_t source_reg = cpu.get_register(source);
 
-    cpu.set_register(dest, source_reg & 0xFF);
+    cpu.set_register(dest, (int32_t)(int8_t)(source_reg & 0xFF));
 }
 
 void thumb_uxth(ARM_CPU &cpu, uint16_t instr)

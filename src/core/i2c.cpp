@@ -231,7 +231,7 @@ uint8_t I2C::read_mcu(uint8_t reg_id)
         case 0x01:
             return 0x59; //Version low
         case 0x0B:
-            return 0xFF; //battery percent
+            return 100; //battery percent
         case 0x0F:
             return 0x02; //bit 1 = shell state
         default:

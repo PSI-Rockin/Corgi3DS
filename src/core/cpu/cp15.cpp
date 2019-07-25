@@ -240,6 +240,9 @@ void CP15::mcr(int operation_mode, int CP_reg, int coprocessor_info, int coproce
             if (id != 9)
             {
                 printf("[CP15_%d] TLB invalidate by ASID: $%08X\n", id, value);
+
+                //Bit of a hack. We can assume that nonglobal entries only exist in table 0
+                mmu->invalidate_tlb_by_table(0);
                 //mmu->invalidate_tlb_by_asid(value & 0xFF);
             }
             break;

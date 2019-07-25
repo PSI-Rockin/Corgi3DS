@@ -22,6 +22,8 @@ enum ARM_INSTR
     ARM_UXTAH,
     ARM_REV,
     ARM_REV16,
+    ARM_PKHBT,
+    ARM_USAT,
     ARM_DATA_PROCESSING,
     ARM_MULTIPLY,
     ARM_MULTIPLY_LONG,
@@ -137,6 +139,8 @@ namespace ARM_Disasm
     std::string arm_uxtah(uint32_t instr);
     std::string arm_rev(uint32_t instr);
     std::string arm_rev16(uint32_t instr);
+    std::string arm_pkhbt(uint32_t instr);
+    std::string arm_usat(uint32_t instr);
     std::string arm_data_processing(uint32_t instr);
     std::string arm_signed_halfword_multiply(uint32_t instr);
     std::string arm_mul(uint32_t instr);

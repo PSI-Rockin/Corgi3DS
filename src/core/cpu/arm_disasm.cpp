@@ -93,6 +93,12 @@ ARM_INSTR decode_arm(uint32_t instr)
         if ((instr & 0x0FFF0FF0) == 0x06BF0FB0)
             return ARM_REV16;
 
+        if ((instr & 0x0FF00070) == 0x06800010)
+            return ARM_PKHBT;
+
+        if ((instr & 0x0FE00030) == 0x06E00010)
+            return ARM_USAT;
+
         if ((instr & 0x0FF00F00) == 0x06600F00)
         {
             switch (instr & 0xF0)
@@ -303,6 +309,10 @@ string disasm_arm(ARM_CPU& cpu, uint32_t instr)
             return arm_rev(instr);
         case ARM_REV16:
             return arm_rev16(instr);
+        case ARM_PKHBT:
+            return arm_pkhbt(instr);
+        case ARM_USAT:
+            return arm_usat(instr);
         case ARM_DATA_PROCESSING:
             return arm_data_processing(instr);
         case ARM_MULTIPLY:
@@ -544,7 +554,8 @@ string arm_clz(uint32_t instr)
     uint32_t source = instr & 0xF;
     uint32_t destination = (instr >> 12) & 0xF;
 
-    output << "clz " << ARM_CPU::get_reg_name(destination) << ", " << ARM_CPU::get_reg_name(source);
+    output << "clz" << cond_name(instr >> 28) << " ";
+    output << ARM_CPU::get_reg_name(destination) << ", " << ARM_CPU::get_reg_name(source);
     return output.str();
 }
 
@@ -555,7 +566,8 @@ string arm_sxtb(uint32_t instr)
     int rot = (instr >> 10) & 0x3;
     int dest = (instr >> 12) & 0xF;
 
-    output << "sxtb " << ARM_CPU::get_reg_name(dest) << ", " << ARM_CPU::get_reg_name(source);
+    output << "sxtb" << cond_name(instr >> 28) << " ";
+    output << ARM_CPU::get_reg_name(dest) << ", " << ARM_CPU::get_reg_name(source);
 
     if (rot)
         output << ", ror #" << std::dec << rot * 8;
@@ -570,7 +582,8 @@ string arm_sxth(uint32_t instr)
     int rot = (instr >> 10) & 0x3;
     int dest = (instr >> 12) & 0xF;
 
-    output << "sxth " << ARM_CPU::get_reg_name(dest) << ", " << ARM_CPU::get_reg_name(source);
+    output << "sxth" << cond_name(instr >> 28) << " ";
+    output << ARM_CPU::get_reg_name(dest) << ", " << ARM_CPU::get_reg_name(source);
 
     if (rot)
         output << ", ror #" << std::dec << rot * 8;
@@ -585,7 +598,8 @@ string arm_uxtb(uint32_t instr)
     int rot = (instr >> 10) & 0x3;
     int dest = (instr >> 12) & 0xF;
 
-    output << "uxtb " << ARM_CPU::get_reg_name(dest) << ", " << ARM_CPU::get_reg_name(source);
+    output << "uxtb" << cond_name(instr >> 28) << " ";
+    output << ARM_CPU::get_reg_name(dest) << ", " << ARM_CPU::get_reg_name(source);
 
     if (rot)
         output << ", ror #" << std::dec << rot * 8;
@@ -601,7 +615,8 @@ string arm_uxtab(uint32_t instr)
     int rot = (instr >> 10) & 0x3;
     int dest = (instr >> 12) & 0xF;
 
-    output << "uxtab " << ARM_CPU::get_reg_name(dest) << ", " <<
+    output << "uxtab" << cond_name(instr >> 28) << " ";
+    output << ARM_CPU::get_reg_name(dest) << ", " <<
            ARM_CPU::get_reg_name(source1) << ", " << ARM_CPU::get_reg_name(source2);
 
     if (rot)
@@ -617,7 +632,8 @@ string arm_uxth(uint32_t instr)
     int rot = (instr >> 10) & 0x3;
     int dest = (instr >> 12) & 0xF;
 
-    output << "uxth " << ARM_CPU::get_reg_name(dest) << ", " << ARM_CPU::get_reg_name(source);
+    output << "uxth" << cond_name(instr >> 28) << " ";
+    output << ARM_CPU::get_reg_name(dest) << ", " << ARM_CPU::get_reg_name(source);
 
     if (rot)
         output << ", ror #" << std::dec << rot * 8;
@@ -633,7 +649,8 @@ string arm_uxtah(uint32_t instr)
     int rot = (instr >> 10) & 0x3;
     int dest = (instr >> 12) & 0xF;
 
-    output << "uxtah " << ARM_CPU::get_reg_name(dest) << ", " <<
+    output << "uxtah" << cond_name(instr >> 28) << " ";
+    output << ARM_CPU::get_reg_name(dest) << ", " <<
            ARM_CPU::get_reg_name(source1) << ", " << ARM_CPU::get_reg_name(source2);
 
     if (rot)
@@ -648,7 +665,8 @@ string arm_rev(uint32_t instr)
     int source = instr & 0xF;
     int dest = (instr >> 12) & 0xF;
 
-    output << "rev " << ARM_CPU::get_reg_name(dest) << ", " << ARM_CPU::get_reg_name(source);
+    output << "rev" << cond_name(instr >> 28) << " ";
+    output << ARM_CPU::get_reg_name(dest) << ", " << ARM_CPU::get_reg_name(source);
 
     return output.str();
 }
@@ -659,7 +677,59 @@ string arm_rev16(uint32_t instr)
     int source = instr & 0xF;
     int dest = (instr >> 12) & 0xF;
 
-    output << "rev16 " << ARM_CPU::get_reg_name(dest) << ", " << ARM_CPU::get_reg_name(source);
+    output << "rev16" << cond_name(instr >> 28) << " ";
+    output << ARM_CPU::get_reg_name(dest) << ", " << ARM_CPU::get_reg_name(source);
+
+    return output.str();
+}
+
+string arm_pkhbt(uint32_t instr)
+{
+    stringstream output;
+    int dest = (instr >> 12) & 0xF;
+    int reg1 = (instr >> 16) & 0xF;
+    int reg2 = instr & 0xF;
+    int shift = (instr >> 7) & 0x1F;
+
+    output << "pkhbt" << cond_name(instr >> 28) << " ";
+
+    output << ARM_CPU::get_reg_name(dest) << ", " << ARM_CPU::get_reg_name(reg1) << ", " <<
+              ARM_CPU::get_reg_name(reg2);
+
+    if (shift)
+        output << ", lsl #" << dec << shift;
+
+    return output.str();
+}
+
+string arm_usat(uint32_t instr)
+{
+    stringstream output;
+
+    int sat_imm = (instr >> 16) & 0x1F;
+    int dest = (instr >> 12) & 0xF;
+    int shift = (instr >> 7) & 0x1F;
+    bool is_arith = (instr >> 6) & 0x1;
+    int source = instr & 0xF;
+
+    output << "usat" << cond_name(instr >> 28) << " ";
+
+    output << ARM_CPU::get_reg_name(dest) << ", #" <<
+              dec << sat_imm << ", " << ARM_CPU::get_reg_name(source);
+
+    if (!is_arith)
+    {
+        if (shift)
+            output << ", lsl #" << dec << shift;
+    }
+    else
+    {
+        output << ", asr #";
+        if (shift)
+            output << dec << shift;
+        else
+            output << "32";
+    }
 
     return output.str();
 }

@@ -150,9 +150,18 @@ void Cartridge::process_spicard_cmd()
         case 0x00:
             //Unknown
             break;
+        case 0x01:
+            //Write status register?
+            break;
+        case 0x02:
+            //Write save file?
+            break;
         case 0x03:
             //TODO: Read from the save file
             memset(spi_output_buffer, 0xFF, 0x200);
+            break;
+        case 0x05:
+            //Read status register?
             break;
         case 0x9F:
             *(uint32_t*)&spi_output_buffer[0] = 0x1122C2;

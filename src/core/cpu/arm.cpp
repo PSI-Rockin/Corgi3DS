@@ -205,16 +205,14 @@ void ARM_CPU::jp(uint32_t addr, bool change_thumb_state)
         }
     }
 
-    /*if (addr == 0x1060B8 && (gpr[15] - 8 == 0x106054))
+    //Hack to autoboot cartridge
+    if (addr == 0x1060B8 && (gpr[15] - 8 == 0x106054))
     {
         uint32_t process_ptr = read32(0xFFFF9004);
         uint32_t pid = read32(process_ptr + 0xB4);
         if (pid == 15)
             return;
     }
-
-    if (addr == 0x004187D4)
-        printf("Error: $%08X\n", read32(gpr[4]));*/
 
     if (id != 9 && gpr[15] >= 0x40000000 && ((addr >= 0x00100000 && addr < 0x10000000) || (addr >= 0x14000000 && addr < 0x18000000)))
     {
@@ -346,11 +344,10 @@ void ARM_CPU::swi()
             uint32_t process_ptr = read32(0xFFFF9004);
             uint32_t pid = read32(process_ptr + 0xB4);
             printf("(PID%d) SendSyncRequest: $%08X\n", pid, header);
-            /*if (header == 0x1100C2)
+            if (pid == 38 && header == 0x080200C2)
             {
-                gpr[0] = 0;
-                return;
-            }*/
+                printf("READ FILE: $%llX $%08X $%08X\n", read64(tls + 0x84), read32(tls + 0x8C), read32(tls + 0x94));
+            }
         }
     }
     if (op == 0x3C)
@@ -803,7 +800,28 @@ void ARM_CPU::write32(uint32_t addr, uint32_t value)
     if (id == 9 && (addr & 0x3))
         EmuException::die("[ARM9] Unaligned write32 $%08X: $%08X", addr, value);
     if ((addr & 0xFFF) > 0xFFC)
-        EmuException::die("[ARM%d] Unaligned write32 on page boundary $%08X: $%08X", id, addr, value);
+    {
+        printf("[ARM%d] Unaligned write32 $%08X: $%08X\n", id, addr, value);
+        const static uint32_t mask[] = {0xFF, 0xFFFF, 0xFFFFFF, 0xFFFFFFFF};
+        const static uint32_t read_mask[] = {0, 0xFF, 0xFFFF, 0xFFFFFF};
+        int low_bits = addr & 0x3;
+        uint32_t word1 = value & mask[3 - low_bits];
+        uint32_t word2 = value & mask[low_bits];
+
+        word1 <<= (low_bits * 8);
+        word2 >>= ((4 - low_bits) * 8);
+
+        printf("Word1: $%08X Word2: $%08X\n", word1, word2);
+
+        word1 |= read32(addr & ~0x3) & read_mask[low_bits];
+        word2 |= read32((addr & ~0x3) + 4) & read_mask[3 - low_bits];
+
+        printf("New1: $%08X New2: $%08X\n", word1, word2);
+
+        write32(addr & ~0x3, word1);
+        write32((addr & ~0x3) + 4, word2);
+        //EmuException::die("Unaligned write32 on page boundary");
+    }
     uint64_t mem = (uint64_t)tlb_map[addr / 4096];
     if (!(mem & (1UL << 61UL)))
     {

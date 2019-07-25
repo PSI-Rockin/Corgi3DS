@@ -40,7 +40,7 @@ void Timers::run(int cycles)
         if (arm11_timers[i].enabled)
         {
             arm11_timers[i].clocks += cycles;
-            while (arm11_timers[i].clocks >= arm11_timers[i].prescalar)
+            while (arm11_timers[i].enabled && arm11_timers[i].clocks >= arm11_timers[i].prescalar)
             {
                 arm11_timers[i].counter--;
                 arm11_timers[i].clocks -= arm11_timers[i].prescalar;

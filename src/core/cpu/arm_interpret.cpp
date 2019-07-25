@@ -79,6 +79,9 @@ void interpret_arm(ARM_CPU &cpu, uint32_t instr)
         case ARM_REV16:
             arm_rev16(cpu, instr);
             break;
+        case ARM_PKHBT:
+            arm_pkhbt(cpu, instr);
+            break;
         case ARM_DATA_PROCESSING:
             arm_data_processing(cpu, instr);
             break;
@@ -400,6 +403,19 @@ void arm_rev16(ARM_CPU &cpu, uint32_t instr)
     uint32_t h2 = bswp16(source_reg >> 16);
 
     cpu.set_register(dest, h1 | (h2 << 16));
+}
+
+void arm_pkhbt(ARM_CPU &cpu, uint32_t instr)
+{
+    int dest = (instr >> 12) & 0xF;
+    int reg1 = (instr >> 16) & 0xF;
+    int reg2 = instr & 0xF;
+    int shift = (instr >> 7) & 0x1F;
+
+    uint32_t source1 = cpu.get_register(reg1) & 0xFFFF;
+    uint32_t source2 = (cpu.get_register(reg2) << shift) & 0xFFFF0000;
+
+    cpu.set_register(dest, source1 | source2);
 }
 
 void arm_data_processing(ARM_CPU &cpu, uint32_t instr)

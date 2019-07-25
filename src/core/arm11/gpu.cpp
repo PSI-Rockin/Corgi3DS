@@ -6,7 +6,7 @@
 #include "../scheduler.hpp"
 #include "../common/common.hpp"
 
-GPU::GPU(Scheduler* scheduler, MPCore_PMR* pmr) : scheduler(scheduler), pmr(pmr)
+GPU::GPU(Emulator* e, Scheduler* scheduler, MPCore_PMR* pmr) : e(e), scheduler(scheduler), pmr(pmr)
 {
     vram = nullptr;
     top_screen = nullptr;
@@ -29,6 +29,11 @@ void GPU::reset(uint8_t* vram)
 
     if (!bottom_screen)
         bottom_screen = new uint8_t[240 * 320 * 4];
+
+    dma.busy = false;
+    dma.finished = false;
+
+    cmd_engine.busy = false;
 
     memset(&framebuffers, 0, sizeof(framebuffers));
     memset(memfill, 0, sizeof(memfill));
@@ -62,26 +67,111 @@ void GPU::render_fb_pixel(uint8_t *screen, int fb_index, int x, int y)
         start = screen_fb->left_addr_a % 0x00600000;
 
     int index = x + (y * 240);
-    uint32_t color;
+    uint32_t color = 0xFF000000;
     switch (screen_fb->color_format)
     {
         case 0:
             color = bswp32(*(uint32_t*)&vram[start + (index * 4)]);
-            *(uint32_t*)&screen[index * 4] = color;
             break;
         case 1:
-            color = 0xFF000000;
             color |= vram[start + (index * 3)] << 16;
             color |= vram[start + (index * 3) + 1] << 8;
             color |= vram[start + (index * 3) + 2];
-            *(uint32_t*)&screen[(index * 4)] = color;
             break;
         case 2:
-            color = 0;
+        {
+            uint16_t cin = *(uint16_t*)&vram[start + (index * 2)];
+            uint32_t pr = ((cin >> 11) & 0x1F) << 3; //byte-aligned pixel red
+            uint32_t pb = ((cin >>  0) & 0x1F) << 3; //byte-aligned pixel blue
+            uint32_t pg = ((cin >>  5) & 0x3F) << 2; //byte-aligned pixel green
+
+            color |= (pb << 16) | (pg << 8) | pr;
+
+        }
             break;
         default:
             EmuException::die("[GPU] Unrecognized framebuffer color format %d\n", screen_fb->color_format);
     }
+    *(uint32_t*)&screen[(index * 4)] = color;
+}
+
+void GPU::do_transfer_engine_dma(uint64_t param)
+{
+    if (dma.flags & (1 << 3))
+    {
+        printf("[GPU] Doing TexCopy\n");
+
+        for (unsigned int i = 0; i < dma.tc_size; i++)
+        {
+            uint8_t data = e->arm11_read8(0, dma.input_addr);
+            e->arm11_write8(0, dma.output_addr, data);
+
+            dma.input_addr++;
+            dma.output_addr++;
+        }
+    }
+    else
+    {
+        printf("[GPU] Doing DisplayCopy\n");
+    }
+    pmr->assert_hw_irq(0x2C);
+    dma.busy = false;
+    dma.finished = true;
+}
+
+void GPU::do_command_engine_dma(uint64_t unused)
+{
+    printf("[GPU] Doing command engine DMA\n");
+    printf("[GPU] Addr: $%08X Words: $%08X\n", cmd_engine.input_addr, cmd_engine.size);
+    //NOTE: Here, size is in units of words
+    while (cmd_engine.size)
+    {
+        uint32_t param = e->arm11_read32(0, cmd_engine.input_addr);
+        uint32_t cmd_header = e->arm11_read32(0, cmd_engine.input_addr + 4);
+        cmd_engine.input_addr += 8;
+        cmd_engine.size -= 2;
+
+        uint16_t cmd_id = cmd_header & 0xFFFF;
+        uint8_t param_mask = (cmd_header >> 16) & 0xF;
+        uint8_t extra_param_count = (cmd_header >> 20) & 0xFF;
+        bool consecutive_writes = cmd_header >> 31;
+
+        uint32_t extra_params[256];
+
+        for (unsigned int i = 0; i < extra_param_count; i++)
+        {
+            extra_params[i] = e->arm11_read32(0, cmd_engine.input_addr);
+            cmd_engine.input_addr += 4;
+            cmd_engine.size--;
+        }
+
+        //Keep the command buffer 8-byte aligned
+        if (extra_param_count & 0x1)
+        {
+            cmd_engine.input_addr += 4;
+            cmd_engine.size--;
+        }
+
+        printf("[GPU] [$%08X] CMD $%02X - Mask: $%02X Consecutive: %d Extra params: %d\n",
+               cmd_header, cmd_id, param_mask, consecutive_writes, extra_param_count);
+        printf("[GPU] Param: $%08X\n", param);
+
+        for (unsigned int i = 0; i < extra_param_count; i++)
+            printf("[GPU] Ex param%d: $%08X\n", i, extra_params[i]);
+
+        switch (cmd_id)
+        {
+            case 0x010:
+                //End of command list
+                pmr->assert_hw_irq(0x2D);
+                break;
+            default:
+                printf("[GPU] Unrecognized command $%04X\n", cmd_id);
+                break;
+        }
+    }
+
+    cmd_engine.busy = false;
 }
 
 void GPU::do_memfill(int index)
@@ -127,6 +217,13 @@ uint32_t GPU::read32(uint32_t addr)
         return read32_fb(0, addr);
     if (addr >= 0x500 && addr < 0x600)
         return read32_fb(1, addr);
+    switch (addr)
+    {
+        case 0x0C18:
+            return dma.busy | (dma.finished << 8);
+        case 0x18F0:
+            return cmd_engine.busy;
+    }
     printf("[GPU] Unrecognized read32 $%08X\n", addr);
     return 0;
 }
@@ -161,7 +258,7 @@ void GPU::write32(uint32_t addr, uint32_t value)
                     memfill[index].busy = true;
 
                     //TODO: How long does a memfill take? We just assume a constant value for now
-                    scheduler->add_event([this](uint64_t param) { this->do_memfill(param);}, 10000, index);
+                    scheduler->add_event([this](uint64_t param) { this->do_memfill(param);}, 1000, index);
                 }
                 break;
         }
@@ -179,18 +276,59 @@ void GPU::write32(uint32_t addr, uint32_t value)
     }
     switch (addr)
     {
+        case 0x0C00:
+            dma.input_addr = value << 3;
+            printf("[GPU] DMA input addr: $%08X\n", dma.input_addr);
+            break;
+        case 0x0C04:
+            dma.output_addr = value << 3;
+            printf("[GPU] DMA output addr: $%08X\n", dma.output_addr);
+            break;
+        case 0x0C10:
+            dma.flags = value;
+            printf("[GPU] DMA flags: $%08X\n", dma.flags);
+            break;
         case 0x0C18:
-            //PPF IRQ
             if (value & 0x1)
-                pmr->assert_hw_irq(0x2C);
+            {
+                dma.busy = true;
+                dma.finished = false;
+                scheduler->add_event([this](uint64_t param) { this->do_transfer_engine_dma(param);}, 1000);
+            }
+            break;
+        case 0x0C20:
+            dma.tc_size = value;
+            printf("[GPU] TexCopy size: $%08X\n", dma.tc_size);
+            break;
+        case 0x0C24:
+            dma.tc_input_width = (value & 0xFFFF) * 16;
+            dma.tc_input_gap = (value >> 16) * 16;
+            printf("[GPU] TexCopy input width/gap: $%08X $%08X\n", dma.tc_input_width, dma.tc_input_gap);
+            break;
+        case 0x0C28:
+            dma.tc_output_width = (value & 0xFFFF) * 16;
+            dma.tc_output_gap = (value >> 16) * 16;
+            printf("[GPU] TexCopy output width/gap: $%08X $%08X\n", dma.tc_output_width, dma.tc_output_gap);
+            break;
+        case 0x18E0:
+            //Here, size is in units of words
+            cmd_engine.size = value << 1;
+            break;
+        case 0x18E8:
+            //Addr is in bytes, however
+            cmd_engine.input_addr = value << 3;
             break;
         case 0x18F0:
             //P3D IRQ
             if (value & 0x1)
-                pmr->assert_hw_irq(0x2D);
+            {
+                cmd_engine.busy = true;
+                scheduler->add_event([this](uint64_t param) { this->do_command_engine_dma(param);}, 1000);
+            }
             break;
+        default:
+            printf("[GPU] Unrecognized write32 $%08X: $%08X\n", addr, value);
     }
-    printf("[GPU] Unrecognized write32 $%08X: $%08X\n", addr, value);
 }
 
 uint32_t GPU::read32_fb(int index, uint32_t addr)
