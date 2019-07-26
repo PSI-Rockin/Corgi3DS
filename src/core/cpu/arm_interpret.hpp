@@ -14,6 +14,7 @@ namespace ARM_Interpreter
     void arm_blx_reg(ARM_CPU& cpu, uint32_t instr);
     void arm_clz(ARM_CPU& cpu, uint32_t instr);
     void arm_swp(ARM_CPU& cpu, uint32_t instr);
+    void arm_sxtab(ARM_CPU& cpu, uint32_t instr);
     void arm_sxtb(ARM_CPU& cpu, uint32_t instr);
     void arm_sxth(ARM_CPU& cpu, uint32_t instr);
     void arm_uxtb(ARM_CPU& cpu, uint32_t instr);

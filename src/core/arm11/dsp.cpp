@@ -3,7 +3,7 @@
 #include "../common/common.hpp"
 #include "dsp.hpp"
 #include "dsp_interpreter.hpp"
-#include "dsp_signextend.hpp"
+#include "signextend.hpp"
 
 DSP::DSP()
 {

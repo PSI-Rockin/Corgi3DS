@@ -14,6 +14,7 @@ enum ARM_INSTR
     ARM_CLZ,
     ARM_SATURATED_OP,
     ARM_BKPT,
+    ARM_SXTAB,
     ARM_SXTB,
     ARM_SXTH,
     ARM_UXTB,
@@ -131,6 +132,7 @@ namespace ARM_Disasm
     std::string arm_bx(uint32_t instr);
     std::string arm_swi(ARM_CPU& cpu, uint32_t instr);
     std::string arm_clz(uint32_t instr);
+    std::string arm_sxtab(uint32_t instr);
     std::string arm_sxtb(uint32_t instr);
     std::string arm_sxth(uint32_t instr);
     std::string arm_uxtb(uint32_t instr);

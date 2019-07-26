@@ -67,6 +67,13 @@ ARM_INSTR decode_arm(uint32_t instr)
 
     if ((instr & 0x0E000010) == 0x06000010)
     {
+        if ((instr & 0x0FF000F0) == 0x06A00070)
+        {
+            if ((instr & 0x0FFF00F0) == 0x06AF0070)
+                return ARM_SXTB;
+            return ARM_SXTAB;
+        }
+
         if ((instr & 0x0FFF00F0) == 0x06AF0070)
             return ARM_SXTB;
 
@@ -293,6 +300,8 @@ string disasm_arm(ARM_CPU& cpu, uint32_t instr)
             return arm_swi(cpu, instr);
         case ARM_CLZ:
             return arm_clz(instr);
+        case ARM_SXTAB:
+            return arm_sxtab(instr);
         case ARM_SXTB:
             return arm_sxtb(instr);
         case ARM_SXTH:
@@ -556,6 +565,24 @@ string arm_clz(uint32_t instr)
 
     output << "clz" << cond_name(instr >> 28) << " ";
     output << ARM_CPU::get_reg_name(destination) << ", " << ARM_CPU::get_reg_name(source);
+    return output.str();
+}
+
+string arm_sxtab(uint32_t instr)
+{
+    stringstream output;
+    int source1 = (instr >> 16) & 0xF;
+    int source2 = instr & 0xF;
+    int rot = (instr >> 10) & 0x3;
+    int dest = (instr >> 12) & 0xF;
+
+    output << "sxtab" << cond_name(instr >> 28) << " ";
+    output << ARM_CPU::get_reg_name(dest) << ", " <<
+           ARM_CPU::get_reg_name(source1) << ", " << ARM_CPU::get_reg_name(source2);
+
+    if (rot)
+        output << ", ror #" << std::dec << rot * 8;
+
     return output.str();
 }
 

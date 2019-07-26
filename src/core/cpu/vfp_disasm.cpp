@@ -204,11 +204,11 @@ string vfp_load_store_single(uint32_t instr)
 
     if (offset)
     {
-        output << ",";
+        output << ", ";
         if (!u)
             output << "-";
 
-        output << " #0x" << hex << offset;
+        output << "#0x" << hex << offset;
     }
 
     output << "]";

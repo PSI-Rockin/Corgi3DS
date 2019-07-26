@@ -55,6 +55,9 @@ void interpret_arm(ARM_CPU &cpu, uint32_t instr)
         case ARM_SWAP:
             arm_swp(cpu, instr);
             break;
+        case ARM_SXTAB:
+            arm_sxtab(cpu, instr);
+            break;
         case ARM_SXTB:
             arm_sxtb(cpu, instr);
             break;
@@ -310,6 +313,19 @@ void arm_swp(ARM_CPU &cpu, uint32_t instr)
 
         //cpu.add_n32_data(address, 2);
     }
+}
+
+void arm_sxtab(ARM_CPU &cpu, uint32_t instr)
+{
+    int source1 = (instr >> 16) & 0xF;
+    int source2 = instr & 0xF;
+    int rot = (instr >> 10) & 0x3;
+    int dest = (instr >> 12) & 0xF;
+
+    uint32_t source1_reg = cpu.get_register(source1);
+    int32_t source2_reg = (int32_t)(int8_t)(rotr32(cpu.get_register(source2), rot * 8) & 0xFF);
+
+    cpu.set_register(dest, source1_reg + source2_reg);
 }
 
 void arm_sxtb(ARM_CPU &cpu, uint32_t instr)

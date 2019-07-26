@@ -1,6 +1,6 @@
 #include "dsp.hpp"
 #include "dsp_interpreter.hpp"
-#include "dsp_signextend.hpp"
+#include "signextend.hpp"
 #include "../common/common.hpp"
 
 namespace DSP_Interpreter

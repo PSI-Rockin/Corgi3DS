@@ -1,5 +1,5 @@
-#ifndef DSP_SIGNEXTEND_HPP
-#define DSP_SIGNEXTEND_HPP
+#ifndef SIGNEXTEND_HPP
+#define SIGNEXTEND_HPP
 
 //BitSize and SignExtend taken from Teakra
 template <typename T>
@@ -23,4 +23,4 @@ constexpr T SignExtend(const T value) {
     return SignExtend(value, bit_count);
 }
 
-#endif // DSP_SIGNEXTEND_HPP
+#endif // SIGNEXTEND_HPP

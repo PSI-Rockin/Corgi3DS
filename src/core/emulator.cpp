@@ -768,6 +768,8 @@ uint8_t Emulator::arm11_read8(int core, uint32_t addr)
         return mpcore_pmr.read8(core, addr);
     if (addr >= 0x18000000 && addr < 0x18600000)
         return gpu.read_vram<uint8_t>(addr);
+    if (addr >= 0x20000000 && addr < 0x28000000)
+        return fcram[addr & 0x07FFFFFF];
     switch (addr)
     {
         case 0x1014010C:
@@ -836,6 +838,8 @@ uint16_t Emulator::arm11_read16(int core, uint32_t addr)
     }
     if (addr >= 0x10203000 && addr < 0x10204000)
         return dsp.read16(addr);
+    if (addr >= 0x20000000 && addr < 0x28000000)
+        return *(uint16_t*)&fcram[addr & 0x07FFFFFF];
     switch (addr)
     {
         case 0x101401C0:

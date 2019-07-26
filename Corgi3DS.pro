@@ -80,7 +80,9 @@ HEADERS += \
     src/core/arm9/cartridge.hpp \
     src/core/arm11/dsp_interpreter.hpp \
     src/core/arm11/dsp_reg.hpp \
-    src/core/arm11/dsp_signextend.hpp
+    src/core/arm11/gpu_floats.hpp \
+    src/core/arm11/vector_math.hpp \
+    src/core/arm11/signextend.hpp
 
 INCLUDEPATH += /usr/local/include
 

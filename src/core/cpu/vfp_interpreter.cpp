@@ -128,12 +128,12 @@ void vfp_load_store(ARM_CPU& cpu, VFP &vfp, uint32_t instr)
             vfp_store_block(cpu, vfp, instr);
             break;
         case 0x06:
-        case 0x0C:
         case 0x16:
-        case 0x1C:
             vfp_store_single(cpu, vfp, instr);
             break;
+        case 0x0C:
         case 0x0E:
+        case 0x1C:
         case 0x1E:
             vfp_load_single(cpu, vfp, instr);
             break;
@@ -214,6 +214,8 @@ void vfp_load_single(ARM_CPU &cpu, VFP &vfp, uint32_t instr)
     else
         addr -= offset;
 
+    printf("[VFP] Read from $%08X ($%08X, $%08X)\n", addr, cpu.get_register(base), offset);
+
     if (is_double)
         vfp.set_reg64(fp_reg, cpu.read64(addr));
     else
@@ -241,6 +243,8 @@ void vfp_store_single(ARM_CPU &cpu, VFP &vfp, uint32_t instr)
         addr += offset;
     else
         addr -= offset;
+
+    printf("[VFP] Write to $%08X ($%08X, $%08X)\n", addr, cpu.get_register(base), offset);
 
     if (is_double)
         cpu.write64(addr, vfp.get_reg64(fp_reg));
