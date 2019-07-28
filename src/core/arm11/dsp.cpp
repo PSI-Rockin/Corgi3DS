@@ -117,7 +117,7 @@ void DSP::run(int cycles)
 
             int_check();
 
-            print_state();
+            //print_state();
             cycles--;
         }
     }

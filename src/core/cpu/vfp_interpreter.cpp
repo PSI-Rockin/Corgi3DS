@@ -214,8 +214,6 @@ void vfp_load_single(ARM_CPU &cpu, VFP &vfp, uint32_t instr)
     else
         addr -= offset;
 
-    printf("[VFP] Read from $%08X ($%08X, $%08X)\n", addr, cpu.get_register(base), offset);
-
     if (is_double)
         vfp.set_reg64(fp_reg, cpu.read64(addr));
     else
@@ -243,8 +241,6 @@ void vfp_store_single(ARM_CPU &cpu, VFP &vfp, uint32_t instr)
         addr += offset;
     else
         addr -= offset;
-
-    printf("[VFP] Write to $%08X ($%08X, $%08X)\n", addr, cpu.get_register(base), offset);
 
     if (is_double)
         cpu.write64(addr, vfp.get_reg64(fp_reg));

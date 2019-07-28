@@ -840,6 +840,8 @@ uint16_t Emulator::arm11_read16(int core, uint32_t addr)
         return dsp.read16(addr);
     if (addr >= 0x20000000 && addr < 0x28000000)
         return *(uint16_t*)&fcram[addr & 0x07FFFFFF];
+    if (addr >= 0x18000000 && addr < 0x18600000)
+        return gpu.read_vram<uint16_t>(addr);
     switch (addr)
     {
         case 0x101401C0:
@@ -968,6 +970,12 @@ void Emulator::arm11_write8(int core, uint32_t addr, uint8_t value)
         return;
     }
 
+    if (addr >= 0x20000000 && addr < 0x28000000)
+    {
+        fcram[addr & 0x07FFFFFF] = value;
+        return;
+    }
+
     switch (addr)
     {
         case 0x10140104:
@@ -1052,6 +1060,16 @@ void Emulator::arm11_write16(int core, uint32_t addr, uint16_t value)
     if (addr >= 0x10203000 && addr < 0x10204000)
     {
         dsp.write16(addr, value);
+        return;
+    }
+    if (addr >= 0x18000000 && addr < 0x18600000)
+    {
+        gpu.write_vram<uint16_t>(addr, value);
+        return;
+    }
+    if (addr >= 0x20000000 && addr < 0x28000000)
+    {
+        *(uint16_t*)&fcram[addr & 0x07FFFFFF] = value;
         return;
     }
     switch (addr)

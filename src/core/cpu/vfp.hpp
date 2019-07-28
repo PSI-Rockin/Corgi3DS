@@ -47,49 +47,49 @@ class VFP
 
 inline float VFP::get_float(int index)
 {
-    printf("[VFP] Get float reg%d: %f\n", index, *(float*)&fpr[index << 2]);
+    //printf("[VFP] Get float reg%d: %f\n", index, *(float*)&fpr[index << 2]);
     return *(float*)&fpr[index << 2];
 }
 
 inline double VFP::get_double(int index)
 {
-    printf("[VFP] Get double reg%d: %f\n", index, *(double*)&fpr[index << 3]);
+    //printf("[VFP] Get double reg%d: %f\n", index, *(double*)&fpr[index << 3]);
     return *(double*)&fpr[index << 3];
 }
 
 inline uint32_t VFP::get_reg32(int index)
 {
-    printf("[VFP] Get32 reg%d: $%08X\n", index, *(uint32_t*)&fpr[index << 2]);
+    //printf("[VFP] Get32 reg%d: $%08X\n", index, *(uint32_t*)&fpr[index << 2]);
     return *(uint32_t*)&fpr[index << 2];
 }
 
 inline uint64_t VFP::get_reg64(int index)
 {
-    printf("[VFP] Get64 reg%d: $%llX\n", index, *(uint64_t*)&fpr[index << 3]);
+    //printf("[VFP] Get64 reg%d: $%llX\n", index, *(uint64_t*)&fpr[index << 3]);
     return *(uint64_t*)&fpr[index << 3];
 }
 
 inline void VFP::set_float(int index, float value)
 {
-    printf("[VFP] Set float reg%d: %f\n", index, value);
+    //printf("[VFP] Set float reg%d: %f\n", index, value);
     *(float*)&fpr[index << 2] = value;
 }
 
 inline void VFP::set_double(int index, double value)
 {
-    printf("[VFP] Set double reg%d: %f\n", index, value);
+    //printf("[VFP] Set double reg%d: %f\n", index, value);
     *(double*)&fpr[index << 3] = value;
 }
 
 inline void VFP::set_reg32(int index, uint32_t value)
 {
-    printf("[VFP] Set32 reg%d: $%08X\n", index, value);
+    //printf("[VFP] Set32 reg%d: $%08X\n", index, value);
     *(uint32_t*)&fpr[index << 2] = value;
 }
 
 inline void VFP::set_reg64(int index, uint64_t value)
 {
-    printf("[VFP] Set64 reg%d: $%llX\n", index, value);
+    //printf("[VFP] Set64 reg%d: $%llX\n", index, value);
     *(uint64_t*)&fpr[index << 3] = value;
 }
 

@@ -4,6 +4,11 @@
 #include "gpu_floats.hpp"
 #include "vector_math.hpp"
 
+struct RGBA_Color
+{
+    int32_t r, g, b, a;
+};
+
 struct FrameBuffer
 {
     uint32_t left_addr_a, left_addr_b;
@@ -28,6 +33,8 @@ struct TransferEngine
 {
     uint32_t input_addr;
     uint32_t output_addr;
+    uint32_t disp_input_width, disp_input_height;
+    uint32_t disp_output_width, disp_output_height;
     uint32_t flags;
 
     uint32_t tc_size;
@@ -90,6 +97,49 @@ struct Vertex
     Vec4<float24> color;
     Vec4<float24> texcoords[3];
     Vec4<float24> view;
+
+    Vertex operator-(const Vertex& rhs)
+    {
+        Vertex result;
+        result.pos = pos - rhs.pos;
+        result.color = color - rhs.color;
+        result.texcoords[0] = texcoords[0] - rhs.texcoords[0];
+        result.texcoords[1] = texcoords[1] - rhs.texcoords[1];
+        result.texcoords[2] = texcoords[2] - rhs.texcoords[2];
+        return result;
+    }
+
+    Vertex operator+(const Vertex& rhs)
+    {
+        Vertex result;
+        result.pos = pos + rhs.pos;
+        result.color = color + rhs.color;
+        result.texcoords[0] = texcoords[0] + rhs.texcoords[0];
+        result.texcoords[1] = texcoords[1] + rhs.texcoords[1];
+        result.texcoords[2] = texcoords[2] + rhs.texcoords[2];
+        return result;
+    }
+
+    Vertex& operator+=(const Vertex& rhs)
+    {
+        pos += rhs.pos;
+        color += rhs.color;
+        texcoords[0] += rhs.texcoords[0];
+        texcoords[1] += rhs.texcoords[1];
+        texcoords[2] += rhs.texcoords[2];
+        return *this;
+    }
+
+    Vertex operator*(float24 mult)
+    {
+        Vertex result;
+        result.pos = pos * mult;
+        result.color = color * mult;
+        result.texcoords[0] = texcoords[0] * mult;
+        result.texcoords[1] = texcoords[1] * mult;
+        result.texcoords[2] = texcoords[2] * mult;
+        return result;
+    }
 };
 
 struct GPU_Context
@@ -105,7 +155,36 @@ struct GPU_Context
     uint8_t vsh_output_total;
     uint8_t vsh_output_mapping[7][4];
 
+    //Texturing registers
+    RGBA_Color tex_border[3];
+    uint32_t tex_width[3];
+    uint32_t tex_height[3];
+    uint32_t tex_addr[3];
+    uint32_t tex0_addr[5];
+    uint8_t tex_type[3];
+
+    uint8_t texcomb_rgb_source[6][3];
+    uint8_t texcomb_alpha_source[6][3];
+    uint8_t texcomb_rgb_operand[6][3];
+    uint8_t texcomb_alpha_operand[6][3];
+    uint8_t texcomb_rgb_op[6];
+    uint8_t texcomb_alpha_op[6];
+    RGBA_Color texcomb_const[6];
+    uint8_t texcomb_rgb_scale[6];
+    uint8_t texcomb_alpha_scale[6];
+
     //Framebuffer registers
+    uint8_t fragment_op;
+    uint8_t blend_mode;
+    RGBA_Color blend_color;
+
+    uint8_t blend_rgb_equation;
+    uint8_t blend_alpha_equation;
+    uint8_t blend_rgb_src_func;
+    uint8_t blend_rgb_dst_func;
+    uint8_t blend_alpha_src_func;
+    uint8_t blend_alpha_dst_func;
+
     uint32_t depth_buffer_base;
     uint32_t color_buffer_base;
     uint16_t frame_width, frame_height;
@@ -131,17 +210,21 @@ struct GPU_Context
     bool index_buffer_short;
 
     uint32_t vertices;
+    uint32_t vtx_offset;
 
     uint8_t fixed_attr_index;
     uint32_t fixed_attr_buffer[3];
     int fixed_attr_count;
 
+    uint8_t vsh_inputs;
+    uint8_t vsh_input_counter;
+
     uint8_t prim_mode;
 
-    //Geometry shader pipeline
+    //Geometry shader
     ShaderUnit gsh;
 
-    //Vertex shader pipeline
+    //Vertex shader
     ShaderUnit vsh;
 };
 
@@ -171,14 +254,24 @@ class GPU
         uint32_t read32_fb(int index, uint32_t addr);
         void write32_fb(int index, uint32_t addr, uint32_t value);
 
+        uint32_t get_4bit_swizzled_addr(uint32_t base, uint32_t width, uint32_t x, uint32_t y);
+        uint32_t get_swizzled_tile_addr(uint32_t base, uint32_t width, uint32_t x, uint32_t y, uint32_t size);
+
         void do_transfer_engine_dma(uint64_t param);
         void do_command_engine_dma(uint64_t param);
         void do_memfill(int index);
 
         void write_cmd_register(int reg, uint32_t param, uint8_t mask);
 
-        void draw_array_elements();
+        void draw_vtx_array(bool is_indexed);
+        void submit_vertex();
         void rasterize_tri();
+        void rasterize_half_tri(float24 x0, float24 x1, int y0, int y1, Vertex &x_step,
+                                Vertex &y_step, Vertex &init, float24 step_x0, float24 step_x1);
+
+        void get_tex0(RGBA_Color& tex_color, Vertex& vtx);
+        void combine_textures(RGBA_Color& source, Vertex& vtx);
+        void blend_fragment(RGBA_Color& source, RGBA_Color& frame);
 
         //Shader ops
         void exec_shader(ShaderUnit& sh);
