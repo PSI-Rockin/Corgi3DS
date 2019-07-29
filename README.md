@@ -5,7 +5,9 @@ An LLE dog-themed 3DS emulator. Can successfully boot a B9S-hacked firmware whic
 
 Requires Qt 5 and GMP. Currently only tested on macOS.
 
-Usage from command line: [ARM9 boot ROM] [ARM11 boot ROM] [OTP file] [NAND image] [NAND CID] [SD image]
+Usage from command line: [ARM9 boot ROM] [ARM11 boot ROM] [NAND image] [SD image] [Optional: 3DS gamecart image]
+
+NAND dumps require essential.exefs - get dumps from the latest version of GodMode9.
 
 Keyboard control:
 
@@ -16,5 +18,7 @@ Keyboard control:
 * A -> Y
 * Q -> L
 * W -> R
+* Enter/Return -> START
+* Spacebar -> SELECT
 
 Uses https://github.com/kokke/tiny-AES-c, a public domain AES library.
