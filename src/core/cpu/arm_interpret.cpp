@@ -85,6 +85,9 @@ void interpret_arm(ARM_CPU &cpu, uint32_t instr)
         case ARM_PKHBT:
             arm_pkhbt(cpu, instr);
             break;
+        case ARM_USAT:
+            arm_usat(cpu, instr);
+            break;
         case ARM_DATA_PROCESSING:
             arm_data_processing(cpu, instr);
             break;
@@ -432,6 +435,42 @@ void arm_pkhbt(ARM_CPU &cpu, uint32_t instr)
     uint32_t source2 = (cpu.get_register(reg2) << shift) & 0xFFFF0000;
 
     cpu.set_register(dest, source1 | source2);
+}
+
+void arm_usat(ARM_CPU &cpu, uint32_t instr)
+{
+    uint32_t sat_imm = (instr >> 16) & 0x1F;
+    int dest = (instr >> 12) & 0xF;
+    int shift = (instr >> 7) & 0x1F;
+    bool is_arith = (instr >> 6) & 0x1;
+    int source = instr & 0xF;
+
+    sat_imm = (1 << sat_imm) - 1;
+
+    uint32_t source_reg = cpu.get_register(source);
+
+    if (is_arith)
+    {
+        if (!shift)
+            source_reg = cpu.asr_32(source_reg, false);
+        else
+            source_reg = cpu.asr(source_reg, shift, false);
+    }
+    else
+        source_reg <<= shift;
+
+    if (source_reg & (1 << 31))
+    {
+        source_reg = 0;
+        cpu.get_CPSR()->q_overflow = true;
+    }
+    else if (source_reg > sat_imm)
+    {
+        source_reg = sat_imm;
+        cpu.get_CPSR()->q_overflow = true;
+    }
+
+    cpu.set_register(dest, source_reg);
 }
 
 void arm_data_processing(ARM_CPU &cpu, uint32_t instr)

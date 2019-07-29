@@ -60,7 +60,11 @@ struct ShaderUnit
     Vec4<float24> output_regs[16];
     Vec4<float24> float_uniform[96];
     uint16_t bool_uniform;
+    uint8_t int_regs[4][4];
     bool cmp_regs[2];
+    uint32_t loop_ctr_reg;
+    uint32_t loop_inc_reg;
+    Vec2<float24> addr_reg;
 
     uint8_t total_inputs;
 
@@ -80,6 +84,11 @@ struct ShaderUnit
 
     uint32_t op_desc_index;
     uint32_t op_desc[128];
+
+    uint16_t loop_cmp_stack[4];
+    uint16_t loop_stack[4];
+    uint8_t loop_iter_stack[4];
+    uint8_t loop_ptr;
 
     uint16_t if_cmp_stack[8];
     uint16_t if_stack[8];
@@ -156,9 +165,15 @@ struct GPU_Context
     uint8_t vsh_output_mapping[7][4];
 
     //Texturing registers
+    bool tex_enable[4];
+    uint8_t tex3_coords;
+    bool tex2_uses_tex1_coords;
     RGBA_Color tex_border[3];
     uint32_t tex_width[3];
     uint32_t tex_height[3];
+    uint8_t tex_swrap[3];
+    uint8_t tex_twrap[3];
+    uint8_t tex0_type;
     uint32_t tex_addr[3];
     uint32_t tex0_addr[5];
     uint8_t tex_type[3];
@@ -172,6 +187,10 @@ struct GPU_Context
     RGBA_Color texcomb_const[6];
     uint8_t texcomb_rgb_scale[6];
     uint8_t texcomb_alpha_scale[6];
+
+    bool texcomb_rgb_buffer_update[6];
+    bool texcomb_alpha_buffer_update[6];
+    RGBA_Color texcomb_buffer;
 
     //Framebuffer registers
     uint8_t fragment_op;
@@ -269,7 +288,10 @@ class GPU
         void rasterize_half_tri(float24 x0, float24 x1, int y0, int y1, Vertex &x_step,
                                 Vertex &y_step, Vertex &init, float24 step_x0, float24 step_x1);
 
+        void tex_lookup(int index, RGBA_Color& tex_color, Vertex& vtx);
         void get_tex0(RGBA_Color& tex_color, Vertex& vtx);
+        void get_tex1(RGBA_Color& tex_color, Vertex& vtx);
+        void get_tex2(RGBA_Color& tex_color, Vertex& vtx);
         void combine_textures(RGBA_Color& source, Vertex& vtx);
         void blend_fragment(RGBA_Color& source, RGBA_Color& frame);
 
@@ -277,15 +299,20 @@ class GPU
         void exec_shader(ShaderUnit& sh);
         Vec4<float24> swizzle_sh_src(Vec4<float24> src, uint32_t op_desc, int src_type);
         Vec4<float24> get_src(ShaderUnit& sh, uint8_t src);
-        uint8_t get_idx1(uint8_t idx1, uint8_t src1);
+        uint8_t get_idx1(ShaderUnit& sh, uint8_t idx1, uint8_t src1);
         void set_sh_dest(ShaderUnit& sh, uint8_t dst, float24 value, int index);
 
+        void shader_add(ShaderUnit& sh, uint32_t instr);
         void shader_dp4(ShaderUnit& sh, uint32_t instr);
         void shader_mul(ShaderUnit& sh, uint32_t instr);
+        void shader_max(ShaderUnit& sh, uint32_t instr);
+        void shader_mova(ShaderUnit& sh, uint32_t instr);
         void shader_mov(ShaderUnit& sh, uint32_t instr);
         void shader_call(ShaderUnit& sh, uint32_t instr);
+        void shader_callu(ShaderUnit& sh, uint32_t instr);
         void shader_ifu(ShaderUnit& sh, uint32_t instr);
         void shader_ifc(ShaderUnit& sh, uint32_t instr);
+        void shader_loop(ShaderUnit& sh, uint32_t instr);
         void shader_cmp(ShaderUnit& sh, uint32_t instr);
 
         void render_fb_pixel(uint8_t* screen, int fb_index, int x, int y);

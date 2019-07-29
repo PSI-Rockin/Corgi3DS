@@ -52,6 +52,9 @@ void GPU::reset(uint8_t* vram)
 
     framebuffers[0].left_addr_a = 0x18000000;
     framebuffers[1].left_addr_a = 0x18000000;
+
+    memset(ctx.texcomb_rgb_buffer_update, 0, sizeof(ctx.texcomb_rgb_buffer_update));
+    memset(ctx.texcomb_alpha_buffer_update, 0, sizeof(ctx.texcomb_alpha_buffer_update));
 }
 
 void GPU::render_frame()
@@ -305,12 +308,16 @@ void GPU::do_command_engine_dma(uint64_t unused)
 void GPU::do_memfill(int index)
 {
     //TODO: Is the end region inclusive or exclusive? This code assumes exclusive
+    printf("[GPU] Do memfill%d\n", index);
+    printf("Start: $%08X End: $%08X Value: $%08X Width: %d\n",
+           memfill[index].start, memfill[index].end, memfill[index].value, memfill[index].fill_width);
     for (uint32_t i = memfill[index].start; i < memfill[index].end; i++)
     {
         switch (memfill[index].fill_width)
         {
             case 2:
                 write_vram<uint32_t>(i, memfill[index].value);
+                i += 3;
                 break;
             default:
                 EmuException::die("[GPU] Unrecognized Memory Fill format %d\n", memfill[index].fill_width);
@@ -550,6 +557,14 @@ void GPU::write_cmd_register(int reg, uint32_t param, uint8_t mask)
             ctx.viewport_x = SignExtend<10>(param & 0x3FF);
             ctx.viewport_y = SignExtend<10>((param >> 16) & 0x3FF);
             break;
+        case 0x080:
+            ctx.tex_enable[0] = param & 0x1;
+            ctx.tex_enable[1] = (param >> 1) & 0x1;
+            ctx.tex_enable[2] = (param >> 2) & 0x1;
+            ctx.tex3_coords = (param >> 8) & 0x3;
+            ctx.tex_enable[3] = (param >> 10) & 0x3;
+            ctx.tex2_uses_tex1_coords = (param >> 13) & 0x1;
+            break;
         case 0x081:
             ctx.tex_border[0].r = param & 0xFF;
             ctx.tex_border[0].g = (param >> 8) & 0xFF;
@@ -559,6 +574,11 @@ void GPU::write_cmd_register(int reg, uint32_t param, uint8_t mask)
         case 0x082:
             ctx.tex_height[0] = param & 0x3FF;
             ctx.tex_width[0] = (param >> 16) & 0x3FF;
+            break;
+        case 0x083:
+            ctx.tex_twrap[0] = (param >> 8) & 0x7;
+            ctx.tex_swrap[0] = (param >> 12) & 0x7;
+            ctx.tex0_type = (param >> 28) & 0x7;
             break;
         case 0x085:
             ctx.tex_addr[0] = (param & 0x0FFFFFFF) << 3;
@@ -572,6 +592,45 @@ void GPU::write_cmd_register(int reg, uint32_t param, uint8_t mask)
             break;
         case 0x08E:
             ctx.tex_type[0] = param & 0xF;
+            break;
+        case 0x091:
+        case 0x099:
+            ctx.tex_border[((reg - 0x091) / 8) + 1].r = param & 0xFF;
+            ctx.tex_border[((reg - 0x091) / 8) + 1].g = (param >> 8) & 0xFF;
+            ctx.tex_border[((reg - 0x091) / 8) + 1].b = (param >> 16) & 0xFF;
+            ctx.tex_border[((reg - 0x091) / 8) + 1].a = param >> 24;
+            break;
+        case 0x092:
+        case 0x09A:
+            ctx.tex_height[((reg - 0x092) / 8) + 1] = param & 0x3FF;
+            ctx.tex_width[((reg - 0x092) / 8) + 1] = (param >> 16) & 0x3FF;
+            break;
+        case 0x093:
+        case 0x09B:
+            ctx.tex_twrap[((reg - 0x093) / 8) + 1] = (param >> 8) & 0x7;
+            ctx.tex_swrap[((reg - 0x093) / 8) + 1] = (param >> 12) & 0x7;
+            break;
+        case 0x095:
+        case 0x09D:
+            ctx.tex_addr[((reg - 0x095) / 8) + 1] = (param & 0x0FFFFFFF) << 3;
+            break;
+        case 0x096:
+        case 0x09E:
+            ctx.tex_type[((reg - 0x096) / 8) + 1] = param & 0xF;
+            break;
+        case 0x0E0:
+            //The buffer update only applies to the first four stages
+            for (int i = 0; i < 4; i++)
+            {
+                ctx.texcomb_rgb_buffer_update[i] = (param >> (i + 8)) & 0x1;
+                ctx.texcomb_alpha_buffer_update[i] = (param >> (i + 12)) & 0x1;
+            }
+            break;
+        case 0x0FD:
+            ctx.texcomb_buffer.r = param & 0xFF;
+            ctx.texcomb_buffer.g = (param >> 8) & 0xFF;
+            ctx.texcomb_buffer.b = (param >> 16) & 0xFF;
+            ctx.texcomb_buffer.a = param >> 24;
             break;
         case 0x100:
             ctx.fragment_op = param & 0x3;
@@ -646,6 +705,15 @@ void GPU::write_cmd_register(int reg, uint32_t param, uint8_t mask)
             break;
         case 0x2B0:
             ctx.vsh.bool_uniform = param & 0xFFFF;
+            break;
+        case 0x2B1:
+        case 0x2B2:
+        case 0x2B3:
+        case 0x2B4:
+            ctx.vsh.int_regs[reg - 0x2B1][0] = param & 0xFF;
+            ctx.vsh.int_regs[reg - 0x2B1][1] = (param >> 8) & 0xFF;
+            ctx.vsh.int_regs[reg - 0x2B1][2] = (param >> 16) & 0xFF;
+            ctx.vsh.int_regs[reg - 0x2B1][3] = param >> 24;
             break;
         case 0x2B9:
             ctx.vsh.total_inputs = (param & 0xF) + 1;
@@ -799,6 +867,8 @@ void GPU::submit_vertex()
     exec_shader(ctx.vsh);
 
     //TODO: Run geometry shader?
+    if (ctx.prim_mode == 3)
+        return;
 
     //Map output registers to vertex variables
     Vertex v;
@@ -851,6 +921,18 @@ void GPU::submit_vertex()
         }
     }
 
+    //Multiply all vertex values (except w) by 1/w
+    float24 inv_w = float24::FromFloat32(1.0f) / v.pos[3];
+    v.pos *= inv_w;
+    v.color *= inv_w;
+    v.texcoords[0] *= inv_w;
+    v.texcoords[1] *= inv_w;
+    v.texcoords[2] *= inv_w;
+    v.quat *= inv_w;
+    v.view *= inv_w;
+
+    v.pos[3] = inv_w;
+
     //Textures are laid from bottom to top, so we invert the T coordinate
     v.texcoords[0][1] = float24::FromFloat32(1.0f) - v.texcoords[0][1];
 
@@ -861,6 +943,10 @@ void GPU::submit_vertex()
     v.pos[1] += float24::FromFloat32(1.0f);
     v.pos[1] = float24::FromFloat32(2.0f) - v.pos[1];
     v.pos[1] = (v.pos[1] * ctx.viewport_height) + float24::FromFloat32(ctx.viewport_y);
+
+    //Round x and y to nearest whole number
+    v.pos[0] = float24::FromFloat32(roundf(v.pos[0].ToFloat32()));
+    v.pos[1] = float24::FromFloat32(roundf(v.pos[1].ToFloat32()));
 
     //Add vertex to the queue
     ctx.vertex_queue[ctx.submitted_vertices] = v;
@@ -976,12 +1062,15 @@ void GPU::rasterize_tri() {
     }
     printf("\n");
 
-    printf("Texcoord0s: ");
     for (int i = 0; i < 3; i++)
     {
-        printf("(%f %f) ", ctx.vertex_queue[i].texcoords[0][0].ToFloat32(), ctx.vertex_queue[i].texcoords[0][1].ToFloat32());
+        printf("Texcoord%ds: ", i);
+        for (int j = 0; j < 3; j++)
+        {
+            printf("(%f %f) ", ctx.vertex_queue[j].texcoords[i][0].ToFloat32(), ctx.vertex_queue[j].texcoords[i][1].ToFloat32());
+        }
+        printf("\n");
     }
-    printf("\n");
 
     printf("Viewport: (%f, %f) (%f, %f)\n",
            ctx.viewport_width.ToFloat32(), ctx.viewport_height.ToFloat32(),
@@ -1208,7 +1297,7 @@ void GPU::rasterize_half_tri(float24 x0, float24 x1, int y0, int y1, Vertex &x_s
 
         vtx += (x_step * (x0l - init.pos[0]));           // interpolate to point (x0l, y)
 
-        for(int x = x0l.ToFloat32(); x < xStop; x++)            // loop over x pixels of scanline
+        for (int x = x0l.ToFloat32(); x < xStop; x++)            // loop over x pixels of scanline
         {
             RGBA_Color source_color, frame_color;
 
@@ -1239,24 +1328,74 @@ void GPU::rasterize_half_tri(float24 x0, float24 x1, int y0, int y1, Vertex &x_s
     }
 }
 
-void GPU::get_tex0(RGBA_Color &tex_color, Vertex &vtx)
+void GPU::tex_lookup(int index, RGBA_Color &tex_color, Vertex &vtx)
 {
     tex_color.r = 0;
     tex_color.g = 0;
     tex_color.b = 0;
-    tex_color.a = 0x0;
+    tex_color.a = 0;
 
-    int u = vtx.texcoords[0][0].ToFloat32() * ctx.tex_width[0];
-    int v = vtx.texcoords[0][1].ToFloat32() * ctx.tex_height[0];
+    //TODO: A NULL/disabled texture should return the most recently rendered fragment color
+    if (!ctx.tex_enable[index])
+        return;
 
-    uint32_t addr = ctx.tex_addr[0];
+    int height = ctx.tex_height[index];
+    int width = ctx.tex_width[index];
+    int u = roundf(vtx.texcoords[index][0].ToFloat32() * ctx.tex_width[index]);
+    int v = roundf(vtx.texcoords[index][1].ToFloat32() * ctx.tex_height[index]);
+
+    switch (ctx.tex_swrap[index])
+    {
+        case 0:
+            u = std::max(0, u);
+            u = std::min(width - 1, u);
+            break;
+        case 2:
+            u = (unsigned int)u % width;
+            break;
+        case 3:
+        {
+            unsigned int temp = (unsigned int)u;
+            temp %= (width << 1);
+            if (temp >= (unsigned int)width)
+                temp = (width << 1) - 1 - temp;
+            u = (int)temp;
+        }
+            break;
+        default:
+            EmuException::die("[GPU] Unrecognized swrap %d", ctx.tex_swrap[index]);
+    }
+
+    switch (ctx.tex_twrap[index])
+    {
+        case 0:
+            v = std::max(0, v);
+            v = std::min(height - 1, v);
+            break;
+        case 2:
+            v = (unsigned int)v % height;
+            break;
+        case 3:
+        {
+            unsigned int temp = (unsigned int)v;
+            temp %= (height << 1);
+            if (temp >= (unsigned int)height)
+                temp = (height << 1) - 1 - temp;
+            v = (int)temp;
+        }
+            break;
+        default:
+            EmuException::die("[GPU] Unrecognized twrap %d", ctx.tex_twrap[index]);
+    }
+
+    uint32_t addr = ctx.tex_addr[index];
     uint32_t texel;
 
-    switch (ctx.tex_type[0])
+    switch (ctx.tex_type[index])
     {
         case 0x0:
             //RGBA8888
-            addr = get_swizzled_tile_addr(addr, ctx.tex_width[0], u, v, 4);
+            addr = get_swizzled_tile_addr(addr, width, u, v, 4);
             texel = bswp32(e->arm11_read32(0, addr));
 
             tex_color.r = texel & 0xFF;
@@ -1266,7 +1405,7 @@ void GPU::get_tex0(RGBA_Color &tex_color, Vertex &vtx)
             break;
         case 0x4:
             //RGBA4444
-            addr = get_swizzled_tile_addr(addr, ctx.tex_width[0], u, v, 2);
+            addr = get_swizzled_tile_addr(addr, width, u, v, 2);
             texel = bswp16(e->arm11_read16(0, addr));
 
             tex_color.r = (texel & 0xF) << 4;
@@ -1274,9 +1413,65 @@ void GPU::get_tex0(RGBA_Color &tex_color, Vertex &vtx)
             tex_color.b = ((texel >> 8) & 0xF) << 4;
             tex_color.a = (texel >> 12) << 4;
             break;
+        case 0x5:
+            //IA8
+            addr = get_swizzled_tile_addr(addr, width, u, v, 2);
+            texel = bswp16(e->arm11_read16(0, addr));
+
+            //TODO: When alpha is disabled, R should be intensity and G should be alpha
+            tex_color.r = texel & 0xFF;
+            tex_color.g = texel & 0xFF;
+            tex_color.b = texel & 0xFF;
+            tex_color.a = texel >> 8;
+            break;
+        case 0x7:
+            //I8
+            addr = get_swizzled_tile_addr(addr, width, u, v, 1);
+            texel = e->arm11_read8(0, addr);
+
+            tex_color.r = texel;
+            tex_color.g = texel;
+            tex_color.b = texel;
+            tex_color.a = 0xFF;
+            break;
+        case 0x8:
+            //A8
+            addr = get_swizzled_tile_addr(addr, width, u, v, 1);
+            texel = e->arm11_read8(0, addr);
+
+            tex_color.a = texel;
+            break;
+        case 0x9:
+            //IA4
+        {
+            addr = get_swizzled_tile_addr(addr, width, u, v, 1);
+            texel = e->arm11_read8(0, addr);
+            uint8_t i = (texel >> 4) << 4;
+            uint8_t a = (texel & 0xF) << 4;
+
+            //TODO: When alpha is disabled, R should be intensity and G should be alpha
+            tex_color.r = i;
+            tex_color.g = i;
+            tex_color.b = i;
+            tex_color.a = a;
+        }
+            break;
+        case 0xA:
+            //I4
+            addr = get_4bit_swizzled_addr(addr, width, u, v);
+            if (u & 0x1)
+                texel = e->arm11_read8(0, addr) >> 4;
+            else
+                texel = e->arm11_read8(0, addr) & 0xF;
+
+            tex_color.r = texel << 4;
+            tex_color.g = texel << 4;
+            tex_color.b = texel << 4;
+            tex_color.a = 0xFF;
+            break;
         case 0xB:
             //A4
-            addr = get_4bit_swizzled_addr(addr, ctx.tex_width[0], u, v);
+            addr = get_4bit_swizzled_addr(addr, width, u, v);
             if (u & 0x1)
                 texel = e->arm11_read8(0, addr) >> 4;
             else
@@ -1285,16 +1480,38 @@ void GPU::get_tex0(RGBA_Color &tex_color, Vertex &vtx)
             tex_color.a = texel << 4;
             break;
         default:
-            printf("[GPU] Unrecognized tex0 format $%02X\n", ctx.tex_type[0]);
+            printf("[GPU] Unrecognized tex format $%02X\n", ctx.tex_type[index]);
     }
+}
+
+void GPU::get_tex0(RGBA_Color &tex_color, Vertex &vtx)
+{
+    tex_lookup(0, tex_color, vtx);
+}
+
+void GPU::get_tex1(RGBA_Color &tex_color, Vertex &vtx)
+{
+    tex_lookup(1, tex_color, vtx);
+}
+
+void GPU::get_tex2(RGBA_Color &tex_color, Vertex &vtx)
+{
+    tex_lookup(2, tex_color, vtx);
 }
 
 void GPU::combine_textures(RGBA_Color &source, Vertex& vtx)
 {
     RGBA_Color primary = source;
     RGBA_Color prev = source;
+    RGBA_Color comb_buffer = {0, 0, 0, 0};
 
-    for (int i = 0; i < 1; i++)
+    RGBA_Color tex[4];
+
+    get_tex0(tex[0], vtx);
+    get_tex1(tex[1], vtx);
+    get_tex2(tex[2], vtx);
+
+    for (int i = 0; i < 6; i++)
     {
         RGBA_Color sources[3], operands[3];
 
@@ -1306,7 +1523,16 @@ void GPU::combine_textures(RGBA_Color &source, Vertex& vtx)
                     sources[j] = primary;
                     break;
                 case 0x3:
-                    get_tex0(sources[j], vtx);
+                    sources[j] = tex[0];
+                    break;
+                case 0x4:
+                    sources[j] = tex[1];
+                    break;
+                case 0x5:
+                    sources[j] = tex[2];
+                    break;
+                case 0xD:
+                    sources[j] = comb_buffer;
                     break;
                 case 0xE:
                     sources[j] = ctx.texcomb_const[i];
@@ -1321,8 +1547,33 @@ void GPU::combine_textures(RGBA_Color &source, Vertex& vtx)
 
             if (ctx.texcomb_alpha_source[i][j] != ctx.texcomb_rgb_source[i][j])
             {
-                EmuException::die("[GPU] Alpha source $%02X does not equal RGB source",
-                                  ctx.texcomb_alpha_source[i][j]);
+                switch (ctx.texcomb_alpha_source[i][j])
+                {
+                    case 0x0:
+                        sources[j].a = primary.a;
+                        break;
+                    case 0x3:
+                        sources[j].a = tex[0].a;
+                        break;
+                    case 0x4:
+                        sources[j].a = tex[1].a;
+                        break;
+                    case 0x5:
+                        sources[j].a = tex[2].a;
+                        break;
+                    case 0xD:
+                        sources[j].a = comb_buffer.a;
+                        break;
+                    case 0xE:
+                        sources[j].a = ctx.texcomb_const[i].a;
+                        break;
+                    case 0xF:
+                        sources[j].a = prev.a;
+                        break;
+                    default:
+                        EmuException::die("[GPU] Unrecognized texcomb alpha source $%02X",
+                                          ctx.texcomb_alpha_source[i][j]);
+                }
             }
 
             switch (ctx.texcomb_rgb_operand[i][j])
@@ -1330,10 +1581,50 @@ void GPU::combine_textures(RGBA_Color &source, Vertex& vtx)
                 case 0x0:
                     operands[j] = sources[j];
                     break;
+                case 0x1:
+                    operands[j].r = 255 - sources[j].r;
+                    operands[j].g = 255 - sources[j].g;
+                    operands[j].b = 255 - sources[j].b;
+                    break;
                 case 0x2:
                     operands[j].r = sources[j].a;
                     operands[j].g = sources[j].a;
                     operands[j].b = sources[j].a;
+                    break;
+                case 0x3:
+                    operands[j].r = 255 - sources[j].a;
+                    operands[j].g = 255 - sources[j].a;
+                    operands[j].b = 255 - sources[j].a;
+                    break;
+                case 0x4:
+                    operands[j].r = sources[j].r;
+                    operands[j].g = sources[j].r;
+                    operands[j].b = sources[j].r;
+                    break;
+                case 0x5:
+                    operands[j].r = 255 - sources[j].r;
+                    operands[j].g = 255 - sources[j].r;
+                    operands[j].b = 255 - sources[j].r;
+                    break;
+                case 0x8:
+                    operands[j].r = sources[j].g;
+                    operands[j].g = sources[j].g;
+                    operands[j].b = sources[j].g;
+                    break;
+                case 0x9:
+                    operands[j].r = 255 - sources[j].g;
+                    operands[j].g = 255 - sources[j].g;
+                    operands[j].b = 255 - sources[j].g;
+                    break;
+                case 0xC:
+                    operands[j].r = sources[j].b;
+                    operands[j].g = sources[j].b;
+                    operands[j].b = sources[j].b;
+                    break;
+                case 0xD:
+                    operands[j].r = 255 - sources[j].b;
+                    operands[j].g = 255 - sources[j].b;
+                    operands[j].b = 255 - sources[j].b;
                     break;
                 default:
                     EmuException::die("[GPU] Unrecognized texcomb RGB operand $%02X",
@@ -1344,6 +1635,27 @@ void GPU::combine_textures(RGBA_Color &source, Vertex& vtx)
             {
                 case 0x0:
                     operands[j].a = sources[j].a;
+                    break;
+                case 0x1:
+                    operands[j].a = 255 - sources[j].a;
+                    break;
+                case 0x2:
+                    operands[j].a = sources[j].r;
+                    break;
+                case 0x3:
+                    operands[j].a = 255 - sources[j].r;
+                    break;
+                case 0x4:
+                    operands[j].a = sources[j].g;
+                    break;
+                case 0x5:
+                    operands[j].a = 255 - sources[j].g;
+                    break;
+                case 0x6:
+                    operands[j].a = sources[j].b;
+                    break;
+                case 0x7:
+                    operands[j].a = 255 - sources[j].b;
                     break;
                 default:
                     EmuException::die("[GPU] Unrecognized texcomb alpha operand $%02X",
@@ -1363,6 +1675,37 @@ void GPU::combine_textures(RGBA_Color &source, Vertex& vtx)
                 prev.g = (operands[0].g * operands[1].g) / 255;
                 prev.b = (operands[0].b * operands[1].b) / 255;
                 break;
+            case 2:
+                prev.r = std::min(255, operands[0].r + operands[1].r);
+                prev.g = std::min(255, operands[0].g + operands[1].g);
+                prev.b = std::min(255, operands[0].b + operands[1].b);
+                break;
+            case 4:
+                prev.r = (operands[0].r * operands[2].r + operands[1].r * (255 - operands[2].r)) / 255;
+                prev.g = (operands[0].g * operands[2].g + operands[1].g * (255 - operands[2].g)) / 255;
+                prev.b = (operands[0].b * operands[2].b + operands[1].b * (255 - operands[2].b)) / 255;
+                break;
+            case 5:
+                prev.r = std::max(0, operands[0].r - operands[1].r);
+                prev.g = std::max(0, operands[0].g - operands[1].g);
+                prev.b = std::max(0, operands[0].b - operands[1].b);
+                break;
+            case 8:
+                prev.r = ((operands[0].r * operands[1].r) + (255 * operands[2].r)) / 255;
+                prev.g = ((operands[0].g * operands[1].g) + (255 * operands[2].g)) / 255;
+                prev.b = ((operands[0].b * operands[1].b) + (255 * operands[2].b)) / 255;
+
+                prev.r = std::min(255, prev.r);
+                prev.g = std::min(255, prev.g);
+                prev.b = std::min(255, prev.b);
+                break;
+            case 9:
+                prev.r = (std::min(255, (operands[0].r + operands[1].r)) * operands[2].r) / 255;
+                prev.g = (std::min(255, (operands[0].g + operands[1].g)) * operands[2].g) / 255;
+                prev.b = (std::min(255, (operands[0].b + operands[1].b)) * operands[2].b) / 255;
+                break;
+            default:
+                EmuException::die("[GPU] Unrecognized texcomb RGB op $%02X", ctx.texcomb_rgb_op[i]);
         }
 
         switch (ctx.texcomb_alpha_op[i])
@@ -1373,7 +1716,37 @@ void GPU::combine_textures(RGBA_Color &source, Vertex& vtx)
             case 1:
                 prev.a = (operands[0].a * operands[1].a) / 255;
                 break;
+            case 2:
+                prev.a = std::min(255, operands[0].a + operands[1].a);
+                break;
+            case 4:
+                prev.a = (operands[0].a * operands[2].a + operands[1].a * (255 - operands[2].a)) / 255;
+                break;
+            case 5:
+                prev.a = std::max(0, operands[0].a - operands[1].a);
+                break;
+            case 8:
+                prev.a = ((operands[0].a * operands[1].a) + (255 * operands[2].a)) / 255;
+                prev.a = std::min(255, prev.a);
+                break;
+            case 9:
+                prev.a = (std::min(255, (operands[0].a + operands[1].a)) * operands[2].a) / 255;
+                break;
+            default:
+                EmuException::die("[GPU] Unrecognized texcomb alpha op $%02X", ctx.texcomb_alpha_op[i]);
         }
+
+        comb_buffer = ctx.texcomb_buffer;
+
+        if (ctx.texcomb_rgb_buffer_update[i])
+        {
+            ctx.texcomb_buffer.r = prev.r;
+            ctx.texcomb_buffer.g = prev.g;
+            ctx.texcomb_buffer.b = prev.b;
+        }
+
+        if (ctx.texcomb_alpha_buffer_update[i])
+            ctx.texcomb_buffer.a = prev.a;
     }
 
     source = prev;
@@ -1382,6 +1755,7 @@ void GPU::combine_textures(RGBA_Color &source, Vertex& vtx)
 void GPU::blend_fragment(RGBA_Color &source, RGBA_Color &frame)
 {
     int source_alpha = source.a;
+    int dest_alpha = frame.a;
     switch (ctx.fragment_op)
     {
         case 0:
@@ -1398,16 +1772,22 @@ void GPU::blend_fragment(RGBA_Color &source, RGBA_Color &frame)
                     source.b = 0;
                     break;
                 case 0x1:
-                    //One - keep color components as-is
+                    //One
+                    source.r *= 255;
+                    source.g *= 255;
+                    source.b *= 255;
+                    break;
+                case 0x2:
+                    //Source color
+                    source.r *= source.r;
+                    source.g *= source.g;
+                    source.b *= source.b;
                     break;
                 case 0x6:
                     //Source alpha
                     source.r *= source_alpha;
                     source.g *= source_alpha;
                     source.b *= source_alpha;
-                    source.r /= 255;
-                    source.g /= 255;
-                    source.b /= 255;
                     break;
                 default:
                     EmuException::die("[GPU] Unrecognized blend RGB src function $%02X",
@@ -1420,10 +1800,16 @@ void GPU::blend_fragment(RGBA_Color &source, RGBA_Color &frame)
                     source.a = 0;
                     break;
                 case 0x1:
+                    source.a *= 255;
+                    break;
+                case 0x2:
+                    source.a *= source_alpha;
                     break;
                 case 0x6:
                     source.a *= source_alpha;
-                    source.a /= 255;
+                    break;
+                case 0x9:
+                    source.a *= dest_alpha;
                     break;
                 default:
                     EmuException::die("[GPU] Unrecognized blend alpha src function $%02X",
@@ -1437,14 +1823,24 @@ void GPU::blend_fragment(RGBA_Color &source, RGBA_Color &frame)
                     frame.g = 0;
                     frame.b = 0;
                     break;
-                case 0x7:
-                    frame.r *= (255 - source_alpha);
-                    frame.g *= (255 - source_alpha);
-                    frame.b *= (255 - source_alpha);
-                    frame.r /= 255;
-                    frame.g /= 255;
-                    frame.b /= 255;
+                case 0x1:
+                    frame.r *= 255;
+                    frame.g *= 255;
+                    frame.b *= 255;
                     break;
+                case 0x2:
+                    frame.r *= frame.r;
+                    frame.g *= frame.g;
+                    frame.b *= frame.b;
+                    break;
+                case 0x7:
+                    frame.r *= 255 - source_alpha;
+                    frame.g *= 255 - source_alpha;
+                    frame.b *= 255 - source_alpha;
+                    break;
+                default:
+                    EmuException::die("[GPU] Unrecognized blend rgb dest function $%02X",
+                                      ctx.blend_rgb_dst_func);
             }
 
             switch (ctx.blend_alpha_dst_func)
@@ -1452,10 +1848,18 @@ void GPU::blend_fragment(RGBA_Color &source, RGBA_Color &frame)
                 case 0x0:
                     frame.a = 0;
                     break;
-                case 0x7:
-                    frame.a *= (255 - source_alpha);
-                    frame.a /= 255;
+                case 0x1:
+                    frame.a *= 255;
                     break;
+                case 0x2:
+                    frame.a *= dest_alpha;
+                    break;
+                case 0x7:
+                    frame.a *= 255 - source_alpha;
+                    break;
+                default:
+                    EmuException::die("[GPU] Unrecognized blend alpha dest function $%02X",
+                                      ctx.blend_alpha_dst_func);
             }
 
             switch (ctx.blend_rgb_equation)
@@ -1464,9 +1868,9 @@ void GPU::blend_fragment(RGBA_Color &source, RGBA_Color &frame)
                 case 5:
                 case 6:
                 case 7:
-                    source.r += frame.r;
-                    source.g += frame.g;
-                    source.b += frame.b;
+                    source.r = (source.r + frame.r) / 255;
+                    source.g = (source.g + frame.g) / 255;
+                    source.b = (source.b + frame.b) / 255;
                     break;
                 default:
                     EmuException::die("[GPU] Unrecognized blend RGB equation %d",
@@ -1479,7 +1883,7 @@ void GPU::blend_fragment(RGBA_Color &source, RGBA_Color &frame)
                 case 5:
                 case 6:
                 case 7:
-                    source.a += frame.a;
+                    source.a = (source.a + frame.a) / 255;
                     break;
                 default:
                     EmuException::die("[GPU] Unrecognized blend alpha equation %d",
@@ -1487,29 +1891,15 @@ void GPU::blend_fragment(RGBA_Color &source, RGBA_Color &frame)
             }
 
             //Clamp final color to 0-0xFF range
-            if (source.r > 0xFF)
-                source.r = 0xFF;
+            source.r = std::min(0xFF, source.r);
+            source.g = std::min(0xFF, source.g);
+            source.b = std::min(0xFF, source.b);
+            source.a = std::min(0xFF, source.a);
 
-            if (source.g > 0xFF)
-                source.g = 0xFF;
-
-            if (source.b > 0xFF)
-                source.b = 0xFF;
-
-            if (source.a > 0xFF)
-                source.a = 0xFF;
-
-            if (source.r < 0)
-                source.r = 0;
-
-            if (source.g < 0)
-                source.g = 0;
-
-            if (source.b < 0)
-                source.b = 0;
-
-            if (source.a < 0)
-                source.a = 0;
+            source.r = std::max(0, source.r);
+            source.g = std::max(0, source.g);
+            source.b = std::max(0, source.b);
+            source.a = std::max(0, source.a);
             break;
         default:
             EmuException::die("[GPU] Unrecognized fragment operation %d", ctx.fragment_op);
@@ -1541,6 +1931,7 @@ void GPU::exec_shader(ShaderUnit& sh)
         printf("\n");
     }*/
 
+    sh.loop_ptr = 0;
     sh.call_ptr = 0;
     sh.if_ptr = 0;
     sh.pc = sh.entry_point;
@@ -1554,11 +1945,20 @@ void GPU::exec_shader(ShaderUnit& sh)
 
         switch (instr >> 26)
         {
+            case 0x00:
+                shader_add(sh, instr);
+                break;
             case 0x02:
                 shader_dp4(sh, instr);
                 break;
             case 0x08:
                 shader_mul(sh, instr);
+                break;
+            case 0x0C:
+                shader_max(sh, instr);
+                break;
+            case 0x12:
+                shader_mova(sh, instr);
                 break;
             case 0x13:
                 shader_mov(sh, instr);
@@ -1572,11 +1972,17 @@ void GPU::exec_shader(ShaderUnit& sh)
             case 0x24:
                 shader_call(sh, instr);
                 break;
+            case 0x26:
+                shader_callu(sh, instr);
+                break;
             case 0x27:
                 shader_ifu(sh, instr);
                 break;
             case 0x28:
                 shader_ifc(sh, instr);
+                break;
+            case 0x29:
+                shader_loop(sh, instr);
                 break;
             case 0x2E:
             case 0x2F:
@@ -1585,6 +1991,20 @@ void GPU::exec_shader(ShaderUnit& sh)
             default:
                 EmuException::die("[GPU] Unrecognized shader opcode $%02X (instr:$%08X pc:$%04X)",
                                   instr >> 26, instr, sh.pc - 4);
+        }
+
+        if (sh.loop_ptr > 0)
+        {
+            //Note: LOOP is inclusive, so this is actually checking if the PC is DST + 4
+            if (sh.pc == sh.loop_cmp_stack[sh.loop_ptr - 1])
+            {
+                sh.pc = sh.loop_stack[sh.loop_ptr - 1];
+                sh.loop_iter_stack[sh.loop_ptr - 1]--;
+                sh.loop_ctr_reg += sh.loop_inc_reg;
+
+                if (!sh.loop_iter_stack[sh.loop_ptr - 1])
+                    sh.loop_ptr--;
+            }
         }
 
         if (sh.if_ptr > 0)
@@ -1661,7 +2081,7 @@ Vec4<float24> GPU::get_src(ShaderUnit& sh, uint8_t src)
     return sh.float_uniform[src - 0x20];
 }
 
-uint8_t GPU::get_idx1(uint8_t idx1, uint8_t src1)
+uint8_t GPU::get_idx1(ShaderUnit& sh, uint8_t idx1, uint8_t src1)
 {
     if (src1 < 0x20)
         return 0;
@@ -1670,8 +2090,12 @@ uint8_t GPU::get_idx1(uint8_t idx1, uint8_t src1)
     {
         case 0:
             return 0;
+        case 1:
+            return (uint8_t)sh.addr_reg[0].ToFloat32();
+        case 2:
+            return (uint8_t)sh.addr_reg[1].ToFloat32();
         default:
-            EmuException::die("[GPU] IDX1 used");
+            EmuException::die("[GPU] Unrecognized idx %d", idx1);
             return 0;
     }
 }
@@ -1687,6 +2111,33 @@ void GPU::set_sh_dest(ShaderUnit &sh, uint8_t dst, float24 value, int index)
         EmuException::die("[GPU] Unrecognized dst $%02X in set_sh_dest", dst);
 }
 
+void GPU::shader_add(ShaderUnit &sh, uint32_t instr)
+{
+    uint32_t op_desc = sh.op_desc[instr & 0x7F];
+
+    uint8_t src2 = (instr >> 7) & 0x1F;
+    uint8_t src1 = (instr >> 12) & 0x7F;
+    uint8_t idx1 = (instr >> 19) & 0x3;
+    uint8_t dest = (instr >> 21) & 0x1F;
+
+    idx1 = get_idx1(sh, idx1, src1);
+
+    src1 += idx1;
+
+    uint8_t dest_mask = op_desc & 0xF;
+
+    Vec4<float24> src[2];
+
+    src[0] = swizzle_sh_src(get_src(sh, src1), op_desc, 1);
+    src[1] = swizzle_sh_src(get_src(sh, src2), op_desc, 2);
+
+    for (int i = 0; i < 4; i++)
+    {
+        if (dest_mask & (1 << i))
+            set_sh_dest(sh, dest, src[0][3 - i] + src[1][3 - i], 3 - i);
+    }
+}
+
 void GPU::shader_dp4(ShaderUnit &sh, uint32_t instr)
 {
     uint32_t op_desc = sh.op_desc[instr & 0x7F];
@@ -1696,7 +2147,7 @@ void GPU::shader_dp4(ShaderUnit &sh, uint32_t instr)
     uint8_t idx1 = (instr >> 19) & 0x3;
     uint8_t dest = (instr >> 21) & 0x1F;
 
-    idx1 = get_idx1(idx1, src1);
+    idx1 = get_idx1(sh, idx1, src1);
 
     src1 += idx1;
 
@@ -1728,7 +2179,7 @@ void GPU::shader_mul(ShaderUnit &sh, uint32_t instr)
     uint8_t idx1 = (instr >> 19) & 0x3;
     uint8_t dest = (instr >> 21) & 0x1F;
 
-    idx1 = get_idx1(idx1, src1);
+    idx1 = get_idx1(sh, idx1, src1);
 
     src1 += idx1;
 
@@ -1746,6 +2197,61 @@ void GPU::shader_mul(ShaderUnit &sh, uint32_t instr)
     }
 }
 
+void GPU::shader_max(ShaderUnit &sh, uint32_t instr)
+{
+    uint32_t op_desc = sh.op_desc[instr & 0x7F];
+
+    uint8_t src2 = (instr >> 7) & 0x1F;
+    uint8_t src1 = (instr >> 12) & 0x7F;
+    uint8_t idx1 = (instr >> 19) & 0x3;
+    uint8_t dest = (instr >> 21) & 0x1F;
+
+    idx1 = get_idx1(sh, idx1, src1);
+
+    src1 += idx1;
+
+    uint8_t dest_mask = op_desc & 0xF;
+
+    Vec4<float24> src[2];
+
+    src[0] = swizzle_sh_src(get_src(sh, src1), op_desc, 1);
+    src[1] = swizzle_sh_src(get_src(sh, src2), op_desc, 2);
+
+    for (int i = 0; i < 4; i++)
+    {
+        if (dest_mask & (1 << i))
+        {
+            float24 a = src[0][3 - i];
+            float24 b = src[1][3 - i];
+            float24 value = (a > b) ? a : b;
+            set_sh_dest(sh, dest, value, 3 - i);
+        }
+    }
+}
+
+void GPU::shader_mova(ShaderUnit &sh, uint32_t instr)
+{
+    uint32_t op_desc = sh.op_desc[instr & 0x7F];
+
+    uint8_t src1 = (instr >> 12) & 0x7F;
+    uint8_t idx1 = (instr >> 19) & 0x3;
+
+    idx1 = get_idx1(sh, idx1, src1);
+
+    src1 += idx1;
+
+    uint8_t dest_mask = op_desc & 0xF;
+
+    Vec4<float24> src = get_src(sh, src1);
+    src = swizzle_sh_src(src, op_desc, 1);
+
+    if (dest_mask & (1 << 3))
+        sh.addr_reg[0] = src[0];
+
+    if (dest_mask & (1 << 2))
+        sh.addr_reg[1] = src[1];
+}
+
 void GPU::shader_mov(ShaderUnit& sh, uint32_t instr)
 {
     uint32_t op_desc = sh.op_desc[instr & 0x7F];
@@ -1754,7 +2260,7 @@ void GPU::shader_mov(ShaderUnit& sh, uint32_t instr)
     uint8_t idx1 = (instr >> 19) & 0x3;
     uint8_t dest = (instr >> 21) & 0x1F;
 
-    idx1 = get_idx1(idx1, src1);
+    idx1 = get_idx1(sh, idx1, src1);
 
     src1 += idx1;
 
@@ -1785,7 +2291,7 @@ void GPU::shader_call(ShaderUnit &sh, uint32_t instr)
     sh.pc = dst * 4;
 }
 
-void GPU::shader_ifu(ShaderUnit &sh, uint32_t instr)
+void GPU::shader_callu(ShaderUnit &sh, uint32_t instr)
 {
     uint8_t num = instr & 0xFF;
 
@@ -1793,7 +2299,23 @@ void GPU::shader_ifu(ShaderUnit &sh, uint32_t instr)
 
     uint8_t bool_id = (instr >> 22) & 0xF;
 
-    printf("Comparing bool%d... Uniform: $%04X\n", bool_id, sh.bool_uniform);
+    if (sh.bool_uniform & (1 << bool_id))
+    {
+        sh.call_stack[sh.call_ptr] = sh.pc;
+        sh.call_cmp_stack[sh.call_ptr] = (dst + num) * 4;
+        sh.call_ptr++;
+
+        sh.pc = dst * 4;
+    }
+}
+
+void GPU::shader_ifu(ShaderUnit &sh, uint32_t instr)
+{
+    uint8_t num = instr & 0xFF;
+
+    uint16_t dst = (instr >> 10) & 0xFFF;
+
+    uint8_t bool_id = (instr >> 22) & 0xF;
 
     if (sh.bool_uniform & (1 << bool_id))
     {
@@ -1842,6 +2364,21 @@ void GPU::shader_ifc(ShaderUnit &sh, uint32_t instr)
         sh.pc = dst * 4;
 }
 
+void GPU::shader_loop(ShaderUnit &sh, uint32_t instr)
+{
+    uint16_t dst = (instr >> 10) & 0xFFF;
+
+    uint8_t int_id = (instr >> 22) & 0xF;
+
+    sh.loop_stack[sh.loop_ptr] = sh.pc;
+    sh.loop_cmp_stack[sh.loop_ptr] = (dst * 4) + 4;
+    sh.loop_iter_stack[sh.loop_ptr] = sh.int_regs[int_id][0] + 1;
+    sh.loop_ctr_reg = sh.int_regs[int_id][1];
+    sh.loop_inc_reg = sh.int_regs[int_id][2];
+
+    sh.loop_ptr++;
+}
+
 void GPU::shader_cmp(ShaderUnit &sh, uint32_t instr)
 {
     uint32_t op_desc = sh.op_desc[instr & 0x7F];
@@ -1850,7 +2387,7 @@ void GPU::shader_cmp(ShaderUnit &sh, uint32_t instr)
     uint8_t src1 = (instr >> 12) & 0x7F;
     uint8_t idx1 = (instr >> 19) & 0x3;
 
-    idx1 = get_idx1(idx1, src1);
+    idx1 = get_idx1(sh, idx1, src1);
 
     src1 += idx1;
 

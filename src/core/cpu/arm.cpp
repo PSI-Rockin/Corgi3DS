@@ -206,13 +206,13 @@ void ARM_CPU::jp(uint32_t addr, bool change_thumb_state)
     }
 
     //Hack to autoboot cartridge
-    if (addr == 0x1060B8 && (gpr[15] - 8 == 0x106054))
+    /*if (addr == 0x1060B8 && (gpr[15] - 8 == 0x106054))
     {
         uint32_t process_ptr = read32(0xFFFF9004);
         uint32_t pid = read32(process_ptr + 0xB4);
         if (pid == 15)
             return;
-    }
+    }*/
 
     if (id != 9 && gpr[15] >= 0x40000000 && ((addr >= 0x00100000 && addr < 0x10000000) || (addr >= 0x14000000 && addr < 0x18000000)))
     {
@@ -229,13 +229,13 @@ void ARM_CPU::jp(uint32_t addr, bool change_thumb_state)
                 if (error & (1 << 31))
                     printf("Error: $%08X\n", error);
             }
-            else if ((prev_instr & 0x0F000000) == 0x0F000000)
+            else if ((prev_instr & 0x0F000000) == 0x0F000000 && (prev_instr & 0xFF) != 0x28)
             {
                 if (gpr[0] & (1 << 31))
                     printf("Error: $%08X\n", gpr[0]);
             }
         }
-        if (pid == 38)
+        if (pid == 14)
         {
             //can_disassemble = true;
 
@@ -355,7 +355,6 @@ void ARM_CPU::swi()
         EmuException::die("[ARM%d] svcBreak called!", id);
     }
     //print_state();
-    can_disassemble = false;
 
     uint32_t value = CPSR.get();
     SPSR[PSR_SUPERVISOR].set(value);
@@ -375,6 +374,7 @@ void ARM_CPU::swi()
 
 void ARM_CPU::und()
 {
+    //can_disassemble = true;
     uint32_t value = CPSR.get();
     SPSR[PSR_UNDEFINED].set(value);
 

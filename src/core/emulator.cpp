@@ -103,16 +103,16 @@ void Emulator::reset(bool cold_boot)
     sys_mmu.add_physical_mapping(fcram, 0x20000000, 1024 * 1024 * 128);
     sys_mmu.add_physical_mapping(vram, 0x18000000, 1024 * 1024 * 6);
 
-    //We must reset the CPUs after the MMUs are initialized so we can get the TLB pointer
-    arm9.reset();
-    appcore.reset();
-    syscore.reset();
-
     memset(ARM_CPU::global_exclusive_start, 0, sizeof(ARM_CPU::global_exclusive_start));
     memset(ARM_CPU::global_exclusive_end, 0, sizeof(ARM_CPU::global_exclusive_end));
     arm9_cp15.reset(true);
     sys_cp15.reset(false);
     app_cp15.reset(false);
+
+    //We must reset the CPUs after the MMUs are initialized so we can get the TLB pointer
+    arm9.reset();
+    appcore.reset();
+    syscore.reset();
 
     scheduler.reset();
 }
@@ -123,8 +123,6 @@ void Emulator::run()
     i2c.update_time();
     printf("FRAME %d\n", frames);
     int cycles = 0;
-    //syscore.set_disassembly(frames == 688);
-    //arm9.set_disassembly(frames == 11);
     while (cycles < 4000000)
     {
         scheduler.calculate_cycles_to_run();

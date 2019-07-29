@@ -30,6 +30,8 @@ class VFP
         void set_fpexc(uint32_t value);
         void set_fpscr(uint32_t value);
 
+        bool is_enabled();
+
         float get_float(int index);
         double get_double(int index);
 
@@ -44,6 +46,11 @@ class VFP
 
         template <typename T> void cmp(T a, T b);
 };
+
+inline bool VFP::is_enabled()
+{
+    return (fpexc >> 30) & 0x1;
+}
 
 inline float VFP::get_float(int index)
 {

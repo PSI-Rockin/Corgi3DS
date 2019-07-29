@@ -17,6 +17,11 @@ void vfp_single_transfer(ARM_CPU &cpu, VFP &vfp, uint32_t instr)
     switch (op)
     {
         case 0x00:
+            if (!vfp.is_enabled())
+            {
+                cpu.und();
+                return;
+            }
             vfp_mov_fpr_gpr(cpu, vfp, instr);
             break;
         case 0x07:
@@ -55,7 +60,16 @@ void vfp_mov_sys_reg(ARM_CPU &cpu, VFP &vfp, uint32_t instr)
 
     switch (sys)
     {
+        case 0x0:
+            if (load_to_gpr)
+                cpu.set_register(gpr, 0x410120B4);
+            break;
         case 0x1:
+            if (!vfp.is_enabled())
+            {
+                cpu.und();
+                return;
+            }
             if (load_to_gpr)
             {
                 uint32_t fpscr = vfp.get_fpscr();
@@ -97,6 +111,12 @@ void vfp_mov_sys_reg(ARM_CPU &cpu, VFP &vfp, uint32_t instr)
 
 void vfp_load_store(ARM_CPU& cpu, VFP &vfp, uint32_t instr)
 {
+    if (!vfp.is_enabled())
+    {
+        cpu.und();
+        return;
+    }
+
     bool p = (instr >> 24) & 0x1;
     bool u = (instr >> 23) & 0x1;
     bool w = (instr >> 21) & 0x1;
@@ -367,6 +387,11 @@ void vfp_store_block(ARM_CPU& cpu, VFP &vfp, uint32_t instr)
 
 void vfp_data_processing(ARM_CPU &cpu, VFP &vfp, uint32_t instr)
 {
+    if (!vfp.is_enabled())
+    {
+        cpu.und();
+        return;
+    }
     bool p = (instr >> 23) & 0x1;
     bool q = (instr >> 21) & 0x1;
     bool r = (instr >> 20) & 0x1;
