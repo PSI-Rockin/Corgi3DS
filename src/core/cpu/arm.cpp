@@ -344,10 +344,6 @@ void ARM_CPU::swi()
             uint32_t process_ptr = read32(0xFFFF9004);
             uint32_t pid = read32(process_ptr + 0xB4);
             printf("(PID%d) SendSyncRequest: $%08X\n", pid, header);
-            if (pid == 38 && header == 0x080200C2)
-            {
-                printf("READ FILE: $%llX $%08X $%08X\n", read64(tls + 0x84), read32(tls + 0x8C), read32(tls + 0x94));
-            }
         }
     }
     if (op == 0x3C)

@@ -8,13 +8,13 @@ using namespace std;
 
 int main(int argc, char** argv)
 {
-    if (argc < 7)
+    if (argc < 5)
     {
-        printf("Args: [boot9] [boot11] [OTP] [NAND] [NAND CID] [SD]\n");
+        printf("Args: [boot9] [boot11] [NAND] [SD]\n");
         return 1;
     }
 
-    uint8_t boot9_rom[1024 * 64], boot11_rom[1024 * 64], otp_rom[256], cid_rom[16];
+    uint8_t boot9_rom[1024 * 64], boot11_rom[1024 * 64];
 
     ifstream boot9(argv[1]);
     if (!boot9.is_open())
@@ -38,54 +38,40 @@ int main(int argc, char** argv)
 
     boot11.close();
 
-    ifstream otp(argv[3]);
-    if (!otp.is_open())
+    QApplication a(argc, argv);
+    EmuWindow* emuwindow = new EmuWindow();
+
+    Emulator e;
+    if (!e.mount_nand(argv[3]))
     {
         printf("Failed to open %s\n", argv[3]);
         return 1;
     }
 
-    otp.read((char*)&otp_rom, sizeof(otp_rom));
-
-    otp.close();
-
-    QApplication a(argc, argv);
-    EmuWindow* emuwindow = new EmuWindow();
-
-    Emulator e;
-    if (!e.mount_nand(argv[4]))
+    if (!e.mount_sd(argv[4]))
     {
         printf("Failed to open %s\n", argv[4]);
         return 1;
     }
 
-    ifstream cid(argv[5]);
-    if (!cid.is_open())
+    if (argc > 5)
     {
-        printf("Failed to open %s\n", argv[5]);
-        return 1;
-    }
-
-    if (!e.mount_sd(argv[6]))
-    {
-        printf("Failed to open %s\n", argv[6]);
-        return 1;
-    }
-
-    if (argc > 7)
-    {
-        if (!e.mount_cartridge(argv[7]))
+        if (!e.mount_cartridge(argv[5]))
         {
-            printf("Failed to open %s\n", argv[7]);
+            printf("Failed to open %s\n", argv[5]);
             return 1;
         }
     }
 
-    cid.read((char*)&cid_rom, sizeof(cid_rom));
-    cid.close();
-
     printf("All files loaded successfully!\n");
-    e.load_roms(boot9_rom, boot11_rom, otp_rom, cid_rom);
+    e.load_roms(boot9_rom, boot11_rom);
+    e.parse_essentials();
+    if (!e.parse_essentials())
+    {
+        printf("Failed to find OTP and CID in essentials.exefs.\n");
+        printf("Please make sure your NAND is dumped from the latest version of GodMode9.\n");
+        return 1;
+    }
     e.reset();
     while (emuwindow->is_running())
     {

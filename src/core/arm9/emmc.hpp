@@ -93,7 +93,7 @@ class EMMC
 
         bool mount_nand(std::string file_name);
         bool mount_sd(std::string file_name);
-        void load_cid(uint8_t* cid);
+        bool parse_essentials(uint8_t* otp);
         void reset();
 
         uint16_t read16(uint32_t addr);

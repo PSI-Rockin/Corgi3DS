@@ -67,9 +67,42 @@ bool EMMC::mount_sd(std::string file_name)
     return sd.is_open();
 }
 
-void EMMC::load_cid(uint8_t *cid)
+bool EMMC::parse_essentials(uint8_t *otp)
 {
-    memcpy(nand_cid, cid, 16);
+    //Look at offset 0x200 on the NAND and try to load the OTP and CID off essentials.exefs
+
+    char essentials[0x200];
+    nand.seekg(0x200);
+    nand.read((char*)essentials, 0x200);
+
+    bool otp_found = false, cid_found = false;
+
+    int counter = 0;
+    while (!(otp_found && cid_found) && counter < 0x200)
+    {
+        uint32_t offs = *(uint32_t*)&essentials[counter + 8];
+
+        //Account for the size of the ExeFS header and its position on the NAND
+        offs += 0x400;
+        if (!strncmp(essentials + counter, "otp", 8))
+        {
+            nand.seekg(offs);
+            nand.read((char*)otp, 256);
+            otp_found = true;
+        }
+        if (!strncmp(essentials + counter, "nand_cid", 8))
+        {
+            nand.seekg(offs);
+            nand.read((char*)nand_cid, 16);
+            cid_found = true;
+        }
+        counter += 0x10;
+    }
+
+    if (otp_found && cid_found)
+        return true;
+
+    return false;
 }
 
 uint16_t EMMC::read16(uint32_t addr)

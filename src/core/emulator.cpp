@@ -190,7 +190,7 @@ void Emulator::memdump11(int id, uint64_t start, uint64_t size)
     EmuException::die("memdump11");
 }
 
-void Emulator::load_roms(uint8_t *boot9, uint8_t *boot11, uint8_t *otp, uint8_t* cid)
+void Emulator::load_roms(uint8_t *boot9, uint8_t *boot11)
 {
     //The boot ROMs lock the upper halves of themselves (0x8000 and up)
     //This is required for emulation. Boot11 at least checks for the ROM to be disabled before booting a FIRM.
@@ -202,10 +202,14 @@ void Emulator::load_roms(uint8_t *boot9, uint8_t *boot11, uint8_t *otp, uint8_t*
 
     memcpy(boot9_locked, boot9, 1024 * 32);
     memcpy(boot11_locked, boot11, 1024 * 32);
+}
 
-    memcpy(otp_free, otp, 256);
+bool Emulator::parse_essentials()
+{
+    //Load the OTP and CID from the essentials
     memset(otp_locked, 0xFF, 256);
-    emmc.load_cid(cid);
+
+    return emmc.parse_essentials(otp_free);
 }
 
 bool Emulator::mount_nand(std::string file_name)

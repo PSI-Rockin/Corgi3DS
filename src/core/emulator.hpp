@@ -83,7 +83,8 @@ class Emulator
         void dump();
         void memdump11(int id, uint64_t start, uint64_t size);
 
-        void load_roms(uint8_t* boot9, uint8_t* boot11, uint8_t* otp, uint8_t* cid);
+        void load_roms(uint8_t* boot9, uint8_t* boot11);
+        bool parse_essentials();
         bool mount_nand(std::string file_name);
         bool mount_sd(std::string file_name);
         bool mount_cartridge(std::string file_name);
