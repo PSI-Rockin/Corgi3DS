@@ -16,6 +16,7 @@ enum ARM_INSTR
     ARM_BKPT,
     ARM_SXTAB,
     ARM_SXTB,
+    ARM_SXTAH,
     ARM_SXTH,
     ARM_UXTB,
     ARM_UXTAB,
@@ -25,6 +26,7 @@ enum ARM_INSTR
     ARM_REV16,
     ARM_PKHBT,
     ARM_USAT,
+    ARM_SSAT,
     ARM_DATA_PROCESSING,
     ARM_MULTIPLY,
     ARM_MULTIPLY_LONG,
@@ -134,6 +136,7 @@ namespace ARM_Disasm
     std::string arm_clz(uint32_t instr);
     std::string arm_sxtab(uint32_t instr);
     std::string arm_sxtb(uint32_t instr);
+    std::string arm_sxtah(uint32_t instr);
     std::string arm_sxth(uint32_t instr);
     std::string arm_uxtb(uint32_t instr);
     std::string arm_uxtab(uint32_t instr);
@@ -143,6 +146,7 @@ namespace ARM_Disasm
     std::string arm_rev16(uint32_t instr);
     std::string arm_pkhbt(uint32_t instr);
     std::string arm_usat(uint32_t instr);
+    std::string arm_ssat(uint32_t instr);
     std::string arm_data_processing(uint32_t instr);
     std::string arm_signed_halfword_multiply(uint32_t instr);
     std::string arm_mul(uint32_t instr);

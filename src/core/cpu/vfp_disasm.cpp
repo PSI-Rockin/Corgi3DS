@@ -282,6 +282,12 @@ string vfp_data_extended(uint32_t instr)
         case 0x01:
             output << "fneg";
             break;
+        case 0x04:
+            output << "fcmp";
+            break;
+        case 0x05:
+            output << "fcmpz";
+            break;
         case 0x08:
             output << "fuito";
             break;
@@ -296,6 +302,9 @@ string vfp_data_extended(uint32_t instr)
             break;
         case 0x14:
             output << "fcmpe";
+            break;
+        case 0x15:
+            output << "fcmpez";
             break;
         case 0x17:
             output << "fcvt";

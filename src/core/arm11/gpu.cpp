@@ -16,6 +16,57 @@ static constexpr uint32_t MortonInterleave(uint32_t x, uint32_t y)
     return xlut[x % 8] + ylut[y % 8];
 }
 
+// https://github.com/citra-emu/citra/blob/master/src/common/color.h
+// Convert a 1-bit color component to 8 bit
+constexpr uint32_t Convert1To8(uint32_t value) {
+    return value * 255;
+}
+
+// Convert a 4-bit color component to 8 bit
+constexpr uint32_t Convert4To8(uint32_t value) {
+    return (value << 4) | value;
+}
+
+// Convert a 5-bit color component to 8 bit
+constexpr uint32_t Convert5To8(uint32_t value) {
+    return (value << 3) | (value >> 2);
+}
+
+// Convert a 6-bit color component to 8 bit
+constexpr uint32_t Convert6To8(uint32_t value) {
+    return (value << 2) | (value >> 4);
+}
+
+// Convert a 8-bit color component to 1 bit
+constexpr uint32_t Convert8To1(uint32_t value) {
+    return value >> 7;
+}
+
+// Convert a 8-bit color component to 4 bit
+constexpr uint32_t Convert8To4(uint32_t value) {
+    return value >> 4;
+}
+
+// Convert a 8-bit color component to 5 bit
+constexpr uint32_t Convert8To5(uint32_t value) {
+    return value >> 3;
+}
+
+// Convert a 8-bit color component to 6 bit
+constexpr uint32_t Convert8To6(uint32_t value) {
+    return value >> 2;
+}
+
+float24 dp4(Vec4<float24> a, Vec4<float24> b)
+{
+    float24 dp = float24::Zero();
+
+    for (int i = 0; i < 4; i++)
+        dp += a[i] * b[i];
+
+    return dp;
+}
+
 GPU::GPU(Emulator* e, Scheduler* scheduler, MPCore_PMR* pmr) : e(e), scheduler(scheduler), pmr(pmr)
 {
     vram = nullptr;
@@ -148,35 +199,59 @@ void GPU::do_transfer_engine_dma(uint64_t param)
         printf("Output width/height: %d %d\n", dma.disp_output_width, dma.disp_output_height);
         printf("Flags: $%08X\n", dma.flags);
 
+        uint32_t input_addr = dma.input_addr;
         uint32_t output_addr = dma.output_addr;
 
-        uint32_t input_delta = 1;
-        uint32_t output_delta = 1;
+        uint32_t input_size = 1;
+        uint32_t output_size = 1;
 
         uint8_t input_format = (dma.flags >> 8) & 0x7;
         uint8_t output_format = (dma.flags >> 12) & 0x7;
 
         const static int format_sizes[] = {4, 3, 2, 2, 2, 0, 0};
 
-        input_delta *= format_sizes[input_format];
-        output_delta *= format_sizes[output_format];
+        input_size *= format_sizes[input_format];
+        output_size *= format_sizes[output_format];
 
-        //if (dma.flags & (1 << 24))
-            //input_delta <<= 1;
+        bool linear_to_tiled = (dma.flags >> 1) & 0x1;
 
+        int input_width = dma.disp_input_width;
         if (dma.disp_input_width > dma.disp_output_width)
-            input_delta *= dma.disp_input_width / dma.disp_output_width;
-        else if (dma.disp_output_width > dma.disp_input_width)
-            input_delta *= dma.disp_output_width / dma.disp_input_width;
+            input_width = dma.disp_output_width;
 
-        for (unsigned int y = 0; y < dma.disp_input_height; y++)
+        int input_y;
+        if (dma.disp_input_height > dma.disp_output_height)
         {
-            for (unsigned int x = 0; x < dma.disp_input_width; x++)
+            //TODO: is this right?
+            input_y = dma.disp_output_height - dma.disp_input_height;
+            if (dma.flags & 0x1)
+                input_y = dma.disp_input_height - input_y - 1;
+        }
+        else
+        {
+            input_y = 0;
+            if (dma.flags & 0x1)
+                input_y = dma.disp_input_height - 1;
+        }
+
+        if (dma.flags & (1 << 24))
+        {
+            dma.disp_output_width >>= 1;
+        }
+
+        for (unsigned int y = 0; y < dma.disp_output_height; y++)
+        {
+            printf("input y: %d output y: %d\n", input_y, y);
+            int input_x = 0;
+            for (unsigned int x = 0; x < dma.disp_output_width; x++)
             {
                 uint32_t color = 0;
 
-                uint32_t input_addr = get_swizzled_tile_addr(
-                            dma.input_addr, dma.disp_input_width, x, y, input_delta);
+                if (!linear_to_tiled)
+                    input_addr = get_swizzled_tile_addr(
+                            dma.input_addr, input_width, input_x, input_y, input_size);
+                else
+                    input_addr = dma.input_addr + (input_x + (input_y * input_width)) * input_size;
 
                 switch (input_format)
                 {
@@ -193,16 +268,28 @@ void GPU::do_transfer_engine_dma(uint64_t param)
                         color = (pb << 16) | (pg << 8) | pr;
                         break;
                     }
+                    case 3:
+                    {
+                        color = e->arm11_read16(0, input_addr);
+
+                        uint8_t r = Convert5To8((color >> 11) & 0x1F);
+                        uint8_t g = Convert5To8((color >> 6) & 0x1F);
+                        uint8_t b = Convert5To8((color >> 1) & 0x1F);
+                        uint8_t a = Convert1To8(color & 0x1);
+
+                        color = r | (g << 8) | (b << 16) | (a << 24);
+                    }
+                        break;
                     case 4:
                     {
-                        color = bswp16(e->arm11_read16(0, input_addr));
+                        color = e->arm11_read16(0, input_addr);
 
-                        uint8_t a = color >> 12;
-                        uint8_t b = (color >> 8) & 0xF;
-                        uint8_t g = (color >> 4) & 0xF;
-                        uint8_t r = color & 0xF;
+                        uint8_t r = Convert4To8(color >> 12);
+                        uint8_t g = Convert4To8((color >> 8) & 0xF);
+                        uint8_t b = Convert4To8((color >> 4) & 0xF);
+                        uint8_t a = Convert4To8(color & 0xF);
 
-                        color = (r << 4) | (g << 12) | (b << 20) | (a << 28);
+                        color = r | (g << 8) | (b << 16) | (a << 24);
                     }
                         break;
                     default:
@@ -213,6 +300,21 @@ void GPU::do_transfer_engine_dma(uint64_t param)
                 uint8_t g = (color >> 8) & 0xFF;
                 uint8_t b = (color >> 16) & 0xFF;
                 uint8_t a = color >> 24;
+
+                if (!linear_to_tiled)
+                {
+                    uint32_t output_offs = x + (y * dma.disp_output_width);
+
+                    output_addr = dma.output_addr + (output_offs * output_size);
+                }
+                else
+                {
+                    uint32_t output_x = x;
+                    uint32_t output_y = y;
+
+                    output_addr = get_swizzled_tile_addr(dma.output_addr, dma.disp_output_width,
+                                                         output_x, output_y, output_size);
+                }
 
                 switch (output_format)
                 {
@@ -233,24 +335,36 @@ void GPU::do_transfer_engine_dma(uint64_t param)
                         color |= (r >> 3) << 11;
                         e->arm11_write16(0, output_addr, color);
                         break;
+                    case 3:
+                        color = 0;
+                        color |= Convert8To1(a);
+                        color |= Convert8To5(b) << 1;
+                        color |= Convert8To5(g) << 6;
+                        color |= Convert8To5(r) << 11;
+                        e->arm11_write16(0, output_addr, color);
+                        break;
                     case 4:
                         color = 0;
-                        color |= (r >> 4);
-                        color |= (g >> 4) << 4;
-                        color |= (b >> 4) << 8;
-                        color |= (a >> 4) << 12;
+                        color |= Convert8To4(a);
+                        color |= Convert8To4(b) << 4;
+                        color |= Convert8To4(g) << 8;
+                        color |= Convert8To4(r) << 12;
 
-                        e->arm11_write16(0, output_addr, bswp16(color));
+                        e->arm11_write16(0, output_addr, color);
                         break;
                     default:
                         EmuException::die("[GPU] Unrecognized output format %d\n", output_format);
                 }
 
-                output_addr += output_delta;
-
+                input_x++;
                 if (dma.flags & (1 << 24))
-                    x++;
+                    input_x++;
             }
+
+            if (dma.flags & 0x1)
+                input_y--;
+            else
+                input_y++;
         }
     }
     pmr->assert_hw_irq(0x2C);
@@ -348,7 +462,7 @@ void GPU::write_cmd_register(int reg, uint32_t param, uint8_t mask)
     printf("[GPU] Write command $%04X ($%08X)\n", reg, param);
 
     //Texture combiner regs
-    if ((reg >= 0x0C0 && reg < 0x0E0) || (reg >= 0x0F0 && reg < 0x0FC))
+    if ((reg >= 0x0C0 && reg < 0x0E0) || (reg >= 0x0F0 && reg < 0x0FD))
     {
         int index = 0;
         int texcomb_reg = 0;
@@ -456,7 +570,7 @@ void GPU::write_cmd_register(int reg, uint32_t param, uint8_t mask)
 
                 if (ctx.vsh_input_counter == ctx.vsh_inputs)
                 {
-                    submit_vertex();
+                    input_vsh_vtx();
                     ctx.vsh_input_counter = 0;
                 }
             }
@@ -464,39 +578,33 @@ void GPU::write_cmd_register(int reg, uint32_t param, uint8_t mask)
         return;
     }
 
+    //Geometry Shader float uniform upload
+    if (reg >= 0x291 && reg < 0x298)
+    {
+        input_float_uniform(ctx.gsh, param);
+        return;
+    }
+
+    //Geometry Shader code upload
+    if (reg >= 0x29C && reg < 0x2A4)
+    {
+        *(uint32_t*)&ctx.gsh.code[ctx.gsh.code_index] = param;
+        ctx.gsh.code_index += 4;
+        return;
+    }
+
+    //Geometry Shader operand descriptor upload
+    if (reg >= 0x2A6 && reg < 0x2AE)
+    {
+        ctx.gsh.op_desc[ctx.gsh.op_desc_index] = param;
+        ctx.gsh.op_desc_index++;
+        return;
+    }
+
     //Vertex Shader float uniform upload
     if (reg >= 0x2C1 && reg < 0x2C9)
     {
-        ctx.vsh.float_uniform_buffer[ctx.vsh.float_uniform_counter] = param;
-        ctx.vsh.float_uniform_counter++;
-
-        if ((ctx.vsh.float_uniform_mode && ctx.vsh.float_uniform_counter == 4)
-                || (!ctx.vsh.float_uniform_mode && ctx.vsh.float_uniform_counter == 3))
-        {
-            int index = ctx.vsh.float_uniform_index;
-            if (ctx.vsh.float_uniform_mode)
-            {
-                //Float32
-                for (int i = 0; i < 4; i++)
-                    ctx.vsh.float_uniform[index][3 - i] =
-                            float24::FromFloat32(*(float*)&ctx.vsh.float_uniform_buffer[i]);
-            }
-            else
-            {
-                //Float24
-                ctx.vsh.float_uniform[index].w = float24::FromRaw(ctx.vsh.float_uniform_buffer[0] >> 8);
-                ctx.vsh.float_uniform[index].z = float24::FromRaw((
-                                                           (ctx.vsh.float_uniform_buffer[0] & 0xFF) << 16) |
-                                                           ((ctx.vsh.float_uniform_buffer[1] >> 16) & 0xFFFF));
-                ctx.vsh.float_uniform[index].y = float24::FromRaw((
-                                                           (ctx.vsh.float_uniform_buffer[1] & 0xFFFF) << 8) |
-                                                           ((ctx.vsh.float_uniform_buffer[2] >> 24) & 0xFF));
-                ctx.vsh.float_uniform[index].x = float24::FromRaw(ctx.vsh.float_uniform_buffer[2] & 0xFFFFFF);
-            }
-
-            ctx.vsh.float_uniform_index++;
-            ctx.vsh.float_uniform_counter = 0;
-        }
+        input_float_uniform(ctx.vsh, param);
         return;
     }
 
@@ -522,6 +630,9 @@ void GPU::write_cmd_register(int reg, uint32_t param, uint8_t mask)
             //End of command list interrupt
             pmr->assert_hw_irq(0x2D);
             break;
+        case 0x040:
+            ctx.cull_mode = param & 0x3;
+            break;
         case 0x041:
             ctx.viewport_width = float24::FromRaw(param);
             break;
@@ -535,7 +646,7 @@ void GPU::write_cmd_register(int reg, uint32_t param, uint8_t mask)
             ctx.viewport_invh = float24::FromFloat32(*(float*)&param);
             break;
         case 0x04F:
-            ctx.vsh_output_total = param & 0x7;
+            ctx.sh_output_total = param & 0x7;
             break;
         case 0x050:
         case 0x051:
@@ -547,10 +658,10 @@ void GPU::write_cmd_register(int reg, uint32_t param, uint8_t mask)
         {
             int index = reg - 0x050;
 
-            ctx.vsh_output_mapping[index][0] = param & 0x1F;
-            ctx.vsh_output_mapping[index][1] = (param >> 8) & 0x1F;
-            ctx.vsh_output_mapping[index][2] = (param >> 16) & 0x1F;
-            ctx.vsh_output_mapping[index][3] = (param >> 24) & 0x1F;
+            ctx.sh_output_mapping[index][0] = param & 0x1F;
+            ctx.sh_output_mapping[index][1] = (param >> 8) & 0x1F;
+            ctx.sh_output_mapping[index][2] = (param >> 16) & 0x1F;
+            ctx.sh_output_mapping[index][3] = (param >> 24) & 0x1F;
         }
             break;
         case 0x068:
@@ -650,6 +761,31 @@ void GPU::write_cmd_register(int reg, uint32_t param, uint8_t mask)
             ctx.blend_color.b = (param >> 16) & 0xFF;
             ctx.blend_color.a = param >> 24;
             break;
+        case 0x105:
+            ctx.stencil_test_enabled = param & 0x1;
+            ctx.stencil_test_func = (param >> 4) & 0x7;
+            ctx.stencil_write_mask = (param >> 8) & 0xFF;
+            ctx.stencil_ref = (param >> 16) & 0xFF;
+            ctx.stencil_input_mask = param >> 24;
+            break;
+        case 0x106:
+            ctx.stencil_fail_func = param & 0x7;
+            ctx.depth_fail_func = (param >> 2) & 0x7;
+            ctx.depth_pass_func = (param >> 4) & 0x7;
+            break;
+        case 0x107:
+            ctx.depth_test_enabled = param & 0x1;
+            ctx.depth_test_func = (param >> 4) & 0x7;
+            for (int i = 0; i < 4; i++)
+                ctx.rgba_write_enabled[i] = (param >> (i + 8)) & 0x1;
+            ctx.depth_write_enabled = (param >> 12) & 0x1;
+            break;
+        case 0x116:
+            ctx.depth_format = param & 0x3;
+            break;
+        case 0x117:
+            ctx.color_format = (param >> 16) & 0x7;
+            break;
         case 0x11C:
             ctx.depth_buffer_base = (param & 0x0FFFFFFF) << 3;
             break;
@@ -697,11 +833,61 @@ void GPU::write_cmd_register(int reg, uint32_t param, uint8_t mask)
         case 0x242:
             ctx.vsh_inputs = (param & 0xF) + 1;
             break;
+        case 0x244:
+            ctx.gsh_enabled = param & 0x1;
+            break;
+        case 0x24A:
+            ctx.vsh_outputs = (param & 0xF) + 1;
+            break;
+        case 0x252:
+            ctx.gsh_mode = param & 0x3;
+            ctx.gsh_fixed_vtx_num = ((param >> 8) & 0xF) + 1;
+            ctx.gsh_stride = ((param >> 12) & 0xF) + 1;
+            ctx.gsh_start_index = (param >> 16) & 0xF;
+            break;
         case 0x25E:
             ctx.prim_mode = (param >> 8) & 0x3;
             break;
         case 0x25F:
             ctx.submitted_vertices = 0;
+            ctx.gsh_attrs_input = 0;
+            break;
+        case 0x280:
+            ctx.gsh.bool_uniform = param & 0xFFFF;
+            break;
+        case 0x281:
+        case 0x282:
+        case 0x283:
+        case 0x284:
+            ctx.gsh.int_regs[reg - 0x2B1][0] = param & 0xFF;
+            ctx.gsh.int_regs[reg - 0x2B1][1] = (param >> 8) & 0xFF;
+            ctx.gsh.int_regs[reg - 0x2B1][2] = (param >> 16) & 0xFF;
+            ctx.gsh.int_regs[reg - 0x2B1][3] = param >> 24;
+            break;
+        case 0x289:
+            ctx.gsh.total_inputs = (param & 0xF) + 1;
+            break;
+        case 0x28A:
+            ctx.gsh.entry_point = param & 0xFFFF;
+            break;
+        case 0x28B:
+            for (int i = 0; i < 8; i++)
+                ctx.gsh.input_mapping[i] = (param >> (i * 4)) & 0xF;
+            break;
+        case 0x28C:
+            for (int i = 0; i < 8; i++)
+                ctx.gsh.input_mapping[i + 8] = (param >> (i * 4)) & 0xF;
+            break;
+        case 0x290:
+            ctx.gsh.float_uniform_index = param & 0xFF;
+            ctx.gsh.float_uniform_mode = param >> 31;
+            ctx.gsh.float_uniform_counter = 0;
+            break;
+        case 0x29B:
+            ctx.gsh.code_index = (param & 0xFFF);
+            break;
+        case 0x2A5:
+            ctx.gsh.op_desc_index = param & 0xFFF;
             break;
         case 0x2B0:
             ctx.vsh.bool_uniform = param & 0xFFFF;
@@ -746,6 +932,39 @@ void GPU::write_cmd_register(int reg, uint32_t param, uint8_t mask)
     }
 }
 
+void GPU::input_float_uniform(ShaderUnit &sh, uint32_t param)
+{
+    sh.float_uniform_buffer[sh.float_uniform_counter] = param;
+    sh.float_uniform_counter++;
+
+    if ((sh.float_uniform_mode && sh.float_uniform_counter == 4)
+            || (!sh.float_uniform_mode && sh.float_uniform_counter == 3))
+    {
+        int index = sh.float_uniform_index;
+        if (sh.float_uniform_mode)
+        {
+            //Float32
+            for (int i = 0; i < 4; i++)
+                sh.float_uniform[index][3 - i] = float24::FromFloat32(*(float*)&sh.float_uniform_buffer[i]);
+        }
+        else
+        {
+            //Float24
+            sh.float_uniform[index].w = float24::FromRaw(sh.float_uniform_buffer[0] >> 8);
+            sh.float_uniform[index].z = float24::FromRaw((
+                                                       (sh.float_uniform_buffer[0] & 0xFF) << 16) |
+                                                       ((sh.float_uniform_buffer[1] >> 16) & 0xFFFF));
+            sh.float_uniform[index].y = float24::FromRaw((
+                                                       (sh.float_uniform_buffer[1] & 0xFFFF) << 8) |
+                                                       ((sh.float_uniform_buffer[2] >> 24) & 0xFF));
+            sh.float_uniform[index].x = float24::FromRaw(sh.float_uniform_buffer[2] & 0xFFFFFF);
+        }
+
+        sh.float_uniform_index++;
+        sh.float_uniform_counter = 0;
+    }
+}
+
 void GPU::draw_vtx_array(bool is_indexed)
 {
     printf("[GPU] DRAW_ARRAY_ELEMENTS\n");
@@ -776,16 +995,18 @@ void GPU::draw_vtx_array(bool is_indexed)
         printf("Index: %d\n", index);
 
         //Initialize variable input attributes
-        for (unsigned int j = 0; j < ctx.total_vtx_attrs; j++)
+        int attr = 0;
+        int buffer = 0;
+        while (attr < ctx.total_vtx_attrs)
         {
-            if (!(ctx.fixed_attr_mask & (1 << j)))
+            if (!(ctx.fixed_attr_mask & (1 << attr)))
             {
-                uint64_t cfg = ctx.attr_buffer_cfg1[j];
-                cfg |= (uint64_t)ctx.attr_buffer_cfg2[j] << 32ULL;
+                uint64_t cfg = ctx.attr_buffer_cfg1[buffer];
+                cfg |= (uint64_t)ctx.attr_buffer_cfg2[buffer] << 32ULL;
 
-                uint32_t addr = ctx.vtx_buffer_base + ctx.attr_buffer_offs[j];
-                addr += ctx.attr_buffer_vtx_size[j] * index;
-                for (unsigned int k = 0; k < ctx.attr_buffer_components[j]; k++)
+                uint32_t addr = ctx.vtx_buffer_base + ctx.attr_buffer_offs[buffer];
+                addr += ctx.attr_buffer_vtx_size[buffer] * index;
+                for (unsigned int k = 0; k < ctx.attr_buffer_components[buffer]; k++)
                 {
                     uint8_t vtx_format = (cfg >> (k * 4)) & 0xF;
 
@@ -803,7 +1024,7 @@ void GPU::draw_vtx_array(bool is_indexed)
                                 for (int comp = 0; comp < size; comp++)
                                 {
                                     int8_t value = (int8_t)e->arm11_read8(0, addr + comp);
-                                    ctx.vsh.input_attrs[j][comp] = float24::FromFloat32(value);
+                                    ctx.vsh.input_attrs[attr][comp] = float24::FromFloat32(value);
                                 }
                                 addr += size;
                                 break;
@@ -812,7 +1033,7 @@ void GPU::draw_vtx_array(bool is_indexed)
                                 for (int comp = 0; comp < size; comp++)
                                 {
                                     uint8_t value = e->arm11_read8(0, addr + comp);
-                                    ctx.vsh.input_attrs[j][comp] = float24::FromFloat32(value);
+                                    ctx.vsh.input_attrs[attr][comp] = float24::FromFloat32(value);
                                 }
                                 addr += size;
                                 break;
@@ -821,7 +1042,7 @@ void GPU::draw_vtx_array(bool is_indexed)
                                 for (int comp = 0; comp < size; comp++)
                                 {
                                     int16_t value = (int16_t)e->arm11_read16(0, addr + (comp * 2));
-                                    ctx.vsh.input_attrs[j][comp] = float24::FromFloat32(value);
+                                    ctx.vsh.input_attrs[attr][comp] = float24::FromFloat32(value);
                                 }
                                 addr += size * 2;
                                 break;
@@ -832,7 +1053,7 @@ void GPU::draw_vtx_array(bool is_indexed)
                                     uint32_t temp = e->arm11_read32(0, addr + (comp * 4));
                                     float value;
                                     memcpy(&value, &temp, sizeof(float));
-                                    ctx.vsh.input_attrs[j][comp] = float24::FromFloat32(value);
+                                    ctx.vsh.input_attrs[attr][comp] = float24::FromFloat32(value);
                                 }
                                 addr += size * 4;
                                 break;
@@ -843,10 +1064,12 @@ void GPU::draw_vtx_array(bool is_indexed)
                         for (int comp = size; comp < 4; comp++)
                         {
                             if (comp == 3)
-                                ctx.vsh.input_attrs[j][comp] = float24::FromFloat32(1.0f);
+                                ctx.vsh.input_attrs[attr][comp] = float24::FromFloat32(1.0f);
                             else
-                                ctx.vsh.input_attrs[j][comp] = float24::FromFloat32(0.0f);
+                                ctx.vsh.input_attrs[attr][comp] = float24::FromFloat32(0.0f);
                         }
+
+                        attr++;
                     }
                     else
                     {
@@ -854,73 +1077,247 @@ void GPU::draw_vtx_array(bool is_indexed)
                         addr += sizes[vtx_format - 12];
                     }
                 }
+
+                buffer++;
             }
+            else
+                attr++;
         }
 
-        submit_vertex();
+        input_vsh_vtx();
     }
 }
 
-void GPU::submit_vertex()
+void GPU::input_vsh_vtx()
 {
-    //Run the vertex shader
     exec_shader(ctx.vsh);
 
-    //TODO: Run geometry shader?
-    if (ctx.prim_mode == 3)
-        return;
+    if (ctx.gsh_enabled)
+    {
+        if (ctx.prim_mode != 3)
+            EmuException::die("[GPU] Primitive mode not set to geometry when gsh is active!");
+        //Place attributes in intermediate geometry buffer depending on mode
+        //Execute a geometry shader when enough attributes are present
+        switch (ctx.gsh_mode)
+        {
+            case 0:
+                //Point mode - geometry shader takes GSH_INPUT_NUM / VSH_OUTPUT_NUM vertices as input
+                for (int i = 0; i < ctx.vsh_outputs; i++)
+                    ctx.gsh.input_attrs[ctx.gsh_attrs_input + i] = ctx.vsh.output_regs[i];
+                ctx.gsh_attrs_input += ctx.vsh_outputs;
 
-    //Map output registers to vertex variables
-    Vertex v;
-    for (int i = 0; i < ctx.vsh_output_total; i++)
+                if (ctx.gsh_attrs_input == ctx.gsh.total_inputs)
+                {
+                    exec_shader(ctx.gsh);
+                    ctx.gsh_attrs_input = 0;
+
+                    //Bool uniform register 15 is set after a geoshader executes for the first time.
+                    ctx.gsh.bool_uniform |= 1 << 15;
+                }
+                break;
+            default:
+                EmuException::die("[GPU] Unrecognized gsh mode %d", ctx.gsh_mode);
+        }
+    }
+    else
+    {
+        Vertex v;
+        map_sh_output_to_vtx(ctx.vsh, v);
+
+        submit_vtx(v, false);
+    }
+}
+
+void GPU::map_sh_output_to_vtx(ShaderUnit &sh, Vertex &v)
+{
+    for (int i = 0; i < ctx.sh_output_total; i++)
     {
         for (int j = 0; j < 4; j++)
         {
-            uint8_t mapping = ctx.vsh_output_mapping[i][j];
+            uint8_t mapping = ctx.sh_output_mapping[i][j];
             switch (mapping)
             {
                 case 0x00:
                 case 0x01:
                 case 0x02:
                 case 0x03:
-                    v.pos[mapping] = ctx.vsh.output_regs[i][j];
+                    v.pos[mapping] = sh.output_regs[i][j];
                     break;
                 case 0x04:
                 case 0x05:
                 case 0x06:
                 case 0x07:
-                    v.quat[mapping - 0x04] = ctx.vsh.output_regs[i][j];
+                    v.quat[mapping - 0x04] = sh.output_regs[i][j];
                     break;
                 case 0x08:
                 case 0x09:
                 case 0x0A:
                 case 0x0B:
-                    v.color[mapping - 0x08] = ctx.vsh.output_regs[i][j];
+                    v.color[mapping - 0x08] = sh.output_regs[i][j];
                     break;
                 case 0x0C:
                 case 0x0D:
-                    v.texcoords[0][mapping - 0x0C] = ctx.vsh.output_regs[i][j];
+                    v.texcoords[0][mapping - 0x0C] = sh.output_regs[i][j];
                     break;
                 case 0x0E:
                 case 0x0F:
-                    v.texcoords[1][mapping - 0x0E] = ctx.vsh.output_regs[i][j];
+                    v.texcoords[1][mapping - 0x0E] = sh.output_regs[i][j];
                     break;
                 case 0x10:
-                    v.texcoords[0][3] = ctx.vsh.output_regs[i][j];
+                    v.texcoords[0][3] = sh.output_regs[i][j];
                     break;
                 case 0x12:
                 case 0x13:
                 case 0x14:
-                    v.view[mapping - 0x12] = ctx.vsh.output_regs[i][j];
+                    v.view[mapping - 0x12] = sh.output_regs[i][j];
                     break;
                 case 0x16:
                 case 0x17:
-                    v.texcoords[2][mapping - 0x16] = ctx.vsh.output_regs[i][j];
+                    v.texcoords[2][mapping - 0x16] = sh.output_regs[i][j];
                     break;
             }
         }
     }
+}
 
+void GPU::submit_vtx(Vertex& v, bool winding)
+{
+    //Add vertex to the queue
+    ctx.vertex_queue[ctx.submitted_vertices] = v;
+    ctx.submitted_vertices++;
+
+    if (ctx.submitted_vertices == 3)
+    {
+        //Copy queue into temporary variables to prevent rasterize_tri from overwriting them
+        Vertex v0 = ctx.vertex_queue[0];
+        Vertex v1 = ctx.vertex_queue[1];
+        Vertex v2 = ctx.vertex_queue[2];
+
+        if (ctx.prim_mode == 3 && winding)
+        {
+            process_tri(v1, v0, v2);
+            ctx.gsh_winding = false;
+        }
+        else
+            process_tri(v0, v1, v2);
+        switch (ctx.prim_mode)
+        {
+            case 0:
+            case 3:
+                //Independent triangles/geometry shader primitives
+                ctx.submitted_vertices = 0;
+                break;
+            case 1:
+                //Triangle strip
+                ctx.vertex_queue[0] = ctx.vertex_queue[1];
+                ctx.vertex_queue[1] = ctx.vertex_queue[2];
+                ctx.submitted_vertices--;
+                break;
+            case 2:
+                //Triangle fan
+                ctx.vertex_queue[1] = ctx.vertex_queue[2];
+                ctx.submitted_vertices--;
+                break;
+            default:
+                EmuException::die("[GPU] Unrecognized primitive mode %d", ctx.prim_mode);
+        }
+    }
+}
+
+void GPU::process_tri(Vertex &v0, Vertex &v1, Vertex &v2)
+{
+    //There are 6 clipping planes. As a clipping operation can result in an extra vertex being produced,
+    //the maximum amount of vertices a primitive can have is 9.
+    std::vector<Vertex> output_list;
+    std::vector<Vertex> input_list;
+
+    output_list.push_back(v0);
+    output_list.push_back(v1);
+    output_list.push_back(v2);
+
+    float24 one = float24::FromFloat32(1.0f);
+    float24 zero = float24::FromFloat32(0.0f);
+    float24 epsilon = float24::FromFloat32(0.000001f);
+
+    Vec4<float24> clipping_planes[7] =
+    {
+        {-one, zero, zero, one},
+        {one, zero, zero, one},
+        {zero, -one, zero, one},
+        {zero, one, zero, one},
+        {zero, zero, -one, zero},
+        {zero, zero, one, one},
+        {zero, zero, zero, one} //epsilon is applied here
+    };
+
+    Vec4<float24> bias[7] =
+    {
+        {zero, zero, zero, zero},
+        {zero, zero, zero, zero},
+        {zero, zero, zero, zero},
+        {zero, zero, zero, zero},
+        {zero, zero, zero, zero},
+        {zero, zero, zero, zero},
+        {zero, zero, zero, epsilon}
+    };
+
+    for (int plane = 0; plane < 7; plane++)
+    {
+        std::swap(input_list, output_list);
+        output_list.clear();
+
+        Vertex ref = input_list.back();
+
+        for (unsigned int i = 0; i < input_list.size(); i++)
+        {
+            Vertex vtx = input_list[i];
+            float24 vtx_dp = dp4(vtx.pos + bias[plane], clipping_planes[plane]);
+            float24 ref_dp = dp4(ref.pos + bias[plane], clipping_planes[plane]);
+
+            bool vtx_inside = vtx_dp >= zero;
+            bool ref_inside = ref_dp >= zero;
+
+            float24 lerp_factor = ref_dp / (ref_dp - vtx_dp);
+            Vertex intersection = vtx * lerp_factor + ref * (one - lerp_factor);
+
+            if (vtx_inside)
+            {
+                if (!ref_inside)
+                    output_list.push_back(intersection);
+
+                output_list.push_back(vtx);
+            }
+            else if (ref_inside)
+                output_list.push_back(intersection);
+
+            ref = vtx;
+        }
+
+        //Check if we have enough vertices for a complete triangle
+        if (output_list.size() < 3)
+        {
+            //printf("Clipped...\n");
+            return;
+        }
+    }
+
+    viewport_transform(output_list[0]);
+    viewport_transform(output_list[1]);
+
+    for (unsigned int i = 0; i < output_list.size() - 2; i++)
+    {
+        viewport_transform(output_list[2 + i]);
+
+        v0 = output_list[0];
+        v1 = output_list[1 + i];
+        v2 = output_list[2 + i];
+
+        rasterize_tri(v0, v1, v2);
+    }
+}
+
+void GPU::viewport_transform(Vertex &v)
+{
     //Multiply all vertex values (except w) by 1/w
     float24 inv_w = float24::FromFloat32(1.0f) / v.pos[3];
     v.pos *= inv_w;
@@ -937,6 +1334,7 @@ void GPU::submit_vertex()
     v.texcoords[0][1] = float24::FromFloat32(1.0f) - v.texcoords[0][1];
 
     //Apply viewport transform
+    //The y coordinate must also be inverted
     v.pos[0] += float24::FromFloat32(1.0f);
     v.pos[0] = (v.pos[0] * ctx.viewport_width) + float24::FromFloat32(ctx.viewport_x);
 
@@ -945,37 +1343,8 @@ void GPU::submit_vertex()
     v.pos[1] = (v.pos[1] * ctx.viewport_height) + float24::FromFloat32(ctx.viewport_y);
 
     //Round x and y to nearest whole number
-    v.pos[0] = float24::FromFloat32(roundf(v.pos[0].ToFloat32()));
-    v.pos[1] = float24::FromFloat32(roundf(v.pos[1].ToFloat32()));
-
-    //Add vertex to the queue
-    ctx.vertex_queue[ctx.submitted_vertices] = v;
-    ctx.submitted_vertices++;
-
-    if (ctx.submitted_vertices == 3)
-    {
-        rasterize_tri();
-        switch (ctx.prim_mode)
-        {
-            case 0:
-                //Independent triangles
-                ctx.submitted_vertices = 0;
-                break;
-            case 1:
-                //Triangle strip
-                for (int i = 1; i < 3; i++)
-                    ctx.vertex_queue[i - 1] = ctx.vertex_queue[i];
-                ctx.submitted_vertices--;
-                break;
-            case 2:
-                //Triangle fan
-                ctx.vertex_queue[1] = ctx.vertex_queue[2];
-                ctx.submitted_vertices--;
-                break;
-            default:
-                EmuException::die("[GPU] Unrecognized primitive mode %d", ctx.prim_mode);
-        }
-    }
+    v.pos[0] = float24::FromFloat32(roundf(v.pos[0].ToFloat32() * 16.0));
+    v.pos[1] = float24::FromFloat32(roundf(v.pos[1].ToFloat32() * 16.0));
 }
 
 // this is garbage, possible to go way faster.
@@ -1018,7 +1387,7 @@ static void order3(float a, float b, float c, uint8_t* order)
     }
 }
 
-void GPU::rasterize_tri() {
+/*void GPU::rasterize_tri(Vertex& v0, Vertex& v1, Vertex& v2) {
     // This is a "scanline" algorithm which reduces flops/pixel
     //  at the cost of a longer setup time.
 
@@ -1048,14 +1417,42 @@ void GPU::rasterize_tri() {
 
     printf("[GPU] Rasterizing triangle\n");
 
+    //Check if texture combiners are unused - this lets us save time by not looping through all six of them
+    ctx.texcomb_start = 0;
+    for (int i = 0; i < 6; i++)
+    {
+        if (ctx.texcomb_rgb_source[i][0] == 0xF && ctx.texcomb_alpha_source[i][0] == 0xF &&
+            ctx.texcomb_rgb_op[i] == 0 && ctx.texcomb_alpha_op[i] == 0)
+            continue;
+
+        ctx.texcomb_start = i;
+        break;
+    }
+
+    ctx.texcomb_end = 6;
+    for (int i = 5; i >= 0; i--)
+    {
+        if (ctx.texcomb_rgb_source[i][0] == 0xF && ctx.texcomb_alpha_source[i][0] == 0xF &&
+            ctx.texcomb_rgb_op[i] == 0 && ctx.texcomb_alpha_op[i] == 0)
+            continue;
+
+        ctx.texcomb_end = i + 1;
+        break;
+    }
+
+    Vertex unsortedVerts[3]; // vertices in the order they were sent to GS
+    unsortedVerts[0] = v2;
+    unsortedVerts[1] = v1;
+    unsortedVerts[2] = v0;
+
     printf("Positions: ");
     for (int i = 0; i < 3; i++)
     {
         printf("(");
-        for (int j = 0; j < 3; j++)
+        for (int j = 0; j < 4; j++)
         {
-            printf("%f", ctx.vertex_queue[i].pos[j].ToFloat32());
-            if (j < 2)
+            printf("%f", unsortedVerts[i].pos[j].ToFloat32() / 16);
+            if (j < 3)
                 printf(", ");
         }
         printf(") ");
@@ -1067,35 +1464,18 @@ void GPU::rasterize_tri() {
         printf("Texcoord%ds: ", i);
         for (int j = 0; j < 3; j++)
         {
-            printf("(%f %f) ", ctx.vertex_queue[j].texcoords[i][0].ToFloat32(), ctx.vertex_queue[j].texcoords[i][1].ToFloat32());
+            printf("(%f %f) ", unsortedVerts[j].texcoords[i][0].ToFloat32(), unsortedVerts[j].texcoords[i][1].ToFloat32());
         }
         printf("\n");
     }
-
-    printf("Viewport: (%f, %f) (%f, %f)\n",
-           ctx.viewport_width.ToFloat32(), ctx.viewport_height.ToFloat32(),
-           ctx.viewport_invw.ToFloat32(), ctx.viewport_invh.ToFloat32());
-
-    Vertex unsortedVerts[3]; // vertices in the order they were sent to GS
-    unsortedVerts[0] = ctx.vertex_queue[2];
-    unsortedVerts[1] = ctx.vertex_queue[1];
-    unsortedVerts[2] = ctx.vertex_queue[0];
-
-    /*// fast reject - some games like to spam triangles that don't have any pixels
-    if(unsortedVerts[0].y == unsortedVerts[1].y && unsortedVerts[1].y == unsortedVerts[2].y)
-    {
-        return;
-    }*/
-
 
     // sort the three vertices by their y coordinate (increasing)
     uint8_t order[3];
     order3(unsortedVerts[0].pos[1].ToFloat32(), unsortedVerts[1].pos[1].ToFloat32(), unsortedVerts[2].pos[1].ToFloat32(), order);
 
-    // convert all vertex data to floating point, converts position to floating point pixels
-    Vertex v0(unsortedVerts[order[0]]);
-    Vertex v1(unsortedVerts[order[1]]);
-    Vertex v2(unsortedVerts[order[2]]);
+    v0 = unsortedVerts[order[0]];
+    v1 = unsortedVerts[order[1]];
+    v2 = unsortedVerts[order[2]];
 
     // COMMONLY USED VALUES
 
@@ -1136,7 +1516,7 @@ void GPU::rasterize_tri() {
     if (div.ToFloat32() == 0.f)
     {
         return;
-    }
+    }*/
 
     /*// next we need to determine the horizontal scanlines that will have pixels.
     // GS pixel draw condition for scissor
@@ -1173,7 +1553,7 @@ void GPU::rasterize_tri() {
     int lowerTop = std::max((int)std::ceil(v1.y), scissorY1); // we draw this
     int lowerBot = std::min((int)std::ceil(v2.y), scissorY2); // we don't draw this, (< max value, different from scissor)*/
 
-    int upperTop = (int)std::ceil(v0.pos[1].ToFloat32());
+    /*int upperTop = (int)std::ceil(v0.pos[1].ToFloat32());
     int upperBot = (int)std::ceil(v1.pos[1].ToFloat32());
     int lowerTop = (int)std::ceil(v1.pos[1].ToFloat32());
     int lowerBot = (int)std::ceil(v2.pos[1].ToFloat32());
@@ -1263,6 +1643,293 @@ void GPU::rasterize_tri() {
 
     }
 
+}*/
+
+// Returns positive value if the points are in counter-clockwise order
+// 0 if they it's on the same line
+// Negative value if they are in a clockwise order
+// Basicly the cross product of (v2 - v1) and (v3 - v1) vectors
+float24 orient2D(const Vertex &v1, const Vertex &v2, const Vertex &v3)
+{
+    return (v2.pos[0] - v1.pos[0]) * (v3.pos[1] - v1.pos[1]) - (v3.pos[0] - v1.pos[0]) * (v2.pos[1] - v1.pos[1]);
+}
+
+void GPU::rasterize_tri(Vertex &v0, Vertex &v1, Vertex &v2)
+{
+    //The triangle rasterization code uses an approach with barycentric coordinates
+    //Clear explanation can be read below:
+    //https://fgiesen.wordpress.com/2013/02/06/the-barycentric-conspirac/
+
+    printf("[GPU] Rasterizing triangle\n");
+    printf("w: (%f %f %f)\n", v0.pos[3].ToFloat32(), v0.pos[3].ToFloat32(), v0.pos[3].ToFloat32());
+
+    //Check if texture combiners are unused - this lets us save time by not looping through all six of them
+    ctx.texcomb_start = 0;
+    for (int i = 0; i < 6; i++)
+    {
+        if (ctx.texcomb_rgb_source[i][0] == 0xF && ctx.texcomb_alpha_source[i][0] == 0xF &&
+            ctx.texcomb_rgb_op[i] == 0 && ctx.texcomb_alpha_op[i] == 0)
+            continue;
+
+        ctx.texcomb_start = i;
+        break;
+    }
+
+    ctx.texcomb_end = 6;
+    for (int i = 5; i >= 0; i--)
+    {
+        if (ctx.texcomb_rgb_source[i][0] == 0xF && ctx.texcomb_alpha_source[i][0] == 0xF &&
+            ctx.texcomb_rgb_op[i] == 0 && ctx.texcomb_alpha_op[i] == 0)
+            continue;
+
+        ctx.texcomb_end = i + 1;
+        break;
+    }
+
+    //Keep front face mode - reverse vertex order
+    if (orient2D(v0, v1, v2).ToFloat32() < 0.0f)
+        std::swap(v1, v2);
+
+    //int32_t divider = orient2D(v0, v1, v2).ToFloat32();
+    //Calculate bounding box of triangle
+    int32_t min_x = std::min({v0.pos[0].ToFloat32(), v1.pos[0].ToFloat32(), v2.pos[0].ToFloat32()});
+    int32_t min_y = std::min({v0.pos[1].ToFloat32(), v1.pos[1].ToFloat32(), v2.pos[1].ToFloat32()});
+    int32_t max_x = std::max({v0.pos[0].ToFloat32(), v1.pos[0].ToFloat32(), v2.pos[0].ToFloat32()});
+    int32_t max_y = std::max({v0.pos[1].ToFloat32(), v1.pos[1].ToFloat32(), v2.pos[1].ToFloat32()});
+
+    //Automatic scissoring test
+    /*min_x = max(min_x, (int32_t)current_ctx->scissor.x1);
+    min_y = max(min_y, (int32_t)current_ctx->scissor.y1);
+    max_x = min(max_x, (int32_t)current_ctx->scissor.x2 + 0x10);
+    max_y = min(max_y, (int32_t)current_ctx->scissor.y2 + 0x10);
+
+    if (max_y == min_y && min_x == max_x)
+        return;*/
+    //We'll process the pixels in blocks, set the blocksize
+    const int32_t BLOCKSIZE = 1 << 4; // Must be power of 2
+
+    //Round down to make starting corner's coordinates a multiple of BLOCKSIZE with bitwise magic
+    min_x &= ~(BLOCKSIZE - 1);
+    min_y &= ~(BLOCKSIZE - 1);
+
+    //Calculate incremental steps for the weights
+    //Reference: https://fgiesen.wordpress.com/2013/02/10/optimizing-the-basic-rasterizer/
+    const int32_t A12 = v0.pos[1].ToFloat32() - v1.pos[1].ToFloat32();
+    const int32_t B12 = v1.pos[0].ToFloat32() - v0.pos[0].ToFloat32();
+    const int32_t A23 = v1.pos[1].ToFloat32() - v2.pos[1].ToFloat32();
+    const int32_t B23 = v2.pos[0].ToFloat32() - v1.pos[0].ToFloat32();
+    const int32_t A31 = v2.pos[1].ToFloat32() - v0.pos[1].ToFloat32();
+    const int32_t B31 = v0.pos[0].ToFloat32() - v2.pos[0].ToFloat32();
+
+    const int32_t block_A23 = (BLOCKSIZE - 1) * A23;
+    const int32_t block_A31 = (BLOCKSIZE - 1) * A31;
+    const int32_t block_A12 = (BLOCKSIZE - 1) * A12;
+    const int32_t block_B23 = (BLOCKSIZE - 1) * B23;
+    const int32_t block_B31 = (BLOCKSIZE - 1) * B31;
+    const int32_t block_B12 = (BLOCKSIZE - 1) * B12;
+
+    Vertex min_corner;
+    min_corner.pos[0] = float24::FromFloat32(min_x);
+    min_corner.pos[1] = float24::FromFloat32(min_y);
+    int32_t w1_row = orient2D(v1, v2, min_corner).ToFloat32();
+    int32_t w2_row = orient2D(v2, v0, min_corner).ToFloat32();
+    int32_t w3_row = orient2D(v0, v1, min_corner).ToFloat32();
+    int32_t w1_row_block = w1_row;
+    int32_t w2_row_block = w2_row;
+    int32_t w3_row_block = w3_row;
+
+    bool can_do_stencil = ctx.stencil_test_enabled && ctx.depth_format == 0x3;
+
+    //TODO: Parallelize this
+    //Iterate through the bounding rectangle using BLOCKSIZE * BLOCKSIZE large blocks
+    //This way we can throw out blocks which are totally outside the triangle way faster
+    //Thanks you, Dolphin code for the idea
+    //https://github.com/dolphin-emu/dolphin/blob/master/Source/Core/VideoBackends/Software/Rasterizer.cpp#L388
+    for (int32_t y_block = min_y; y_block < max_y; y_block += BLOCKSIZE)
+    {
+        int32_t w1_block = w1_row_block;
+        int32_t w2_block = w2_row_block;
+        int32_t w3_block = w3_row_block;
+        for (int32_t x_block = min_x; x_block < max_x; x_block += BLOCKSIZE)
+        {
+            //Store barycentric coordinates for the corners of a block
+            //tl = top left, tr = top right, etc.
+            int32_t w1_tl, w1_tr, w1_bl, w1_br;
+            int32_t w2_tl, w2_tr, w2_bl, w2_br;
+            int32_t w3_tl, w3_tr, w3_bl, w3_br;
+            //Calculate the weight offsets for the corners
+            w1_tl = w1_block; w2_tl = w2_block, w3_tl = w3_block;
+            w1_tr = w1_tl + block_A23;
+            w2_tr = w2_tl + block_A31;
+            w3_tr = w3_tl + block_A12;
+            w1_bl = w1_tl + block_B23;
+            w2_bl = w2_tl + block_B31;
+            w3_bl = w3_tl + block_B12;
+            w1_br = w1_tl + block_B23 + block_A23;
+            w2_br = w2_tl + block_B31 + block_A31;
+            w3_br = w3_tl + block_B12 + block_A12;
+
+            //Check if any of the corners are in the positive half-space of a weight
+            bool w1_tl_check = w1_tl > 0;
+            bool w1_tr_check = w1_tr > 0;
+            bool w1_bl_check = w1_bl > 0;
+            bool w1_br_check = w1_br > 0;
+            bool w2_tl_check = w2_tl > 0;
+            bool w2_tr_check = w2_tr > 0;
+            bool w2_bl_check = w2_bl > 0;
+            bool w2_br_check = w2_br > 0;
+            bool w3_tl_check = w3_tl > 0;
+            bool w3_tr_check = w3_tr > 0;
+            bool w3_bl_check = w3_bl > 0;
+            bool w3_br_check = w3_br > 0;
+
+
+            //Combine all checks for a barycentric coordinate into one
+            //If for one half-space checks for each corner --> all corners lie outside the triangle --> block can be skipped
+            uint8_t w1_mask = (w1_tl_check << 0) | (w1_tr_check << 1) | (w1_bl_check << 2) | (w1_br_check << 3);
+            uint8_t w2_mask = (w2_tl_check << 0) | (w2_tr_check << 1) | (w2_bl_check << 2) | (w2_br_check << 3);
+            uint8_t w3_mask = (w3_tl_check << 0) | (w3_tr_check << 1) | (w3_bl_check << 2) | (w3_br_check << 3);
+            //However in other cases, we process the block pixel-by-pixel as usual
+            //TODO: In the case where all corners lie inside the triangle the code below could be slightly simplified
+            if (w1_mask != 0 && w2_mask != 0 && w3_mask != 0)
+            {
+                //Process a BLOCKSIZE * BLOCKSIZE block as normal
+                int32_t w1_row = w1_block;
+                int32_t w2_row = w2_block;
+                int32_t w3_row = w3_block;
+                for (int32_t y = y_block; y < y_block + BLOCKSIZE; y += 0x10)
+                {
+                    int32_t w1 = w1_row;
+                    int32_t w2 = w2_row;
+                    int32_t w3 = w3_row;
+                    for (int32_t x = x_block; x < x_block + BLOCKSIZE; x += 0x10)
+                    {
+                        //Is inside triangle?
+                        if ((w1 | w2 | w3) >= 0)
+                        {
+                            float24 f1 = float24::FromFloat32(w1);
+                            float24 f2 = float24::FromFloat32(w2);
+                            float24 f3 = float24::FromFloat32(w3);
+                            Vertex vtx;
+
+                            float24 divider = float24::FromFloat32(1.0f) / (v0.pos[3] * f1 +
+                                    v1.pos[3] * f2 + v2.pos[3] * f3);
+
+                            for (int i = 0; i < 4; i++)
+                            {
+                                vtx.color[i] = (v0.color[i] * f1 + v1.color[i] * f2 + v2.color[i] * f3) * divider;
+                                vtx.texcoords[0][i] = (v0.texcoords[0][i] * f1 + v1.texcoords[0][i] * f2 + v2.texcoords[0][i] * f3) * divider;
+                                vtx.texcoords[1][i] = (v0.texcoords[1][i] * f1 + v1.texcoords[1][i] * f2 + v2.texcoords[1][i] * f3) * divider;
+                                vtx.texcoords[2][i] = (v0.texcoords[2][i] * f1 + v1.texcoords[2][i] * f2 + v2.texcoords[2][i] * f3) * divider;
+                            }
+
+                            RGBA_Color source_color, frame_color;
+
+                            source_color.r = (uint8_t)(vtx.color[0].ToFloat32() * 255.0);
+                            source_color.g = (uint8_t)(vtx.color[1].ToFloat32() * 255.0);
+                            source_color.b = (uint8_t)(vtx.color[2].ToFloat32() * 255.0);
+                            source_color.a = (uint8_t)(vtx.color[3].ToFloat32() * 255.0);
+
+                            //printf("%d %d\n", x >> 4, y >> 4);
+
+                            combine_textures(source_color, vtx);
+
+                            uint32_t frame_addr = get_swizzled_tile_addr(ctx.color_buffer_base, ctx.frame_width, x >> 4, y >> 4, 4);
+                            uint32_t frame = bswp32(e->arm11_read32(0, frame_addr));
+
+                            frame_color.r = frame & 0xFF;
+                            frame_color.g = (frame >> 8) & 0xFF;
+                            frame_color.b = (frame >> 16) & 0xFF;
+                            frame_color.a = frame >> 24;
+
+                            blend_fragment(source_color, frame_color);
+
+                            //The stencil test only works on 24-bit depth + 8-bit stencil
+                            if (can_do_stencil)
+                            {
+                                uint32_t depth_addr = get_swizzled_tile_addr(ctx.depth_buffer_base,
+                                                                             ctx.frame_width, x >> 4, y >> 4, 4);
+
+                                uint8_t stencil = e->arm11_read32(0, frame_addr) >> 24;
+                                uint8_t dest = stencil & ctx.stencil_input_mask;
+                                uint8_t ref = ctx.stencil_ref & ctx.stencil_input_mask;
+
+                                bool pass = false;
+                                switch (ctx.stencil_test_func)
+                                {
+                                    case 0:
+                                        //NEVER
+                                        break;
+                                    case 1:
+                                        //ALWAYS
+                                        pass = true;
+                                        break;
+                                    case 2:
+                                        //EQUAL
+                                        pass = ref == dest;
+                                        break;
+                                    case 3:
+                                        //NEQUAL
+                                        pass = ref != dest;
+                                        break;
+                                    case 4:
+                                        //LESS THAN
+                                        pass = ref < dest;
+                                        break;
+                                    case 5:
+                                        //LESS THAN OR EQUAL
+                                        pass = ref <= dest;
+                                        break;
+                                    case 6:
+                                        //GREATER THAN
+                                        pass = ref > dest;
+                                        break;
+                                    case 7:
+                                        //GREATER THAN OR EQUAL
+                                        pass = ref >= dest;
+                                        break;
+                                }
+
+                                if (!pass)
+                                {
+                                    update_stencil(depth_addr, stencil, ctx.stencil_ref, ctx.stencil_fail_func);
+                                    continue;
+                                }
+                            }
+
+                            if (ctx.depth_test_enabled)
+                            {
+
+                            }
+
+                            uint32_t final_color = 0;
+                            final_color = source_color.r | (source_color.g << 8) | (source_color.b << 16) | (source_color.a << 24);
+
+                            e->arm11_write32(0, frame_addr, bswp32(final_color));
+                        }
+                        else
+                            break;
+                        //Horizontal step
+                        w1 += A23 << 4;
+                        w2 += A31 << 4;
+                        w3 += A12 << 4;
+                    }
+                    //Vertical step
+                    w1_row += B23 << 4;
+                    w2_row += B31 << 4;
+                    w3_row += B12 << 4;
+                }
+            }
+
+            w1_block += BLOCKSIZE * A23;
+            w2_block += BLOCKSIZE * A31;
+            w3_block += BLOCKSIZE * A12;
+
+        }
+        w1_row_block += BLOCKSIZE * B23;
+        w2_row_block += BLOCKSIZE * B31;
+        w3_row_block += BLOCKSIZE * B12;
+    }
 }
 
 /*!
@@ -1282,22 +1949,23 @@ void GPU::rasterize_tri() {
  */
 void GPU::rasterize_half_tri(float24 x0, float24 x1, int y0, int y1, Vertex &x_step,
                                   Vertex &y_step, Vertex &init, float24 step_x0, float24 step_x1) {
-    for(int y = y0; y < y1; y++) // loop over scanlines of triangle
+    bool can_do_stencil = ctx.stencil_test_enabled && ctx.depth_format == 0x3;
+    for(int y = y0; y < y1; y += 16) // loop over scanlines of triangle
     {
-        float24 height = float24::FromFloat32(y) - init.pos[1]; // how far down we've made it
+        float24 height = float24::FromFloat32(y) - init.pos[1]; //how far down we've made it
         Vertex vtx = init + y_step * height;       // interpolate to point (x_init, y)
         float24 x0l = x0 + step_x0 * height;          // start x coordinates of scanline from interpolation
         float24 x1l = x1 + step_x1 * height;          // end   x coordinate of scanline from interpolation
         /*x0l = std::max(scx1, std::ceil(x0l));       // round and scissor
         x1l = std::min(scx2, std::ceil(x1l));       // round and scissor*/
-        int xStop = x1l.ToFloat32();                            // integer start/stop pixels
-        int xStart = x0l.ToFloat32();
+        int xStop = roundf(x1l.ToFloat32());                            // integer start/stop pixels
+        int xStart = roundf(x0l.ToFloat32());
 
         if(xStop == xStart) continue;               // skip rows of zero length
 
         vtx += (x_step * (x0l - init.pos[0]));           // interpolate to point (x0l, y)
 
-        for (int x = x0l.ToFloat32(); x < xStop; x++)            // loop over x pixels of scanline
+        for (int x = xStart; x < xStop; x += 16)            // loop over x pixels of scanline
         {
             RGBA_Color source_color, frame_color;
 
@@ -1306,10 +1974,12 @@ void GPU::rasterize_half_tri(float24 x0, float24 x1, int y0, int y1, Vertex &x_s
             source_color.b = (uint8_t)(vtx.color[2].ToFloat32() * 255.0);
             source_color.a = (uint8_t)(vtx.color[3].ToFloat32() * 255.0);
 
+            //printf("%d %d\n", x >> 4, y >> 4);
+
             combine_textures(source_color, vtx);
 
-            uint32_t addr = get_swizzled_tile_addr(ctx.color_buffer_base, ctx.frame_width, x, y, 4);
-            uint32_t frame = bswp32(e->arm11_read32(0, addr));
+            uint32_t frame_addr = get_swizzled_tile_addr(ctx.color_buffer_base, ctx.frame_width, x >> 4, y >> 4, 4);
+            uint32_t frame = bswp32(e->arm11_read32(0, frame_addr));
 
             frame_color.r = frame & 0xFF;
             frame_color.g = (frame >> 8) & 0xFF;
@@ -1318,12 +1988,71 @@ void GPU::rasterize_half_tri(float24 x0, float24 x1, int y0, int y1, Vertex &x_s
 
             blend_fragment(source_color, frame_color);
 
+            //The stencil test only works on 24-bit depth + 8-bit stencil
+            if (can_do_stencil)
+            {
+                uint32_t depth_addr = get_swizzled_tile_addr(ctx.depth_buffer_base,
+                                                             ctx.frame_width, x >> 4, y >> 4, 4);
+
+                uint8_t stencil = e->arm11_read32(0, frame_addr) >> 24;
+                uint8_t dest = stencil & ctx.stencil_input_mask;
+                uint8_t ref = ctx.stencil_ref & ctx.stencil_input_mask;
+
+                bool pass = false;
+                switch (ctx.stencil_test_func)
+                {
+                    case 0:
+                        //NEVER
+                        break;
+                    case 1:
+                        //ALWAYS
+                        pass = true;
+                        break;
+                    case 2:
+                        //EQUAL
+                        pass = ref == dest;
+                        break;
+                    case 3:
+                        //NEQUAL
+                        pass = ref != dest;
+                        break;
+                    case 4:
+                        //LESS THAN
+                        pass = ref < dest;
+                        break;
+                    case 5:
+                        //LESS THAN OR EQUAL
+                        pass = ref <= dest;
+                        break;
+                    case 6:
+                        //GREATER THAN
+                        pass = ref > dest;
+                        break;
+                    case 7:
+                        //GREATER THAN OR EQUAL
+                        pass = ref >= dest;
+                        break;
+                }
+
+                if (!pass)
+                {
+                    update_stencil(depth_addr, stencil, ctx.stencil_ref, ctx.stencil_fail_func);
+                    continue;
+                }
+            }
+
+            if (ctx.depth_test_enabled)
+            {
+
+            }
+
             uint32_t final_color = 0;
             final_color = source_color.r | (source_color.g << 8) | (source_color.b << 16) | (source_color.a << 24);
+            //printf("Color: $%08X (%d %d)\n", final_color, x >> 4, y >> 4);
 
-            e->arm11_write32(0, addr, bswp32(final_color));
+            e->arm11_write32(0, frame_addr, bswp32(final_color));
 
-            vtx += x_step;                       // get values for the adjacent pixel
+            vtx += x_step * float24::FromFloat32(16.0);                       // get values for the adjacent pixel
         }
     }
 }
@@ -1341,14 +2070,21 @@ void GPU::tex_lookup(int index, RGBA_Color &tex_color, Vertex &vtx)
 
     int height = ctx.tex_height[index];
     int width = ctx.tex_width[index];
-    int u = roundf(vtx.texcoords[index][0].ToFloat32() * ctx.tex_width[index]);
-    int v = roundf(vtx.texcoords[index][1].ToFloat32() * ctx.tex_height[index]);
+    int u = vtx.texcoords[index][0].ToFloat32() * ctx.tex_width[index];
+    int v = vtx.texcoords[index][1].ToFloat32() * ctx.tex_height[index];
 
     switch (ctx.tex_swrap[index])
     {
         case 0:
             u = std::max(0, u);
             u = std::min(width - 1, u);
+            break;
+        case 1:
+            if (u < 0 || u >= width)
+            {
+                tex_color = ctx.tex_border[index];
+                return;
+            }
             break;
         case 2:
             u = (unsigned int)u % width;
@@ -1371,6 +2107,13 @@ void GPU::tex_lookup(int index, RGBA_Color &tex_color, Vertex &vtx)
         case 0:
             v = std::max(0, v);
             v = std::min(height - 1, v);
+            break;
+        case 1:
+            if (v < 0 || v >= width)
+            {
+                tex_color = ctx.tex_border[index];
+                return;
+            }
             break;
         case 2:
             v = (unsigned int)v % height;
@@ -1403,26 +2146,47 @@ void GPU::tex_lookup(int index, RGBA_Color &tex_color, Vertex &vtx)
             tex_color.b = (texel >> 16) & 0xFF;
             tex_color.a = texel >> 24;
             break;
+        case 0x2:
+            //RGB5A1
+            addr = get_swizzled_tile_addr(addr, width, u, v, 2);
+            texel = e->arm11_read16(0, addr);
+
+            //TODO: When alpha is disabled, it should be 0xFF
+            tex_color.r = Convert5To8((texel >> 11) & 0x1F);
+            tex_color.g = Convert5To8((texel >> 6) & 0x1F);
+            tex_color.b = Convert5To8((texel >> 1) & 0x1F);
+            tex_color.a = Convert1To8(texel & 0x1);
+            break;
+        case 0x3:
+            //RGB565
+            addr = get_swizzled_tile_addr(addr, width, u, v, 2);
+            texel = e->arm11_read16(0, addr);
+
+            tex_color.r = Convert5To8((texel >> 11) & 0x1F);
+            tex_color.g = Convert5To8((texel >> 5) & 0x3F);
+            tex_color.b = Convert5To8(texel & 0x1F);
+            tex_color.a = 0xFF;
+            break;
         case 0x4:
             //RGBA4444
             addr = get_swizzled_tile_addr(addr, width, u, v, 2);
-            texel = bswp16(e->arm11_read16(0, addr));
+            texel = e->arm11_read16(0, addr);
 
-            tex_color.r = (texel & 0xF) << 4;
-            tex_color.g = ((texel >> 4) & 0xF) << 4;
-            tex_color.b = ((texel >> 8) & 0xF) << 4;
-            tex_color.a = (texel >> 12) << 4;
+            tex_color.r = Convert4To8((texel >> 12) & 0xF);
+            tex_color.g = Convert4To8((texel >> 8) & 0xF);
+            tex_color.b = Convert4To8((texel >> 4) & 0xF);
+            tex_color.a = Convert4To8(texel & 0xF);
             break;
         case 0x5:
             //IA8
             addr = get_swizzled_tile_addr(addr, width, u, v, 2);
-            texel = bswp16(e->arm11_read16(0, addr));
+            texel = e->arm11_read16(0, addr);
 
             //TODO: When alpha is disabled, R should be intensity and G should be alpha
-            tex_color.r = texel & 0xFF;
-            tex_color.g = texel & 0xFF;
-            tex_color.b = texel & 0xFF;
-            tex_color.a = texel >> 8;
+            tex_color.r = texel >> 8;
+            tex_color.g = texel >> 8;
+            tex_color.b = texel >> 8;
+            tex_color.a = texel & 0xFF;
             break;
         case 0x7:
             //I8
@@ -1446,8 +2210,8 @@ void GPU::tex_lookup(int index, RGBA_Color &tex_color, Vertex &vtx)
         {
             addr = get_swizzled_tile_addr(addr, width, u, v, 1);
             texel = e->arm11_read8(0, addr);
-            uint8_t i = (texel >> 4) << 4;
-            uint8_t a = (texel & 0xF) << 4;
+            uint8_t i = Convert4To8(texel >> 4);
+            uint8_t a = Convert4To8(texel & 0xF);
 
             //TODO: When alpha is disabled, R should be intensity and G should be alpha
             tex_color.r = i;
@@ -1464,9 +2228,9 @@ void GPU::tex_lookup(int index, RGBA_Color &tex_color, Vertex &vtx)
             else
                 texel = e->arm11_read8(0, addr) & 0xF;
 
-            tex_color.r = texel << 4;
-            tex_color.g = texel << 4;
-            tex_color.b = texel << 4;
+            tex_color.r = Convert4To8(texel);
+            tex_color.g = Convert4To8(texel);
+            tex_color.b = Convert4To8(texel);
             tex_color.a = 0xFF;
             break;
         case 0xB:
@@ -1477,16 +2241,148 @@ void GPU::tex_lookup(int index, RGBA_Color &tex_color, Vertex &vtx)
             else
                 texel = e->arm11_read8(0, addr) & 0xF;
 
-            tex_color.a = texel << 4;
+            //texel = 0xF;
+
+            tex_color.a = Convert4To8(texel);
+            break;
+        case 0xC:
+        case 0xD:
+            //ETC1/ETC1A4
+        {
+            bool has_alpha = ctx.tex_type[index] & 0x1;
+
+            //Get the tile we're on
+            uint32_t offs = ((u & ~0x7) * 8) + ((v & ~0x7) * width);
+            if (!has_alpha)
+                offs >>= 1;
+            addr += offs;
+
+            //ETC1/ETC1A4 is split into four 4x4 subtiles rather than being swizzled.
+            int tile_index = ((u & 0x7) / 4) + (2 * ((v & 0x7) / 4));
+            u &= 0x3;
+            v &= 0x3;
+
+            addr += tile_index * (8 << has_alpha);
+
+            if (has_alpha)
+            {
+                uint64_t alpha_data = e->arm11_read32(0, addr);
+                alpha_data |= (uint64_t)e->arm11_read32(0, addr + 4) << 32ULL;
+
+                addr += 8;
+                tex_color.a = (alpha_data >> (4 * (u * 4 + v))) & 0xF;
+                tex_color.a <<= 4;
+            }
+            else
+                tex_color.a = 0xFF;
+
+            uint64_t data = e->arm11_read32(0, addr);
+            data |= (uint64_t)e->arm11_read32(0, addr + 4) << 32ULL;
+            decode_etc1(tex_color, u, v, data);
+        }
             break;
         default:
-            printf("[GPU] Unrecognized tex format $%02X\n", ctx.tex_type[index]);
+            EmuException::die("[GPU] Unrecognized tex format $%02X\n", ctx.tex_type[index]);
     }
+}
+
+void GPU::decode_etc1(RGBA_Color &tex_color, int u, int v, uint64_t data)
+{
+    constexpr static uint8_t modifier_table[8][2] =
+    {
+        {2, 8},
+        {5, 17},
+        {9, 29},
+        {13, 42},
+        {18, 60},
+        {24, 80},
+        {33, 106},
+        {47, 183},
+    };
+
+    int texel = (u * 4) + v;
+    uint16_t subindexes = data & 0xFFFF;
+    uint16_t negation_flags = (data >> 16) & 0xFFFF;
+    bool flip = (data >> 32) & 0x1;
+    bool diff_mode = (data >> 33) & 0x1;
+    uint8_t index2 = (data >> 34) & 0x7;
+    uint8_t index1 = (data >> 37) & 0x7;
+
+    if (flip)
+        std::swap(u, v);
+
+    if (diff_mode)
+    {
+        tex_color.r = (data >> 59) & 0x1F;
+        tex_color.g = (data >> 51) & 0x1F;
+        tex_color.b = (data >> 43) & 0x1F;
+
+        if (u >= 2)
+        {
+            tex_color.r += SignExtend<3>((data >> 56) & 0x7);
+            tex_color.g += SignExtend<3>((data >> 48) & 0x7);
+            tex_color.b += SignExtend<3>((data >> 40) & 0x7);
+        }
+
+        tex_color.r <<= 3;
+        tex_color.g <<= 3;
+        tex_color.b <<= 3;
+    }
+    else
+    {
+        if (u < 2)
+        {
+            tex_color.r = (data >> 60) & 0xF;
+            tex_color.g = (data >> 52) & 0xF;
+            tex_color.b = (data >> 44) & 0xF;
+        }
+        else
+        {
+            tex_color.r = (data >> 56) & 0xF;
+            tex_color.g = (data >> 48) & 0xF;
+            tex_color.b = (data >> 40) & 0xF;
+        }
+
+        tex_color.r <<= 4;
+        tex_color.g <<= 4;
+        tex_color.b <<= 4;
+    }
+
+    int index;
+    if (u < 2)
+        index = index1;
+    else
+        index = index2;
+
+    int modifier = modifier_table[index][(subindexes >> texel) & 0x1];
+
+    if ((negation_flags >> texel) & 0x1)
+        modifier = -modifier;
+
+    tex_color.r += modifier;
+    tex_color.g += modifier;
+    tex_color.b += modifier;
+
+    tex_color.r = std::min(255, tex_color.r);
+    tex_color.r = std::max(0, tex_color.r);
+
+    tex_color.g = std::min(255, tex_color.g);
+    tex_color.g = std::max(0, tex_color.g);
+
+    tex_color.b = std::min(255, tex_color.b);
+    tex_color.b = std::max(0, tex_color.b);
 }
 
 void GPU::get_tex0(RGBA_Color &tex_color, Vertex &vtx)
 {
-    tex_lookup(0, tex_color, vtx);
+    switch (ctx.tex0_type)
+    {
+        case 0:
+            tex_lookup(0, tex_color, vtx);
+            break;
+        default:
+            EmuException::die("[GPU] Unrecognized tex0 type %d", ctx.tex0_type);
+    }
 }
 
 void GPU::get_tex1(RGBA_Color &tex_color, Vertex &vtx)
@@ -1511,8 +2407,11 @@ void GPU::combine_textures(RGBA_Color &source, Vertex& vtx)
     get_tex1(tex[1], vtx);
     get_tex2(tex[2], vtx);
 
-    for (int i = 0; i < 6; i++)
+    for (int i = ctx.texcomb_start; i < ctx.texcomb_end; i++)
     {
+        if (ctx.texcomb_rgb_source[i][0] == 0xF && ctx.texcomb_alpha_source[i][0] == 0xF &&
+            ctx.texcomb_rgb_op[i] == 0 && ctx.texcomb_alpha_op[i] == 0)
+            continue;
         RGBA_Color sources[3], operands[3];
 
         for (int j = 0; j < 3; j++)
@@ -1520,6 +2419,12 @@ void GPU::combine_textures(RGBA_Color &source, Vertex& vtx)
             switch (ctx.texcomb_rgb_source[i][j])
             {
                 case 0x0:
+                    sources[j] = primary;
+                    break;
+                case 0x1:
+                    sources[j] = primary;
+                    break;
+                case 0x2:
                     sources[j] = primary;
                     break;
                 case 0x3:
@@ -1550,6 +2455,12 @@ void GPU::combine_textures(RGBA_Color &source, Vertex& vtx)
                 switch (ctx.texcomb_alpha_source[i][j])
                 {
                     case 0x0:
+                        sources[j].a = primary.a;
+                        break;
+                    case 0x1:
+                        sources[j].a = primary.a;
+                        break;
+                    case 0x2:
                         sources[j].a = primary.a;
                         break;
                     case 0x3:
@@ -1663,6 +2574,10 @@ void GPU::combine_textures(RGBA_Color &source, Vertex& vtx)
             }
         }
 
+        uint32_t array[3];
+        for (int i = 0; i < 3; i++)
+            array[i] = sources[i].r | (sources[i].g << 8) | (sources[i].b << 16) | (sources[i].a << 24);
+
         switch (ctx.texcomb_rgb_op[i])
         {
             case 0:
@@ -1736,6 +2651,8 @@ void GPU::combine_textures(RGBA_Color &source, Vertex& vtx)
                 EmuException::die("[GPU] Unrecognized texcomb alpha op $%02X", ctx.texcomb_alpha_op[i]);
         }
 
+        //printf("New: $%08X\n", prev.r | (prev.g << 8) | (prev.b << 16) | (prev.a << 24));
+
         comb_buffer = ctx.texcomb_buffer;
 
         if (ctx.texcomb_rgb_buffer_update[i])
@@ -1783,6 +2700,12 @@ void GPU::blend_fragment(RGBA_Color &source, RGBA_Color &frame)
                     source.g *= source.g;
                     source.b *= source.b;
                     break;
+                case 0x4:
+                    //Dest color
+                    source.r *= frame.r;
+                    source.g *= frame.g;
+                    source.b *= frame.b;
+                    break;
                 case 0x6:
                     //Source alpha
                     source.r *= source_alpha;
@@ -1804,6 +2727,9 @@ void GPU::blend_fragment(RGBA_Color &source, RGBA_Color &frame)
                     break;
                 case 0x2:
                     source.a *= source_alpha;
+                    break;
+                case 0x4:
+                    source.a *= dest_alpha;
                     break;
                 case 0x6:
                     source.a *= source_alpha;
@@ -1838,6 +2764,11 @@ void GPU::blend_fragment(RGBA_Color &source, RGBA_Color &frame)
                     frame.g *= 255 - source_alpha;
                     frame.b *= 255 - source_alpha;
                     break;
+                case 0xC:
+                    frame.r = ctx.blend_color.r;
+                    frame.g = ctx.blend_color.g;
+                    frame.b = ctx.blend_color.b;
+                    break;
                 default:
                     EmuException::die("[GPU] Unrecognized blend rgb dest function $%02X",
                                       ctx.blend_rgb_dst_func);
@@ -1857,6 +2788,9 @@ void GPU::blend_fragment(RGBA_Color &source, RGBA_Color &frame)
                 case 0x7:
                     frame.a *= 255 - source_alpha;
                     break;
+                case 0xC:
+                    frame.a = ctx.blend_color.a;
+                    break;
                 default:
                     EmuException::die("[GPU] Unrecognized blend alpha dest function $%02X",
                                       ctx.blend_alpha_dst_func);
@@ -1872,6 +2806,16 @@ void GPU::blend_fragment(RGBA_Color &source, RGBA_Color &frame)
                     source.g = (source.g + frame.g) / 255;
                     source.b = (source.b + frame.b) / 255;
                     break;
+                case 1:
+                    source.r = (source.r - frame.r) / 255;
+                    source.g = (source.g - frame.g) / 255;
+                    source.b = (source.b - frame.b) / 255;
+                    break;
+                case 2:
+                    source.r = (frame.r - source.r) / 255;
+                    source.g = (frame.g - source.g) / 255;
+                    source.b = (frame.b - source.b) / 255;
+                    break;
                 default:
                     EmuException::die("[GPU] Unrecognized blend RGB equation %d",
                                       ctx.blend_rgb_equation);
@@ -1884,6 +2828,12 @@ void GPU::blend_fragment(RGBA_Color &source, RGBA_Color &frame)
                 case 6:
                 case 7:
                     source.a = (source.a + frame.a) / 255;
+                    break;
+                case 1:
+                    source.a = (source.a - frame.a) / 255;
+                    break;
+                case 2:
+                    source.a = (frame.a - source.a) / 255;
                     break;
                 default:
                     EmuException::die("[GPU] Unrecognized blend alpha equation %d",
@@ -1906,6 +2856,53 @@ void GPU::blend_fragment(RGBA_Color &source, RGBA_Color &frame)
     }
 }
 
+void GPU::update_stencil(uint32_t addr, uint8_t old, uint8_t ref, uint8_t func)
+{
+    uint8_t new_stencil = e->arm11_read8(0, addr + 3);
+    switch (func)
+    {
+        case 0:
+            //Keep
+            new_stencil = old;
+            break;
+        case 1:
+            //Zero
+            new_stencil = 0;
+            break;
+        case 2:
+            //Replace
+            new_stencil = ref;
+            break;
+        case 3:
+            //Increment
+            if (old == 255)
+                new_stencil = 255;
+            else
+                new_stencil = old + 1;
+            break;
+        case 4:
+            //Decrement
+            if (old == 0)
+                new_stencil = 0;
+            else
+                new_stencil = old - 1;
+            break;
+        case 5:
+            //Invert
+            new_stencil = ~old;
+            break;
+        case 6:
+            //Increment with wrap
+            new_stencil = old + 1;
+            break;
+        case 7:
+            //Decrement with wrap
+            new_stencil = old - 1;
+            break;
+    }
+    e->arm11_write8(0, addr + 3, (new_stencil & ctx.stencil_write_mask) | (old & ~ctx.stencil_write_mask));
+}
+
 void GPU::exec_shader(ShaderUnit& sh)
 {
     //Prepare input registers
@@ -1915,13 +2912,13 @@ void GPU::exec_shader(ShaderUnit& sh)
         sh.input_regs[mapping] = sh.input_attrs[i];
     }
 
-    for (int i = 0; i < sh.total_inputs; i++)
+    /*for (int i = 0; i < sh.total_inputs; i++)
     {
         printf("v%d: ", i);
         for (int j = 0; j < 4; j++)
             printf("%f ", sh.input_regs[i][j].ToFloat32());
         printf("\n");
-    }
+    }*/
 
     /*for (int i = 0; i < 96; i++)
     {
@@ -1934,7 +2931,7 @@ void GPU::exec_shader(ShaderUnit& sh)
     sh.loop_ptr = 0;
     sh.call_ptr = 0;
     sh.if_ptr = 0;
-    sh.pc = sh.entry_point;
+    sh.pc = sh.entry_point * 4;
 
     bool ended = false;
     while (!ended)
@@ -1948,6 +2945,9 @@ void GPU::exec_shader(ShaderUnit& sh)
             case 0x00:
                 shader_add(sh, instr);
                 break;
+            case 0x01:
+                shader_dp3(sh, instr);
+                break;
             case 0x02:
                 shader_dp4(sh, instr);
                 break;
@@ -1956,6 +2956,12 @@ void GPU::exec_shader(ShaderUnit& sh)
                 break;
             case 0x0C:
                 shader_max(sh, instr);
+                break;
+            case 0x0E:
+                shader_rcp(sh, instr);
+                break;
+            case 0x0F:
+                shader_rsq(sh, instr);
                 break;
             case 0x12:
                 shader_mova(sh, instr);
@@ -1984,9 +2990,31 @@ void GPU::exec_shader(ShaderUnit& sh)
             case 0x29:
                 shader_loop(sh, instr);
                 break;
+            case 0x2A:
+                shader_emit(sh, instr);
+                break;
+            case 0x2B:
+                shader_setemit(sh, instr);
+                break;
+            case 0x2C:
+                shader_jmpc(sh, instr);
+                break;
+            case 0x2D:
+                shader_jmpu(sh, instr);
+                break;
             case 0x2E:
             case 0x2F:
                 shader_cmp(sh, instr);
+                break;
+            case 0x38:
+            case 0x39:
+            case 0x3A:
+            case 0x3B:
+            case 0x3C:
+            case 0x3D:
+            case 0x3E:
+            case 0x3F:
+                shader_mad(sh, instr);
                 break;
             default:
                 EmuException::die("[GPU] Unrecognized shader opcode $%02X (instr:$%08X pc:$%04X)",
@@ -2026,13 +3054,13 @@ void GPU::exec_shader(ShaderUnit& sh)
         }
     }
 
-    for (int i = 0; i < 7; i++)
+    /*for (int i = 0; i < 7; i++)
     {
         printf("o%d: ", i);
         for (int j = 0; j < 4; j++)
             printf("%f ", sh.output_regs[i][j].ToFloat32());
         printf("\n");
-    }
+    }*/
 }
 
 Vec4<float24> GPU::swizzle_sh_src(Vec4<float24> src, uint32_t op_desc, int src_type)
@@ -2138,7 +3166,7 @@ void GPU::shader_add(ShaderUnit &sh, uint32_t instr)
     }
 }
 
-void GPU::shader_dp4(ShaderUnit &sh, uint32_t instr)
+void GPU::shader_dp3(ShaderUnit &sh, uint32_t instr)
 {
     uint32_t op_desc = sh.op_desc[instr & 0x7F];
 
@@ -2160,8 +3188,37 @@ void GPU::shader_dp4(ShaderUnit &sh, uint32_t instr)
 
     float24 dot_product = float24::FromFloat32(0.0f);
 
-    for (int i = 0; i < 4; i++)
+    for (int i = 0; i < 3; i++)
         dot_product += src[0][i] * src[1][i];
+
+    for (int i = 0; i < 4; i++)
+    {
+        if (dest_mask & (1 << i))
+            set_sh_dest(sh, dest, dot_product, 3 - i);
+    }
+}
+
+void GPU::shader_dp4(ShaderUnit &sh, uint32_t instr)
+{
+    uint32_t op_desc = sh.op_desc[instr & 0x7F];
+
+    uint8_t src2 = (instr >> 7) & 0x1F;
+    uint8_t src1 = (instr >> 12) & 0x7F;
+    uint8_t idx1 = (instr >> 19) & 0x3;
+    uint8_t dest = (instr >> 21) & 0x1F;
+
+    idx1 = get_idx1(sh, idx1, src1);
+
+    src1 += idx1;
+
+    uint8_t dest_mask = op_desc & 0xF;
+
+    Vec4<float24> src[2];
+
+    src[0] = swizzle_sh_src(get_src(sh, src1), op_desc, 1);
+    src[1] = swizzle_sh_src(get_src(sh, src2), op_desc, 2);
+
+    float24 dot_product = dp4(src[0], src[1]);
 
     for (int i = 0; i < 4; i++)
     {
@@ -2224,6 +3281,64 @@ void GPU::shader_max(ShaderUnit &sh, uint32_t instr)
             float24 a = src[0][3 - i];
             float24 b = src[1][3 - i];
             float24 value = (a > b) ? a : b;
+            set_sh_dest(sh, dest, value, 3 - i);
+        }
+    }
+}
+
+void GPU::shader_rcp(ShaderUnit& sh, uint32_t instr)
+{
+    uint32_t op_desc = sh.op_desc[instr & 0x7F];
+
+    uint8_t src1 = (instr >> 12) & 0x7F;
+    uint8_t idx1 = (instr >> 19) & 0x3;
+    uint8_t dest = (instr >> 21) & 0x1F;
+
+    idx1 = get_idx1(sh, idx1, src1);
+
+    src1 += idx1;
+
+    uint8_t dest_mask = op_desc & 0xF;
+
+    Vec4<float24> src = get_src(sh, src1);
+    src = swizzle_sh_src(src, op_desc, 1);
+
+    float24 value = src[0];
+    value = float24::FromFloat32(1.0f) / value;
+
+    for (int i = 0; i < 4; i++)
+    {
+        if (dest_mask & (1 << i))
+        {
+            set_sh_dest(sh, dest, value, 3 - i);
+        }
+    }
+}
+
+void GPU::shader_rsq(ShaderUnit& sh, uint32_t instr)
+{
+    uint32_t op_desc = sh.op_desc[instr & 0x7F];
+
+    uint8_t src1 = (instr >> 12) & 0x7F;
+    uint8_t idx1 = (instr >> 19) & 0x3;
+    uint8_t dest = (instr >> 21) & 0x1F;
+
+    idx1 = get_idx1(sh, idx1, src1);
+
+    src1 += idx1;
+
+    uint8_t dest_mask = op_desc & 0xF;
+
+    Vec4<float24> src = get_src(sh, src1);
+    src = swizzle_sh_src(src, op_desc, 1);
+
+    float24 value = float24::FromFloat32(sqrtf(src[0].ToFloat32()));
+    value = float24::FromFloat32(1.0f) / value;
+
+    for (int i = 0; i < 4; i++)
+    {
+        if (dest_mask & (1 << i))
+        {
             set_sh_dest(sh, dest, value, 3 - i);
         }
     }
@@ -2379,6 +3494,65 @@ void GPU::shader_loop(ShaderUnit &sh, uint32_t instr)
     sh.loop_ptr++;
 }
 
+void GPU::shader_emit(ShaderUnit &sh, uint32_t instr)
+{
+    map_sh_output_to_vtx(sh, ctx.gsh_vtx_buffer[ctx.gsh_vtx_id]);
+
+    if (ctx.gsh_emit_prim)
+    {
+        for (int i = 0; i < 3; i++)
+            submit_vtx(ctx.gsh_vtx_buffer[i], ctx.gsh_winding);
+    }
+}
+
+void GPU::shader_setemit(ShaderUnit &sh, uint32_t instr)
+{
+    ctx.gsh_winding = (instr >> 22) & 0x1;
+    ctx.gsh_emit_prim = (instr >> 23) & 0x1;
+    ctx.gsh_vtx_id = (instr >> 24) & 0x3;
+}
+
+void GPU::shader_jmpc(ShaderUnit &sh, uint32_t instr)
+{
+    uint16_t dst = (instr >> 10) & 0xFFF;
+    uint8_t cond = (instr >> 22) & 0x3;
+    bool ref_y = (instr >> 24) & 0x1;
+    bool ref_x = (instr >> 25) & 0x1;
+
+    bool passed;
+
+    switch (cond)
+    {
+        case 0:
+            passed = sh.cmp_regs[0] == ref_x || sh.cmp_regs[1] == ref_y;
+            break;
+        case 1:
+            passed = sh.cmp_regs[0] == ref_x && sh.cmp_regs[1] == ref_y;
+            break;
+        case 2:
+            passed = sh.cmp_regs[0] == ref_x;
+            break;
+        case 3:
+            passed = sh.cmp_regs[1] == ref_y;
+            break;
+    }
+
+    if (passed)
+        sh.pc = dst * 4;
+}
+
+void GPU::shader_jmpu(ShaderUnit &sh, uint32_t instr)
+{
+    bool cmp_bit = !(instr & 0x1);
+
+    uint16_t dst = (instr >> 10) & 0xFFF;
+
+    uint8_t bool_id = (instr >> 22) & 0xF;
+
+    if (((sh.bool_uniform >> bool_id) & 0x1) == cmp_bit)
+        sh.pc = dst * 4;
+}
+
 void GPU::shader_cmp(ShaderUnit &sh, uint32_t instr)
 {
     uint32_t op_desc = sh.op_desc[instr & 0x7F];
@@ -2431,6 +3605,38 @@ void GPU::shader_cmp(ShaderUnit &sh, uint32_t instr)
     }
 }
 
+void GPU::shader_mad(ShaderUnit &sh, uint32_t instr)
+{
+    uint32_t op_desc = sh.op_desc[instr & 0x1F];
+
+    uint8_t src3 = (instr >> 5) & 0x1F;
+    uint8_t src2 = (instr >> 10) & 0x7F;
+    uint8_t src1 = (instr >> 17) & 0x1F;
+    uint8_t idx2 = (instr >> 22) & 0x3;
+    uint8_t dest = (instr >> 24) & 0x1F;
+
+    idx2 = get_idx1(sh, idx2, src2);
+
+    src2 += idx2;
+
+    uint8_t dest_mask = op_desc & 0xF;
+
+    Vec4<float24> src[3];
+
+    src[0] = swizzle_sh_src(get_src(sh, src1), op_desc, 1);
+    src[1] = swizzle_sh_src(get_src(sh, src2), op_desc, 2);
+    src[2] = swizzle_sh_src(get_src(sh, src3), op_desc, 3);
+
+    for (int i = 0; i < 4; i++)
+    {
+        if (dest_mask & (1 << i))
+        {
+            float24 value = src[2][3 - i] + (src[1][3 - i] * src[0][3 - i]);
+            set_sh_dest(sh, dest, value, 3 - i);
+        }
+    }
+}
+
 uint32_t GPU::read32(uint32_t addr)
 {
     addr &= 0x1FFF;
@@ -2455,6 +3661,8 @@ uint32_t GPU::read32(uint32_t addr)
         return read32_fb(1, addr);
     switch (addr)
     {
+        case 0x0034:
+            return (cmd_engine.busy << 31) | (memfill[0].busy << 27) | (memfill[1].busy << 26);
         case 0x0C18:
             return dma.busy | (dma.finished << 8);
         case 0x18F0:
@@ -2494,7 +3702,8 @@ void GPU::write32(uint32_t addr, uint32_t value)
                     memfill[index].busy = true;
 
                     //TODO: How long does a memfill take? We just assume a constant value for now
-                    scheduler->add_event([this](uint64_t param) { this->do_memfill(param);}, 1000, index);
+                    uint32_t cycles = memfill[index].end - memfill[index].start;
+                    scheduler->add_event([this](uint64_t param) { this->do_memfill(param);}, cycles, index);
                 }
                 break;
         }
@@ -2568,7 +3777,7 @@ void GPU::write32(uint32_t addr, uint32_t value)
             if (value & 0x1)
             {
                 cmd_engine.busy = true;
-                scheduler->add_event([this](uint64_t param) { this->do_command_engine_dma(param);}, 1000);
+                scheduler->add_event([this](uint64_t param) { this->do_command_engine_dma(param);}, cmd_engine.size);
             }
             break;
         default:

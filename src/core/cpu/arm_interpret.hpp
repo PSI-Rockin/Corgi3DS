@@ -16,6 +16,7 @@ namespace ARM_Interpreter
     void arm_swp(ARM_CPU& cpu, uint32_t instr);
     void arm_sxtab(ARM_CPU& cpu, uint32_t instr);
     void arm_sxtb(ARM_CPU& cpu, uint32_t instr);
+    void arm_sxtah(ARM_CPU& cpu, uint32_t instr);
     void arm_sxth(ARM_CPU& cpu, uint32_t instr);
     void arm_uxtb(ARM_CPU& cpu, uint32_t instr);
     void arm_uxtab(ARM_CPU& cpu, uint32_t instr);
@@ -25,6 +26,7 @@ namespace ARM_Interpreter
     void arm_rev16(ARM_CPU& cpu, uint32_t instr);
     void arm_pkhbt(ARM_CPU& cpu, uint32_t instr);
     void arm_usat(ARM_CPU& cpu, uint32_t instr);
+    void arm_ssat(ARM_CPU& cpu, uint32_t instr);
     void arm_data_processing(ARM_CPU& cpu, uint32_t instr);
     void arm_signed_halfword_multiply(ARM_CPU& cpu, uint32_t instr);
     void arm_uqsub8(ARM_CPU& cpu, uint32_t instr);
@@ -78,8 +80,10 @@ namespace ARM_Interpreter
     void vfp_cpy(ARM_CPU& cpu, VFP& vfp, uint32_t instr);
     void vfp_neg(ARM_CPU& cpu, VFP& vfp, uint32_t instr);
     void vfp_abs(ARM_CPU& cpu, VFP& vfp, uint32_t instr);
-    void vfp_cmps(ARM_CPU& cpu, VFP& vfp, uint32_t instr);
-    void vfp_cmpes(ARM_CPU& cpu, VFP& vfp, uint32_t instr);
+    void vfp_cmp(ARM_CPU& cpu, VFP& vfp, uint32_t instr);
+    void vfp_cmpe(ARM_CPU& cpu, VFP& vfp, uint32_t instr);
+    void vfp_cmpz(ARM_CPU& cpu, VFP& vfp, uint32_t instr);
+    void vfp_cmpez(ARM_CPU& cpu, VFP& vfp, uint32_t instr);
     void vfp_sqrt(ARM_CPU& cpu, VFP& vfp, uint32_t instr);
     void vfp_cvt(ARM_CPU& cpu, VFP& vfp, uint32_t instr);
     void vfp_fuito(ARM_CPU& cpu, VFP& vfp, uint32_t instr);

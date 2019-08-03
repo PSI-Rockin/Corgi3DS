@@ -59,7 +59,7 @@ void Emulator::reset(bool cold_boot)
     HID_PAD = 0xFFF;
 
     dsp.reset(dsp_mem);
-    dsp.set_cpu_interrupt_sender([this] {this->mpcore_pmr.assert_hw_irq(0x4A);});
+    dsp.set_cpu_interrupt_sender([this] {mpcore_pmr.assert_hw_irq(0x4A);});
     gpu.reset(vram);
     i2c.reset();
 
@@ -68,6 +68,12 @@ void Emulator::reset(bool cold_boot)
     dma9.reset();
     emmc.reset();
     pxi.reset();
+
+    cdma.reset();
+    cdma.set_mem_read8_func([this] (uint32_t addr) -> uint8_t {return arm11_read8(0, addr);});
+    cdma.set_mem_read32_func([this] (uint32_t addr) -> uint32_t {return arm11_read32(0, addr);});
+    cdma.set_mem_write32_func([this] (uint32_t addr, uint32_t value) {arm11_write32(0, addr, value);});
+    cdma.set_send_interrupt([this] (int chan) {mpcore_pmr.assert_hw_irq(0x30 + chan);});
 
     sysprot9 = 0;
     sysprot11 = 0;
@@ -123,7 +129,11 @@ void Emulator::run()
     i2c.update_time();
     printf("FRAME %d\n", frames);
     int cycles = 0;
-    while (cycles < 4000000)
+
+    //VBLANK start and end interrupts
+    scheduler.add_event([this](uint64_t param) {mpcore_pmr.assert_hw_irq(0x2A); gpu.render_frame();}, 4000000);
+    scheduler.add_event([this](uint64_t param) {mpcore_pmr.assert_hw_irq(0x2B);}, 4400000);
+    while (cycles < 4400000)
     {
         scheduler.calculate_cycles_to_run();
         int cycles11 = scheduler.get_cycles11_to_run();
@@ -136,13 +146,10 @@ void Emulator::run()
         dsp.run(cycles9);
         dma9.process_ndma_reqs();
         dma9.run_xdma();
+        cdma.run();
         scheduler.process_events();
     }
-    //VBLANK
-    mpcore_pmr.assert_hw_irq(0x2A);
-    mpcore_pmr.assert_hw_irq(0x2B);
     frames++;
-    gpu.render_frame();
 }
 
 void Emulator::print_state()
@@ -292,6 +299,9 @@ uint8_t Emulator::arm9_read8(uint32_t addr)
 
     if (addr >= 0x1000B000 && addr < 0x1000C000)
         return rsa.read8(addr);
+
+    if (addr >= 0x10012000 && addr < 0x10012100)
+        return otp[addr & 0xFF];
 
     if (addr >= 0x10144000 && addr < 0x10145000)
         return i2c.read8(addr);
@@ -772,6 +782,8 @@ uint8_t Emulator::arm11_read8(int core, uint32_t addr)
         return gpu.read_vram<uint8_t>(addr);
     if (addr >= 0x20000000 && addr < 0x28000000)
         return fcram[addr & 0x07FFFFFF];
+    if (addr >= 0x1FF80000 && addr < 0x20000000)
+        return axi_RAM[addr & 0x0007FFFF];
     switch (addr)
     {
         case 0x1014010C:
@@ -874,10 +886,7 @@ uint32_t Emulator::arm11_read32(int core, uint32_t addr)
         return 0;
     }
     if (addr >= 0x10200000 && addr < 0x10201000)
-    {
-        printf("[CDMA] Unrecognized read32 $%08X\n", addr);
-        return 0;
-    }
+        return cdma.read32(addr);
     if (addr >= 0x10400000 && addr < 0x10402000)
         return gpu.read32(addr);
     if (addr >= 0x18000000 && addr < 0x18600000)
@@ -1113,7 +1122,7 @@ void Emulator::arm11_write32(int core, uint32_t addr, uint32_t value)
     }
     if (addr >= 0x10200000 && addr < 0x10201000)
     {
-        printf("[CDMA] Unrecognized write32 $%08X: $%08X\n", addr, value);
+        cdma.write32(addr, value);
         return;
     }
     if (addr >= 0x10202000 && addr < 0x10203000)

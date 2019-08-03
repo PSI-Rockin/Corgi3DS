@@ -235,7 +235,7 @@ void ARM_CPU::jp(uint32_t addr, bool change_thumb_state)
                     printf("Error: $%08X\n", gpr[0]);
             }
         }
-        if (pid == 14)
+        if (pid == 5)
         {
             //can_disassemble = true;
 
@@ -264,9 +264,6 @@ void ARM_CPU::jp(uint32_t addr, bool change_thumb_state)
 
 void ARM_CPU::data_abort(uint32_t addr, bool is_write)
 {
-    if (id == 9)
-        EmuException::die("[ARM%d] Data abort at vaddr $%08X", id, addr);
-
     printf("[ARM%d] Data abort at vaddr $%08X\n", id, addr);
 
     cp15->set_data_abort_regs(addr, is_write);
@@ -351,6 +348,8 @@ void ARM_CPU::swi()
         EmuException::die("[ARM%d] svcBreak called!", id);
     }
     //print_state();
+
+    can_disassemble = false;
 
     uint32_t value = CPSR.get();
     SPSR[PSR_SUPERVISOR].set(value);
@@ -663,10 +662,13 @@ uint8_t ARM_CPU::read8(uint32_t addr)
 
 uint16_t ARM_CPU::read16(uint32_t addr)
 {
-    if ((addr & 0xFFF) > 0xFFE)
-        EmuException::die("[ARM%d] Unaligned read16 on page boundary $%08X", id, addr);
     if (id == 9 && (addr & 0x1))
         EmuException::die("[ARM9] Unaligned read16 $%08X", addr);
+    if ((addr & 0xFFF) > 0xFFE)
+    {
+        uint16_t value = read8(addr) | (read8(addr + 1) << 8);
+        return value;
+    }
     uint64_t mem = (uint64_t)tlb_map[addr / 4096];
     if (!(mem & (1UL << 62UL)))
     {

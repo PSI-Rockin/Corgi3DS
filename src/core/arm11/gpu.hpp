@@ -80,7 +80,7 @@ struct ShaderUnit
     uint8_t input_mapping[16];
 
     uint32_t code_index;
-    uint8_t code[512 * sizeof(uint32_t)];
+    uint8_t code[4096 * sizeof(uint32_t)];
 
     uint32_t op_desc_index;
     uint32_t op_desc[128];
@@ -157,12 +157,13 @@ struct GPU_Context
     uint32_t regs[0x300];
 
     //Rasterizer registers
+    uint8_t cull_mode;
     float24 viewport_width, viewport_height;
     float24 viewport_invw, viewport_invh;
     int16_t viewport_x, viewport_y;
 
-    uint8_t vsh_output_total;
-    uint8_t vsh_output_mapping[7][4];
+    uint8_t sh_output_total;
+    uint8_t sh_output_mapping[7][4];
 
     //Texturing registers
     bool tex_enable[4];
@@ -178,6 +179,7 @@ struct GPU_Context
     uint32_t tex0_addr[5];
     uint8_t tex_type[3];
 
+    int texcomb_start, texcomb_end;
     uint8_t texcomb_rgb_source[6][3];
     uint8_t texcomb_alpha_source[6][3];
     uint8_t texcomb_rgb_operand[6][3];
@@ -204,12 +206,30 @@ struct GPU_Context
     uint8_t blend_alpha_src_func;
     uint8_t blend_alpha_dst_func;
 
+    bool stencil_test_enabled;
+    uint8_t stencil_test_func;
+    uint8_t stencil_write_mask;
+    uint8_t stencil_ref;
+    uint8_t stencil_input_mask;
+
+    uint8_t stencil_fail_func;
+    uint8_t depth_fail_func;
+    uint8_t depth_pass_func;
+
+    bool depth_test_enabled;
+    uint8_t depth_test_func;
+    bool rgba_write_enabled[4];
+    uint8_t depth_write_enabled;
+
+    uint8_t color_format;
+    uint8_t depth_format;
+
     uint32_t depth_buffer_base;
     uint32_t color_buffer_base;
     uint16_t frame_width, frame_height;
 
     //Geometry pipeline
-    Vertex vertex_queue[3];
+    Vertex vertex_queue[4];
     int submitted_vertices;
 
     uint32_t vtx_buffer_base;
@@ -238,10 +258,24 @@ struct GPU_Context
     uint8_t vsh_inputs;
     uint8_t vsh_input_counter;
 
+    bool gsh_enabled;
+
+    int vsh_outputs;
+
+    uint8_t gsh_mode;
+    uint8_t gsh_fixed_vtx_num;
+    uint8_t gsh_stride;
+    uint8_t gsh_start_index;
+
     uint8_t prim_mode;
 
     //Geometry shader
     ShaderUnit gsh;
+    Vertex gsh_vtx_buffer[3];
+    int gsh_attrs_input;
+    int gsh_vtx_id;
+    bool gsh_winding;
+    bool gsh_emit_prim;
 
     //Vertex shader
     ShaderUnit vsh;
@@ -281,19 +315,27 @@ class GPU
         void do_memfill(int index);
 
         void write_cmd_register(int reg, uint32_t param, uint8_t mask);
+        void input_float_uniform(ShaderUnit& sh, uint32_t param);
 
         void draw_vtx_array(bool is_indexed);
-        void submit_vertex();
-        void rasterize_tri();
+        void input_vsh_vtx();
+        void map_sh_output_to_vtx(ShaderUnit& sh, Vertex& v);
+        void submit_vtx(Vertex& v, bool winding);
+        void process_tri(Vertex& v0, Vertex& v1, Vertex& v2);
+        void viewport_transform(Vertex& v);
+        void rasterize_tri(Vertex& v0, Vertex& v1, Vertex& v2);
         void rasterize_half_tri(float24 x0, float24 x1, int y0, int y1, Vertex &x_step,
                                 Vertex &y_step, Vertex &init, float24 step_x0, float24 step_x1);
 
         void tex_lookup(int index, RGBA_Color& tex_color, Vertex& vtx);
+        void decode_etc1(RGBA_Color& tex_color, int u, int v, uint64_t data);
         void get_tex0(RGBA_Color& tex_color, Vertex& vtx);
         void get_tex1(RGBA_Color& tex_color, Vertex& vtx);
         void get_tex2(RGBA_Color& tex_color, Vertex& vtx);
         void combine_textures(RGBA_Color& source, Vertex& vtx);
+
         void blend_fragment(RGBA_Color& source, RGBA_Color& frame);
+        void update_stencil(uint32_t addr, uint8_t old, uint8_t ref, uint8_t func);
 
         //Shader ops
         void exec_shader(ShaderUnit& sh);
@@ -303,9 +345,12 @@ class GPU
         void set_sh_dest(ShaderUnit& sh, uint8_t dst, float24 value, int index);
 
         void shader_add(ShaderUnit& sh, uint32_t instr);
+        void shader_dp3(ShaderUnit& sh, uint32_t instr);
         void shader_dp4(ShaderUnit& sh, uint32_t instr);
         void shader_mul(ShaderUnit& sh, uint32_t instr);
         void shader_max(ShaderUnit& sh, uint32_t instr);
+        void shader_rcp(ShaderUnit& sh, uint32_t instr);
+        void shader_rsq(ShaderUnit& sh, uint32_t instr);
         void shader_mova(ShaderUnit& sh, uint32_t instr);
         void shader_mov(ShaderUnit& sh, uint32_t instr);
         void shader_call(ShaderUnit& sh, uint32_t instr);
@@ -313,7 +358,12 @@ class GPU
         void shader_ifu(ShaderUnit& sh, uint32_t instr);
         void shader_ifc(ShaderUnit& sh, uint32_t instr);
         void shader_loop(ShaderUnit& sh, uint32_t instr);
+        void shader_emit(ShaderUnit& sh, uint32_t instr);
+        void shader_setemit(ShaderUnit& sh, uint32_t instr);
+        void shader_jmpc(ShaderUnit& sh, uint32_t instr);
+        void shader_jmpu(ShaderUnit& sh, uint32_t instr);
         void shader_cmp(ShaderUnit& sh, uint32_t instr);
+        void shader_mad(ShaderUnit& sh, uint32_t instr);
 
         void render_fb_pixel(uint8_t* screen, int fb_index, int x, int y);
     public:

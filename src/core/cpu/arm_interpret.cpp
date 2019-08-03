@@ -61,6 +61,9 @@ void interpret_arm(ARM_CPU &cpu, uint32_t instr)
         case ARM_SXTB:
             arm_sxtb(cpu, instr);
             break;
+        case ARM_SXTAH:
+            arm_sxtah(cpu, instr);
+            break;
         case ARM_SXTH:
             arm_sxth(cpu, instr);
             break;
@@ -87,6 +90,9 @@ void interpret_arm(ARM_CPU &cpu, uint32_t instr)
             break;
         case ARM_USAT:
             arm_usat(cpu, instr);
+            break;
+        case ARM_SSAT:
+            arm_ssat(cpu, instr);
             break;
         case ARM_DATA_PROCESSING:
             arm_data_processing(cpu, instr);
@@ -342,6 +348,19 @@ void arm_sxtb(ARM_CPU &cpu, uint32_t instr)
     cpu.set_register(dest, (int32_t)(int8_t)(source_reg & 0xFF));
 }
 
+void arm_sxtah(ARM_CPU &cpu, uint32_t instr)
+{
+    int source1 = (instr >> 16) & 0xF;
+    int source2 = instr & 0xF;
+    int rot = (instr >> 10) & 0x3;
+    int dest = (instr >> 12) & 0xF;
+
+    uint32_t source1_reg = cpu.get_register(source1);
+    int32_t source2_reg = (int32_t)(int16_t)(rotr32(cpu.get_register(source2), rot * 8) & 0xFFFF);
+
+    cpu.set_register(dest, source1_reg + source2_reg);
+}
+
 void arm_sxth(ARM_CPU &cpu, uint32_t instr)
 {
     int source = instr & 0xF;
@@ -462,6 +481,45 @@ void arm_usat(ARM_CPU &cpu, uint32_t instr)
     if (source_reg & (1 << 31))
     {
         source_reg = 0;
+        cpu.get_CPSR()->q_overflow = true;
+    }
+    else if (source_reg > sat_imm)
+    {
+        source_reg = sat_imm;
+        cpu.get_CPSR()->q_overflow = true;
+    }
+
+    cpu.set_register(dest, source_reg);
+}
+
+void arm_ssat(ARM_CPU &cpu, uint32_t instr)
+{
+    int sat_imm = (instr >> 16) & 0x1F;
+    int dest = (instr >> 12) & 0xF;
+    int shift = (instr >> 7) & 0x1F;
+    bool is_arith = (instr >> 6) & 0x1;
+    int source = instr & 0xF;
+
+    sat_imm = (1 << sat_imm) - 1;
+
+    int32_t source_reg = cpu.get_register(source);
+
+    if (is_arith)
+    {
+        if (!shift)
+            source_reg = cpu.asr_32(source_reg, false);
+        else
+            source_reg = cpu.asr(source_reg, shift, false);
+    }
+    else
+        source_reg <<= shift;
+
+    source_reg = (int32_t)source_reg;
+
+    //Saturate between the range [-2^n, (2^n)-1]
+    if (source_reg < -sat_imm - 1)
+    {
+        source_reg = -sat_imm - 1;
         cpu.get_CPSR()->q_overflow = true;
     }
     else if (source_reg > sat_imm)

@@ -48,6 +48,7 @@ class Emulator
 
         AES aes;
         Cartridge cartridge;
+        Corelink_DMA cdma;
         DMA9 dma9;
         DSP dsp;
         EMMC emmc;

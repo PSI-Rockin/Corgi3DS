@@ -147,7 +147,9 @@ void vfp_load_store(ARM_CPU& cpu, VFP &vfp, uint32_t instr)
         case 0x15:
             vfp_store_block(cpu, vfp, instr);
             break;
+        case 0x04:
         case 0x06:
+        case 0x14:
         case 0x16:
             vfp_store_single(cpu, vfp, instr);
             break;
@@ -746,7 +748,10 @@ void vfp_data_extended(ARM_CPU &cpu, VFP &vfp, uint32_t instr)
             vfp_neg(cpu, vfp, instr);
             break;
         case 0x04:
-            vfp_cmps(cpu, vfp, instr);
+            vfp_cmp(cpu, vfp, instr);
+            break;
+        case 0x05:
+            vfp_cmpz(cpu, vfp, instr);
             break;
         case 0x08:
             vfp_fuito(cpu, vfp, instr);
@@ -761,7 +766,10 @@ void vfp_data_extended(ARM_CPU &cpu, VFP &vfp, uint32_t instr)
             vfp_sqrt(cpu, vfp, instr);
             break;
         case 0x14:
-            vfp_cmpes(cpu, vfp, instr);
+            vfp_cmpe(cpu, vfp, instr);
+            break;
+        case 0x15:
+            vfp_cmpez(cpu, vfp, instr);
             break;
         case 0x17:
             vfp_cvt(cpu, vfp, instr);
@@ -772,7 +780,7 @@ void vfp_data_extended(ARM_CPU &cpu, VFP &vfp, uint32_t instr)
         case 0x1C: //0x1C rounds towards zero
             vfp_ftoui(cpu, vfp, instr);
             break;
-        case 0x1D:
+        case 0x1D: //0x1D rounds towards zero
             vfp_ftosi(cpu, vfp, instr);
             break;
         default:
@@ -857,7 +865,7 @@ void vfp_abs(ARM_CPU &cpu, VFP &vfp, uint32_t instr)
     }
 }
 
-void vfp_cmps(ARM_CPU &cpu, VFP &vfp, uint32_t instr)
+void vfp_cmp(ARM_CPU &cpu, VFP &vfp, uint32_t instr)
 {
     //TODO: CMPS should signal an exception if an operand is a signalling NaN
     int reg1 = (instr >> 12) & 0xF;
@@ -885,9 +893,9 @@ void vfp_cmps(ARM_CPU &cpu, VFP &vfp, uint32_t instr)
     }
 }
 
-void vfp_cmpes(ARM_CPU &cpu, VFP &vfp, uint32_t instr)
+void vfp_cmpe(ARM_CPU &cpu, VFP &vfp, uint32_t instr)
 {
-    //TODO: CMPES should signal an exception if an operand is any NaN
+    //TODO: CMPE should signal an exception if an operand is any NaN
     int reg1 = (instr >> 12) & 0xF;
     int reg2 = instr & 0xF;
     bool reg1_low_bit = (instr >> 22) & 0x1;
@@ -910,6 +918,48 @@ void vfp_cmpes(ARM_CPU &cpu, VFP &vfp, uint32_t instr)
         float a = vfp.get_float(reg1);
         float b = vfp.get_float(reg2);
         vfp.cmp(a, b);
+    }
+}
+
+void vfp_cmpz(ARM_CPU &cpu, VFP &vfp, uint32_t instr)
+{
+    int reg = (instr >> 12) & 0xF;
+    bool reg_low_bit = (instr >> 22) & 0x1;
+    bool is_double = (instr >> 8) & 0x1;
+
+    if (is_double)
+    {
+        double a = vfp.get_double(reg);
+        vfp.cmp(a, 0.0);
+    }
+    else
+    {
+        reg <<= 1;
+        reg |= reg_low_bit;
+
+        float a = vfp.get_float(reg);
+        vfp.cmp(a, 0.0f);
+    }
+}
+
+void vfp_cmpez(ARM_CPU &cpu, VFP &vfp, uint32_t instr)
+{
+    int reg = (instr >> 12) & 0xF;
+    bool reg_low_bit = (instr >> 22) & 0x1;
+    bool is_double = (instr >> 8) & 0x1;
+
+    if (is_double)
+    {
+        double a = vfp.get_double(reg);
+        vfp.cmp(a, 0.0);
+    }
+    else
+    {
+        reg <<= 1;
+        reg |= reg_low_bit;
+
+        float a = vfp.get_float(reg);
+        vfp.cmp(a, 0.0f);
     }
 }
 

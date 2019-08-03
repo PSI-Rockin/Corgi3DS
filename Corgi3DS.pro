@@ -44,7 +44,8 @@ SOURCES += src/qt/main.cpp \
     src/core/p9_hle.cpp \
     src/core/arm11/dsp.cpp \
     src/core/arm9/cartridge.cpp \
-    src/core/arm11/dsp_interpreter.cpp
+    src/core/arm11/dsp_interpreter.cpp \
+    src/core/corelink_dma.cpp
 
 HEADERS += \
     src/core/emulator.hpp \
@@ -82,7 +83,8 @@ HEADERS += \
     src/core/arm11/dsp_reg.hpp \
     src/core/arm11/gpu_floats.hpp \
     src/core/arm11/vector_math.hpp \
-    src/core/arm11/signextend.hpp
+    src/core/arm11/signextend.hpp \
+    src/core/corelink_dma.hpp
 
 INCLUDEPATH += /usr/local/include
 

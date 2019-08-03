@@ -21,7 +21,7 @@ uint32_t VFP::get_fpscr()
     reg |= fpscr.carry << 29;
     reg |= fpscr.zero << 30;
     reg |= fpscr.negative << 31;
-    printf("[VFP] Read FPSCR: $%08X\n", reg);
+    //printf("[VFP] Read FPSCR: $%08X\n", reg);
     return reg;
 }
 

@@ -20,6 +20,15 @@ struct CTR_ROMCTRL
 class DMA9;
 class Interrupt9;
 
+enum class SPICARD_STATE
+{
+    IDLE,
+    SELECTED,
+    NEEDS_PARAMS,
+    WRITE_READY,
+    PROGRAM_READY
+};
+
 class Cartridge
 {
     private:
@@ -43,11 +52,15 @@ class Cartridge
         uint32_t read_addr;
         uint32_t read_block_count;
 
-        bool spicard_chip_selected;
+        uint8_t* save_data;
+        uint32_t spi_save_addr;
+        SPICARD_STATE spi_state;
         uint8_t spi_input_buffer[0x400];
         int spi_input_pos;
         uint8_t spi_output_buffer[0x400];
         int spi_output_pos;
+        uint8_t spi_cmd;
+        int spi_block_len;
 
         void process_ntr_cmd();
         void process_ctr_cmd();

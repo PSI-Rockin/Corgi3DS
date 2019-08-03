@@ -74,11 +74,12 @@ ARM_INSTR decode_arm(uint32_t instr)
             return ARM_SXTAB;
         }
 
-        if ((instr & 0x0FFF00F0) == 0x06AF0070)
-            return ARM_SXTB;
-
-        if ((instr & 0x0FFF00F0) == 0x06BF0070)
-            return ARM_SXTH;
+        if ((instr & 0x0FF000F0) == 0x06B00070)
+        {
+            if ((instr & 0x0FFF00F0) == 0x06BF0070)
+                return ARM_SXTH;
+            return ARM_SXTAH;
+        }
 
         if ((instr & 0x0FF000F0) == 0x06E00070)
         {
@@ -105,6 +106,9 @@ ARM_INSTR decode_arm(uint32_t instr)
 
         if ((instr & 0x0FE00030) == 0x06E00010)
             return ARM_USAT;
+
+        if ((instr & 0x0FE00030) == 0x06A00010)
+            return ARM_SSAT;
 
         if ((instr & 0x0FF00F00) == 0x06600F00)
         {
@@ -304,6 +308,8 @@ string disasm_arm(ARM_CPU& cpu, uint32_t instr)
             return arm_sxtab(instr);
         case ARM_SXTB:
             return arm_sxtb(instr);
+        case ARM_SXTAH:
+            return arm_sxtah(instr);
         case ARM_SXTH:
             return arm_sxth(instr);
         case ARM_UXTB:
@@ -322,6 +328,8 @@ string disasm_arm(ARM_CPU& cpu, uint32_t instr)
             return arm_pkhbt(instr);
         case ARM_USAT:
             return arm_usat(instr);
+        case ARM_SSAT:
+            return arm_ssat(instr);
         case ARM_DATA_PROCESSING:
             return arm_data_processing(instr);
         case ARM_MULTIPLY:
@@ -602,6 +610,24 @@ string arm_sxtb(uint32_t instr)
     return output.str();
 }
 
+string arm_sxtah(uint32_t instr)
+{
+    stringstream output;
+    int source1 = (instr >> 16) & 0xF;
+    int source2 = instr & 0xF;
+    int rot = (instr >> 10) & 0x3;
+    int dest = (instr >> 12) & 0xF;
+
+    output << "sxtah" << cond_name(instr >> 28) << " ";
+    output << ARM_CPU::get_reg_name(dest) << ", " <<
+           ARM_CPU::get_reg_name(source1) << ", " << ARM_CPU::get_reg_name(source2);
+
+    if (rot)
+        output << ", ror #" << std::dec << rot * 8;
+
+    return output.str();
+}
+
 string arm_sxth(uint32_t instr)
 {
     stringstream output;
@@ -740,6 +766,38 @@ string arm_usat(uint32_t instr)
     int source = instr & 0xF;
 
     output << "usat" << cond_name(instr >> 28) << " ";
+
+    output << ARM_CPU::get_reg_name(dest) << ", #" <<
+              dec << sat_imm << ", " << ARM_CPU::get_reg_name(source);
+
+    if (!is_arith)
+    {
+        if (shift)
+            output << ", lsl #" << dec << shift;
+    }
+    else
+    {
+        output << ", asr #";
+        if (shift)
+            output << dec << shift;
+        else
+            output << "32";
+    }
+
+    return output.str();
+}
+
+string arm_ssat(uint32_t instr)
+{
+    stringstream output;
+
+    int sat_imm = ((instr >> 16) & 0x1F) + 1;
+    int dest = (instr >> 12) & 0xF;
+    int shift = (instr >> 7) & 0x1F;
+    bool is_arith = (instr >> 6) & 0x1;
+    int source = instr & 0xF;
+
+    output << "ssat" << cond_name(instr >> 28) << " ";
 
     output << ARM_CPU::get_reg_name(dest) << ", #" <<
               dec << sat_imm << ", " << ARM_CPU::get_reg_name(source);

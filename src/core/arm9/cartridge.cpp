@@ -7,12 +7,13 @@
 
 Cartridge::Cartridge(DMA9* dma9, Interrupt9* int9) : dma9(dma9), int9(int9)
 {
-
+    save_data = nullptr;
 }
 
 Cartridge::~Cartridge()
 {
     card.close();
+    delete[] save_data;
 }
 
 void Cartridge::reset()
@@ -29,16 +30,27 @@ void Cartridge::reset()
     ctr_romctrl.data_ready = false;
     ctr_romctrl.busy = false;
 
-    spicard_chip_selected = false;
     spi_input_pos = 0;
     spi_output_pos = 0;
+    spi_block_len = 0;
+
+    spi_state = SPICARD_STATE::IDLE;
 }
 
 bool Cartridge::mount(std::string file_name)
 {
     card.open(file_name, std::ios::binary);
 
-    return card.is_open();
+    if (card.is_open())
+    {
+        if (save_data)
+            delete[] save_data;
+
+        save_data = new uint8_t[1024 * 1024 * 8];
+        memset(save_data, 0xFF, 1024 * 1024 * 8);
+        return true;
+    }
+    return false;
 }
 
 bool Cartridge::card_inserted()
@@ -143,34 +155,77 @@ void Cartridge::process_ctr_cmd()
 
 void Cartridge::process_spicard_cmd()
 {
-    uint8_t cmd = spi_input_buffer[0];
-
-    switch (cmd)
+    switch (spi_state)
     {
-        case 0x00:
-            //Unknown
+        case SPICARD_STATE::IDLE:
+            printf("[SPICARD] Selected!\n");
+            spi_state = SPICARD_STATE::SELECTED;
             break;
-        case 0x01:
-            //Write status register?
+        case SPICARD_STATE::SELECTED:
+            spi_cmd = spi_input_buffer[0];
+
+            switch (spi_cmd)
+            {
+                case 0x02:
+                    spi_state = SPICARD_STATE::WRITE_READY;
+
+                    spi_save_addr = spi_input_buffer[1] << 16;
+                    spi_save_addr |= spi_input_buffer[2] << 8;
+                    spi_save_addr |= spi_input_buffer[3];
+
+                    printf("[SPICARD] Writing $%08X\n", spi_save_addr);
+                    break;
+                case 0x03:
+                    spi_state = SPICARD_STATE::SELECTED;
+                    spi_save_addr = spi_input_buffer[1] << 16;
+                    spi_save_addr |= spi_input_buffer[2] << 8;
+                    spi_save_addr |= spi_input_buffer[3];
+                    memcpy(spi_output_buffer, save_data + spi_save_addr, spi_block_len);
+                    printf("[SPICARD] Reading from $%08X\n", spi_save_addr);
+                    break;
+                case 0x05:
+                    //Read status register
+                    //Bit 0=write/prog/erase in progress
+                    //Bit 1=write enabled
+                    *(uint32_t*)&spi_output_buffer[0] = 1 << 1;
+                    break;
+                case 0x06:
+                    //Enable writes
+                    break;
+                case 0x9F:
+                    //Read card ID
+                    //Byte 0 = capacity (0x11 = 128 KB, 0x13 = 512 KB, 0x17 = 8 MB. Process9 rejects all others)
+                    //Byte 1 = device type
+                    //Byte 2 = manufacturer (0xC2 = Macronix)
+                    spi_state = SPICARD_STATE::SELECTED;
+                    *(uint32_t*)&spi_output_buffer[0] = 0x1122C2;
+                    break;
+                case 0xEB:
+                    spi_state = SPICARD_STATE::NEEDS_PARAMS;
+                    break;
+                default:
+                    EmuException::die("[SPICARD] Unrecognized SELECTED cmd $%02X", spi_cmd);
+            }
             break;
-        case 0x02:
-            //Write save file?
+        case SPICARD_STATE::NEEDS_PARAMS:
+            switch (spi_cmd)
+            {
+                case 0xEB:
+                    spi_state = SPICARD_STATE::SELECTED;
+                    spi_save_addr = spi_input_buffer[0] << 16;
+                    spi_save_addr |= spi_input_buffer[1] << 8;
+                    spi_save_addr |= spi_input_buffer[2];
+                    printf("[SPICARD] Reading from $%08X\n", spi_save_addr);
+                    memcpy(spi_output_buffer, save_data + spi_save_addr, spi_block_len);
+                    break;
+                default:
+                    EmuException::die("[SPICARD] Unrecognized NEEDS_PARAMS cmd $%02X", spi_cmd);
+            }
             break;
-        case 0x03:
-            //TODO: Read from the save file
-            memset(spi_output_buffer, 0xFF, 0x200);
+        case SPICARD_STATE::WRITE_READY:
+        case SPICARD_STATE::PROGRAM_READY:
+            EmuException::die("[SPICARD] WRITE/PROGRAM/ERASE_READY should never be triggered!");
             break;
-        case 0x05:
-            //Read status register?
-            break;
-        case 0x9F:
-            *(uint32_t*)&spi_output_buffer[0] = 0x1122C2;
-            break;
-        case 0xEB:
-            //Unknown
-            break;
-        default:
-            EmuException::die("[SPICARD] Unrecognized cmd $%02X", cmd);
     }
 }
 
@@ -388,15 +443,31 @@ void Cartridge::write32_spicard(uint32_t addr, uint32_t value)
             {
                 spi_input_pos = 0;
                 spi_output_pos = 0;
-                if (!spicard_chip_selected)
-                    spicard_chip_selected = true;
-                else
-                    process_spicard_cmd();
+                process_spicard_cmd();
             }
             break;
         case 0x1000D804:
             printf("[SPICARD] Clear chip select\n");
-            spicard_chip_selected = false;
+
+            switch (spi_state)
+            {
+                case SPICARD_STATE::WRITE_READY:
+                    for (int i = 0; i < spi_block_len; i++)
+                        save_data[spi_save_addr + i] = spi_input_buffer[i];
+                    break;
+                case SPICARD_STATE::PROGRAM_READY:
+                    for (int i = 0; i < spi_block_len; i++)
+                        save_data[spi_save_addr + i] &= spi_input_buffer[i];
+                    break;
+                default:
+                    //Do nothing
+                    break;
+            }
+            spi_state = SPICARD_STATE::IDLE;
+            break;
+        case 0x1000D808:
+            printf("[SPICARD] Block len: $%08X\n", value);
+            spi_block_len = value;
             break;
         case 0x1000D80C:
             printf("[SPICARD] Write32 NSPI_FIFO: $%08X\n", value);
