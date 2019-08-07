@@ -235,9 +235,9 @@ void ARM_CPU::jp(uint32_t addr, bool change_thumb_state)
                     printf("Error: $%08X\n", gpr[0]);
             }
         }
-        if (pid == 5)
+        if (pid == 24)
         {
-            //can_disassemble = true;
+            can_disassemble = true;
 
         }
         else
@@ -398,6 +398,8 @@ void ARM_CPU::int_check()
         update_reg_mode(PSR_IRQ);
         CPSR.mode = PSR_IRQ;
         CPSR.irq_disable = true;
+
+        can_disassemble = false;
 
         if (cp15->has_high_exceptions())
             jp(0xFFFF0000 + 0x18, true);
@@ -795,6 +797,8 @@ void ARM_CPU::write16(uint32_t addr, uint16_t value)
 
 void ARM_CPU::write32(uint32_t addr, uint32_t value)
 {
+    if (id != 9 && addr == 0x08001EC0)
+        printf("[ARM%d] BLORP: $%08X\n", id, value);
     if (id == 9 && (addr & 0x3))
         EmuException::die("[ARM9] Unaligned write32 $%08X: $%08X", addr, value);
     if ((addr & 0xFFF) > 0xFFC)

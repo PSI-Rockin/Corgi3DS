@@ -1,7 +1,7 @@
 #include "common/common.hpp"
 #include "corelink_dma.hpp"
 
-#define printf(fmt, ...)(0)
+//#define printf(fmt, ...)(0)
 
 Corelink_DMA::Corelink_DMA()
 {
@@ -107,9 +107,9 @@ uint32_t Corelink_DMA::read32(uint32_t addr)
                 return dma[index].source_addr;
             case 0x04:
                 return dma[index].dest_addr;
-            case 0x10:
+            case 0x0C:
                 return dma[index].loop_ctr[0];
-            case 0x14:
+            case 0x10:
                 return dma[index].loop_ctr[1];
         }
     }
@@ -234,6 +234,11 @@ void Corelink_DMA::exec_instr(uint8_t byte, int chan)
                 params_needed = 1;
                 command_set = true;
                 break;
+            case 0x29:
+            case 0x2B:
+                params_needed = 1;
+                command_set = true;
+                break;
             case 0x30:
             case 0x31:
             case 0x32:
@@ -287,6 +292,10 @@ void Corelink_DMA::exec_instr(uint8_t byte, int chan)
                 case 0x25:
                 case 0x27:
                     instr_ldp(chan, (command >> 1) & 0x1);
+                    break;
+                case 0x29:
+                case 0x2B:
+                    instr_stp(chan, (command >> 1) & 0x1);
                     break;
                 case 0x30:
                 case 0x31:
@@ -402,6 +411,32 @@ void Corelink_DMA::instr_ldp(int chan, bool burst)
     dma[chan].source_addr += (load_size * multiplier);
 }
 
+void Corelink_DMA::instr_stp(int chan, bool burst)
+{
+    if (!burst)
+        return;
+
+    if (dma[chan].ctrl.endian_swap_size)
+        EmuException::die("[Corelink] Endian size for ST");
+
+    int store_size = dma[chan].ctrl.dest_burst_size;
+    store_size *= dma[chan].ctrl.dest_burst_len;
+
+    if (store_size & 0x3)
+        EmuException::die("[Corelink] Store size not word aligned for ST");
+
+    int multiplier = (int)dma[chan].ctrl.inc_dest;
+    uint32_t addr = dma[chan].dest_addr;
+    for (int i = 0; i < store_size; i += 4)
+    {
+        uint32_t word = dma[chan].fifo.front();
+        mem_write32(addr + (multiplier * i), word);
+        dma[chan].fifo.pop();
+    }
+
+    dma[chan].dest_addr += (store_size * multiplier);
+}
+
 void Corelink_DMA::instr_wfp(int chan)
 {
     int peripheral = params[0] >> 3;
@@ -445,7 +480,10 @@ void Corelink_DMA::instr_lpend(int chan)
     bool loop_finite = (command >> 4) & 0x1;
 
     if (!loop_finite)
-        EmuException::die("[Corelink] Loop forever on DMALPEND");
+    {
+        printf("[Corelink] DMALPFE!\n");
+        return;
+    }
 
     //Add +2 to account for two bytes of the instruction
     uint16_t jump = params[0] + 2;

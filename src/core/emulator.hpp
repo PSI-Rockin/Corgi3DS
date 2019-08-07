@@ -13,6 +13,7 @@
 #include "arm11/gpu.hpp"
 #include "arm11/hash.hpp"
 #include "arm11/mpcore_pmr.hpp"
+#include "arm11/wifi.hpp"
 
 #include "cpu/arm.hpp"
 #include "cpu/cp15.hpp"
@@ -62,6 +63,7 @@ class Emulator
         Scheduler scheduler;
         SHA sha;
         Timers timers;
+        WiFi wifi;
 
         uint32_t config_bootenv;
         uint16_t config_cardselect;

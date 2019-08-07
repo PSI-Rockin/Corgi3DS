@@ -190,6 +190,8 @@ inline uint32_t ARM_CPU::get_register(int id)
 
 inline void ARM_CPU::set_register(int id, uint32_t value)
 {
+    if (can_disassemble)
+        printf("[ARM%d] Set reg%d: $%08X\n", this->id, id, value);
     gpr[id] = value;
 }
 

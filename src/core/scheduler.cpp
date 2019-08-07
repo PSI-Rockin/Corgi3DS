@@ -11,6 +11,12 @@ void Scheduler::reset()
     events.clear();
 
     closest_event_time = 0;
+
+    cycles11.count = 0;
+    cycles11.remainder = 0;
+
+    cycles9.count = 0;
+    cycles9.remainder = 0;
 }
 
 void Scheduler::calculate_cycles_to_run()
@@ -32,8 +38,12 @@ void Scheduler::calculate_cycles_to_run()
 
     //ARM9 cycles are at half speed
     cycles9_to_run = cycles11_to_run >> 1;
-    if (cycles9.remainder && (cycles11_to_run & 0x1))
+    cycles9.remainder += cycles11_to_run & 0x1;
+    if (cycles9.remainder == 2)
+    {
         cycles9_to_run++;
+        cycles9.remainder = 0;
+    }
 }
 
 void Scheduler::add_event(std::function<void(uint64_t)> func, int64_t cycles, uint64_t param)

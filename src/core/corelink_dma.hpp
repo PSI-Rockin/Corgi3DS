@@ -75,6 +75,7 @@ class Corelink_DMA
         void instr_st(int chan, uint8_t modifier);
         void instr_lp(int chan, int loop_ctr_index);
         void instr_ldp(int chan, bool burst);
+        void instr_stp(int chan, bool burst);
         void instr_wfp(int chan);
         void instr_sev(int chan);
         void instr_flushp();

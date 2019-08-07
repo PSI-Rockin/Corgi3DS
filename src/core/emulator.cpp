@@ -21,7 +21,8 @@ Emulator::Emulator() :
     pxi(&mpcore_pmr, &int9),
     rsa(&int9),
     sha(&dma9),
-    timers(&int9, &mpcore_pmr, this)
+    timers(&int9, &mpcore_pmr, this),
+    wifi(&cdma)
 {
     arm9_RAM = nullptr;
     axi_RAM = nullptr;
@@ -62,6 +63,8 @@ void Emulator::reset(bool cold_boot)
     dsp.set_cpu_interrupt_sender([this] {mpcore_pmr.assert_hw_irq(0x4A);});
     gpu.reset(vram);
     i2c.reset();
+    wifi.reset();
+    wifi.set_sdio_interrupt_handler([this] {mpcore_pmr.assert_hw_irq(0x40);});
 
     aes.reset();
     cartridge.reset();
@@ -69,10 +72,29 @@ void Emulator::reset(bool cold_boot)
     emmc.reset();
     pxi.reset();
 
+    //CDMA has its own special encodings for IO addresses, so we need to expand its read/write functions
+
+    auto cdma_read32 = [this] (uint32_t addr)
+    {
+        if (addr == 0x10322000)
+            return wifi.read_fifo32();
+        return arm11_read32(0, addr);
+    };
+
+    auto cdma_write32 = [this] (uint32_t addr, uint32_t value)
+    {
+        if (addr == 0x10322000)
+        {
+            wifi.write_fifo32(value);
+            return;
+        }
+        arm11_write32(0, addr, value);
+    };
+
     cdma.reset();
     cdma.set_mem_read8_func([this] (uint32_t addr) -> uint8_t {return arm11_read8(0, addr);});
-    cdma.set_mem_read32_func([this] (uint32_t addr) -> uint32_t {return arm11_read32(0, addr);});
-    cdma.set_mem_write32_func([this] (uint32_t addr, uint32_t value) {arm11_write32(0, addr, value);});
+    cdma.set_mem_read32_func(cdma_read32);
+    cdma.set_mem_write32_func(cdma_write32);
     cdma.set_send_interrupt([this] (int chan) {mpcore_pmr.assert_hw_irq(0x30 + chan);});
 
     sysprot9 = 0;
@@ -823,13 +845,7 @@ uint16_t Emulator::arm11_read16(int core, uint32_t addr)
         return 0;
     }
     if (addr >= 0x10122000 && addr < 0x10123000)
-    {
-        //These addresses are read a bunch of times, which causes slowdown as WiFi is stubbed
-        if (addr == 0x1012201C || addr == 0x1012202C)
-            return 0;
-        printf("[WIFI] Unrecognized read16 $%08X\n", addr);
-        return 0;
-    }
+        return wifi.read16(addr);
     if (addr >= 0x10145000 && addr < 0x10146000)
     {
         printf("[CODEC] Unrecognized read16 $%08X\n", addr);
@@ -1040,7 +1056,7 @@ void Emulator::arm11_write16(int core, uint32_t addr, uint16_t value)
     }
     if (addr >= 0x10122000 && addr < 0x10123000)
     {
-        printf("[WIFI] Unrecognized write16 $%08X: $%04X\n", addr, value);
+        wifi.write16(addr, value);
         return;
     }
     if (addr >= 0x10144000 && addr < 0x10145000)
@@ -1163,6 +1179,11 @@ void Emulator::arm11_write32(int core, uint32_t addr, uint32_t value)
     if (addr >= 0x18000000 && addr < 0x18600000)
     {
         gpu.write_vram<uint32_t>(addr, value);
+        return;
+    }
+    if (addr >= 0x20000000 && addr < 0x28000000)
+    {
+        *(uint32_t*)&fcram[addr & 0x07FFFFFF] = value;
         return;
     }
     switch (addr)

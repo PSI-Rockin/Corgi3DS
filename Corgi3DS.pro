@@ -45,7 +45,8 @@ SOURCES += src/qt/main.cpp \
     src/core/arm11/dsp.cpp \
     src/core/arm9/cartridge.cpp \
     src/core/arm11/dsp_interpreter.cpp \
-    src/core/corelink_dma.cpp
+    src/core/corelink_dma.cpp \
+    src/core/arm11/wifi.cpp
 
 HEADERS += \
     src/core/emulator.hpp \
@@ -84,7 +85,8 @@ HEADERS += \
     src/core/arm11/gpu_floats.hpp \
     src/core/arm11/vector_math.hpp \
     src/core/arm11/signextend.hpp \
-    src/core/corelink_dma.hpp
+    src/core/corelink_dma.hpp \
+    src/core/arm11/wifi.hpp
 
 INCLUDEPATH += /usr/local/include
 
