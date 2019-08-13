@@ -36,6 +36,7 @@ struct PSR_Flags
     bool carry;
     bool overflow;
     bool q_overflow;
+    bool ge[4];
 
     uint32_t get();
     void set(uint32_t value);
