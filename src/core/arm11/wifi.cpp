@@ -1,3 +1,4 @@
+#include <cstring>
 #include "../common/common.hpp"
 #include "../corelink_dma.hpp"
 #include "wifi.hpp"
