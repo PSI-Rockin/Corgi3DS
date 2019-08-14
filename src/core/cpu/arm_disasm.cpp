@@ -110,6 +110,12 @@ ARM_INSTR decode_arm(uint32_t instr)
         if ((instr & 0x0FE00030) == 0x06A00010)
             return ARM_SSAT;
 
+        if ((instr & 0x0FF00FF0) == 0x06800FB0)
+            return ARM_SEL;
+
+        if ((instr & 0x0FF00FF0) == 0x06500F90)
+            return ARM_UADD8;
+
         if ((instr & 0x0FF00F00) == 0x06600F00)
         {
             switch (instr & 0xF0)
@@ -356,6 +362,9 @@ string disasm_arm(ARM_CPU& cpu, uint32_t instr)
         case ARM_LOAD_BLOCK:
         case ARM_STORE_BLOCK:
             return arm_load_store_block(instr);
+        case ARM_SEL:
+            return arm_sel(instr);
+        case ARM_UADD8:
         case ARM_UQSUB8:
             return arm_unsigned_parallel_alu(instr);
         case ARM_COP_LOAD_STORE:
@@ -1521,6 +1530,21 @@ string arm_load_store_block(uint32_t instr)
     return output.str();
 }
 
+string arm_sel(uint32_t instr)
+{
+    stringstream output;
+
+    int reg1 = (instr >> 16) & 0xF;
+    int dest = (instr >> 12) & 0xF;
+    int reg2 = instr & 0xF;
+
+    output << "sel" << cond_name(instr >> 28) << " ";
+    output << ARM_CPU::get_reg_name(dest) << ", " << ARM_CPU::get_reg_name(reg1) << ", " <<
+              ARM_CPU::get_reg_name(reg2);
+
+    return output.str();
+}
+
 string arm_unsigned_parallel_alu(uint32_t instr)
 {
     stringstream output;
@@ -1531,6 +1555,9 @@ string arm_unsigned_parallel_alu(uint32_t instr)
 
     switch (instr & 0xF0)
     {
+        case 0x90:
+            output << "uadd8";
+            break;
         case 0xF0:
             output << "uqsub8";
             break;

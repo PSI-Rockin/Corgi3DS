@@ -17,6 +17,8 @@ uint32_t PSR_Flags::get()
     reg |= carry << 29;
     reg |= overflow << 28;
     reg |= q_overflow << 27;
+    for (int i = 0; i < 4; i++)
+        reg |= ge[i] << (16 + i);
 
     reg |= irq_disable << 7;
     reg |= fiq_disable << 6;
@@ -33,6 +35,8 @@ void PSR_Flags::set(uint32_t value)
     carry = value & (1 << 29);
     overflow = value & (1 << 28);
     q_overflow = value & (1 << 27);
+    for (int i = 0; i < 4; i++)
+        ge[i] = value & (1 << (16 + i));
 
     irq_disable = value & (1 << 7);
     fiq_disable = value & (1 << 6);
