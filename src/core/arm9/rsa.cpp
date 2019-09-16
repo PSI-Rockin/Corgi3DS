@@ -13,6 +13,7 @@ RSA::RSA(Interrupt9* int9) : int9(int9)
 void RSA::reset()
 {
     memset(keys, 0, sizeof(keys));
+    msg_ctr = 0;
 }
 
 uint8_t RSA::read8(uint32_t addr)
