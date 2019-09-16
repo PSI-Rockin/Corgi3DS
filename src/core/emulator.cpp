@@ -54,6 +54,9 @@ void Emulator::reset(bool cold_boot)
         vram = new uint8_t[1024 * 1024 * 6];
 
     mpcore_pmr.reset();
+    timers.reset();
+    rsa.reset();
+    sha.reset();
 
     otp = otp_free;
 
@@ -435,6 +438,12 @@ uint16_t Emulator::arm9_read16(uint32_t addr)
 
 uint32_t Emulator::arm9_read32(uint32_t addr)
 {
+
+    if (addr >= 0x10141200 && addr < 0x10144000) {
+      printf("[SPI] Unrecognized read32 $%08X\n", addr);
+      return 0;
+    }
+
     if (addr >= 0x08000000 && addr < 0x08100000)
         return *(uint32_t*)&arm9_RAM[addr & 0xFFFFF];
 
