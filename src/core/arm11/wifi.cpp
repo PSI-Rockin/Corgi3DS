@@ -1,4 +1,5 @@
 #include <fstream>
+#include <cstring>
 #include "../common/common.hpp"
 #include "../corelink_dma.hpp"
 #include "../scheduler.hpp"
