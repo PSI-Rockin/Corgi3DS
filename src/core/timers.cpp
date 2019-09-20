@@ -199,7 +199,7 @@ uint32_t Timers::arm11_get_counter(int id, int delta)
     uint32_t counter = arm11_timers[id].counter;
     if (arm11_timers[id].enabled)
         counter -= delta / arm11_timers[id].prescalar;
-    printf("[Timers] Read ARM11 timer%d counter: $%08X (%d)\n", id, counter, delta);
+    //printf("[Timers] Read ARM11 timer%d counter: $%08X (%d)\n", id, counter, delta);
     return counter;
 }
 
@@ -221,20 +221,20 @@ uint32_t Timers::arm11_get_int_status(int id)
 
 void Timers::arm11_set_load(int id, uint32_t value)
 {
-    printf("[Timers] Set ARM11 timer%d load: $%08X\n", id, value);
+    //printf("[Timers] Set ARM11 timer%d load: $%08X\n", id, value);
     arm11_timers[id].load = value;
     arm11_timers[id].counter = value;
 }
 
 void Timers::arm11_set_counter(int id, uint32_t value)
 {
-    printf("[Timers] Set ARM11 timer%d counter: $%08X\n", id, value);
+    //printf("[Timers] Set ARM11 timer%d counter: $%08X\n", id, value);
     arm11_timers[id].counter = value;
 }
 
 void Timers::arm11_set_control(int id, uint32_t value)
 {
-    printf("[Timers] Set ARM11 timer%d control: $%08X\n", id, value);
+    //printf("[Timers] Set ARM11 timer%d control: $%08X\n", id, value);
     arm11_timers[id].enabled = value & 0x1;
     arm11_timers[id].auto_reload = (value >> 1) & 0x1;
     arm11_timers[id].int_enabled = (value >> 2) & 0x1;
@@ -245,6 +245,6 @@ void Timers::arm11_set_control(int id, uint32_t value)
 
 void Timers::arm11_set_int_status(int id, uint32_t value)
 {
-    printf("[Timers] Set ARM11 timer%d status: $%08X\n", id, value);
+    //printf("[Timers] Set ARM11 timer%d status: $%08X\n", id, value);
     arm11_timers[id].int_flag &= ~(value & 0x1);
 }

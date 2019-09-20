@@ -456,8 +456,9 @@ uint16_t DSP::read_data_word(uint16_t addr)
             case 0x1DC:
                 return 0;
             case 0x200:
-            case 0x202:
                 return icu.int_pending;
+            case 0x202:
+                return 0;
             case 0x204:
                 return 0; //TODO: return int_pending?
             case 0x206:

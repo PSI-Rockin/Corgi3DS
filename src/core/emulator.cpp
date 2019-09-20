@@ -22,7 +22,7 @@ Emulator::Emulator() :
     rsa(&int9),
     sha(&dma9),
     timers(&int9, &mpcore_pmr, this),
-    wifi(&cdma)
+    wifi(&cdma, &scheduler)
 {
     arm9_RAM = nullptr;
     axi_RAM = nullptr;
@@ -169,6 +169,9 @@ void Emulator::run()
         dma9.process_ndma_reqs();
         dma9.run_xdma();
         cdma.run();
+
+        int xtensa_cycles = scheduler.get_xtensa_cycles_to_run();
+        wifi.run(xtensa_cycles);
         scheduler.process_events();
     }
     frames++;
@@ -404,6 +407,9 @@ uint16_t Emulator::arm9_read16(uint32_t addr)
         return addr & 0xFFFF;
     }
 
+    if (addr >= 0x10122000 && addr < 0x10123000)
+        return wifi.read16(addr);
+
     if (addr >= 0x10160000 && addr < 0x10161000)
     {
         printf("[SPI2] Unrecognized read16 $%08X\n", addr);
@@ -467,12 +473,21 @@ uint32_t Emulator::arm9_read32(uint32_t addr)
 
     if (addr >= 0x10011000 && addr < 0x10012000)
     {
+        if (addr == 0x10011000)
+            return rand(); //TODO: Make a proper RNG out of this
         printf("[ARM9] Unrecognized read32 from PRNG $%08X\n", addr);
         return 0;
     }
 
     if (addr >= 0x10012000 && addr < 0x10012100)
         return *(uint32_t*)&otp[addr & 0xFF];
+
+    if (addr >= 0x10122000 && addr < 0x10123000)
+    {
+        uint32_t value = wifi.read16(addr);
+        value |= wifi.read16(addr + 2) << 16;
+        return value;
+    }
 
     if (addr >= 0x10164000 && addr < 0x10165000)
         return cartridge.read32_ntr(addr);
@@ -490,6 +505,8 @@ uint32_t Emulator::arm9_read32(uint32_t addr)
             return int9.read_if();
         case 0x10008000:
             return pxi.read_sync9();
+        case 0x10008004:
+            return pxi.read_cnt9();
         case 0x1000800C:
             return pxi.read_msg9();
         case 0x10010000:
@@ -615,6 +632,11 @@ void Emulator::arm9_write16(uint32_t addr, uint16_t value)
         emmc.write16(addr, value);
         return;
     }
+    if (addr >= 0x10122000 && addr < 0x10123000)
+    {
+        wifi.write16(addr, value);
+        return;
+    }
     if (addr >= 0x10144000 && addr < 0x10145000)
     {
         printf("[A9 I2C] Unrecognized write16 $%08X: $%04X\n", addr, value);
@@ -735,6 +757,19 @@ void Emulator::arm9_write32(uint32_t addr, uint32_t value)
     {
         printf("TWL consoleid $%08X: $%08X\n", addr, value);
         *(uint32_t*)&twl_consoleid[addr & 0x7] = value;
+        return;
+    }
+
+    if (addr >= 0x10122000 && addr < 0x10123000)
+    {
+        wifi.write16(addr, value & 0xFFFF);
+        wifi.write16(addr + 2, value >> 16);
+        return;
+    }
+
+    if (addr >= 0x10160000 && addr < 0x10161000)
+    {
+        printf("[SPI] Unrecognized write32 $%08X: $%08X\n", addr, value);
         return;
     }
 
@@ -943,12 +978,18 @@ uint32_t Emulator::arm11_read32(int core, uint32_t addr)
         return *(uint32_t*)&fcram[addr & 0x07FFFFFF];
     switch (addr)
     {
+        case 0x10140180:
+            return 1;
+        case 0x1014110C:
+            return 1; //WiFi related?
         case 0x10141200:
             return 0; //GPU power config
         case 0x10146000:
             return HID_PAD;
         case 0x10163000:
             return pxi.read_sync11();
+        case 0x10163004:
+            return pxi.read_cnt11();
         case 0x10163008:
             //3dslinux reads from SEND11 for some mysterious reason...
             return 0;
@@ -1190,6 +1231,10 @@ void Emulator::arm11_write32(int core, uint32_t addr, uint32_t value)
     {
         case 0x10140140:
             return; //GPUPROT
+        case 0x10140180:
+            return; //Enable WiFi subsystem
+        case 0x1014110C:
+            return;
         case 0x10141200:
             return;
         case 0x10163000:

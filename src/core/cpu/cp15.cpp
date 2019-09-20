@@ -85,7 +85,6 @@ uint32_t CP15::mrc(int operation_mode, int CP_reg, int coprocessor_info, int cop
                 return 0x410FB024;
             return 0;
         case 0x005:
-            printf("[CP15_%d] Read CPU id\n", id);
             return id;
         case 0x014:
             if (id != 9)
@@ -265,7 +264,6 @@ void CP15::mcr(int operation_mode, int CP_reg, int coprocessor_info, int coproce
         case 0xD02:
         case 0xD03:
         case 0xD04:
-            printf("[CP15_%d] Write thread reg%d: $%08X\n", id, op - 0xD02, value);
             thread_regs[op - 0xD02] = value;
             break;
         default:

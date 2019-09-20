@@ -234,6 +234,8 @@ uint8_t I2C::read_mcu(uint8_t reg_id)
             return 100; //battery percent
         case 0x0F:
             return 0x02; //bit 1 = shell state
+        case 0x61:
+            return 1; //WiFi disabled
         default:
             printf("[I2C_MCU] Unrecognized read register $%02X\n", reg_id);
     }

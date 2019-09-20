@@ -172,39 +172,6 @@ void ARM_CPU::print_state()
 
 void ARM_CPU::jp(uint32_t addr, bool change_thumb_state)
 {
-    if (addr == 0xC0118F78)
-    {
-        uint32_t filename = read32(gpr[1]);
-        printf("[ARM%d] EXEC PROGRAM: ", id);
-
-        int i = 0;
-        while (true)
-        {
-            uint8_t ch = read8(filename);
-            //if (ch == 'i' && i == 1)
-                //can_disassemble = true;
-            if (!ch)
-                break;
-            printf("%c", ch);
-            filename++;
-            i++;
-        }
-        printf("\n");
-    }
-    if (addr == 0xC00B8A20)
-    {
-        uint32_t str_ptr = gpr[0] + 2;
-        printf("[ARM%d] PRINTK: ", id);
-        while (true)
-        {
-            uint8_t ch = read8(str_ptr);
-            if (!ch)
-                break;
-            printf("%c", ch);
-            str_ptr++;
-        }
-    }
-
     //Hack to autoboot cartridge
     /*if (addr == 0x1060B8 && (gpr[15] - 8 == 0x106054))
     {
@@ -219,7 +186,9 @@ void ARM_CPU::jp(uint32_t addr, bool change_thumb_state)
         //can_disassemble = true;
         uint32_t process_ptr = read32(0xFFFF9004);
         uint32_t pid = read32(process_ptr + 0xB4);
-        printf("Jumping to PID%d (addr: $%08X)\n", pid, addr);
+
+        bool main_thread = read32(0xFFFF9000) == read32(process_ptr + 192);
+        printf("Jumping to PID%d (main_thread:%d, addr: $%08X)\n", pid, main_thread, addr);
         if (addr & 0xFFFFF)
         {
             uint32_t prev_instr = read32(addr - 4);
@@ -232,12 +201,12 @@ void ARM_CPU::jp(uint32_t addr, bool change_thumb_state)
             else if ((prev_instr & 0x0F000000) == 0x0F000000 && (prev_instr & 0xFF) != 0x28)
             {
                 if (gpr[0] & (1 << 31))
-                    printf("Error: $%08X\n", gpr[0]);
+                   printf("Error: $%08X\n", gpr[0]);
             }
         }
-        if (pid == 24)
+        if (pid == 15)
         {
-            can_disassemble = true;
+            //can_disassemble = true;
 
         }
         else
@@ -797,8 +766,6 @@ void ARM_CPU::write16(uint32_t addr, uint16_t value)
 
 void ARM_CPU::write32(uint32_t addr, uint32_t value)
 {
-    if (id != 9 && addr == 0x08001EC0)
-        printf("[ARM%d] BLORP: $%08X\n", id, value);
     if (id == 9 && (addr & 0x3))
         EmuException::die("[ARM9] Unaligned write32 $%08X: $%08X", addr, value);
     if ((addr & 0xFFF) > 0xFFC)

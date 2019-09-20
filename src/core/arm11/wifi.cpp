@@ -1,6 +1,14 @@
+#include <fstream>
 #include "../common/common.hpp"
 #include "../corelink_dma.hpp"
+#include "../scheduler.hpp"
 #include "wifi.hpp"
+
+//#define LLE_WIFI
+
+constexpr static int ROM_BASE = 0x0E0000;
+constexpr static int RAM_BASE = 0x120000;
+constexpr static int MEMMAP_MASK = (1024 * 1024 * 4) - 1;
 
 const static uint8_t CIS0[256] =
 {
@@ -135,15 +143,45 @@ void write32_mbox(std::queue<uint8_t>& mbox, uint32_t value)
         mbox.push((value >> (i * 8)) & 0xFF);
 }
 
-WiFi::WiFi(Corelink_DMA* cdma) : cdma(cdma)
+WiFi::WiFi(Corelink_DMA* cdma, Scheduler* scheduler) :
+    cdma(cdma),
+    scheduler(scheduler),
+    xtensa(this)
 {
     send_sdio_interrupt = nullptr;
+    ROM = nullptr;
+    RAM = nullptr;
+}
+
+WiFi::~WiFi()
+{
+    delete[] ROM;
+    delete[] RAM;
 }
 
 void WiFi::reset()
 {
+    if (!ROM)
+        ROM = new uint8_t[0x40000];
+    if (!RAM)
+        RAM = new uint8_t[0x20000];
+
+#ifdef LLE_WIFI
+    std::ifstream rom_dump("AR6014_ROM.bin");
+    rom_dump.read((char*)ROM, 0x40000);
+    rom_dump.close();
+#else
+    memset(ROM, 0, 0x40000);
+#endif
+
+    timers.reset();
+    xtensa.reset();
+
+    timers.set_send_soc_irq([this] (int id) {send_xtensa_soc_irq(id);});
+
+    memset(RAM, 0, 0x20000);
+
     block.active = false;
-    eeprom_ready = false;
     bmi_done = false;
     card_irq_mask = false;
     card_irq_stat = false;
@@ -178,6 +216,18 @@ void WiFi::reset()
     irq_f0_stat = 0;
     irq_f1_mask = 0;
     irq_f1_stat = 0;
+
+    xtensa_irq_stat = 0;
+    xtensa_mbox_irq_enable = 0;
+    xtensa_mbox_irq_stat = 0;
+}
+
+void WiFi::run(int cycles)
+{
+#ifdef LLE_WIFI
+    xtensa.run(cycles);
+    timers.run(cycles);
+#endif
 }
 
 void WiFi::do_sdio_cmd(uint8_t cmd)
@@ -553,15 +603,25 @@ uint16_t WiFi::read_fifo16()
 
 void WiFi::do_wifi_cmd()
 {
+#ifdef LLE_WIFI
+    xtensa_mbox_irq_stat |= 1 << 12;
+    if (xtensa_mbox_irq_enable & (1 << 12))
+        send_xtensa_soc_irq(12);
+#else
     if (!bmi_done)
         do_bmi_cmd();
     else
         do_wmi_cmd();
+#endif
 }
 
 void WiFi::do_bmi_cmd()
 {
     //Bootloader Messaging Interface - commands used to initialize, send, and execute the WiFi card firmware
+
+    static uint8_t lz_tag = 0;
+    static bool doing_lz = false;
+    static uint32_t lz_addr = 0;
 
     uint32_t cmd = read32_mbox(mbox[0]);
 
@@ -571,7 +631,6 @@ void WiFi::do_bmi_cmd()
             //DONE
         {
             printf("[WiFi] BMI_DONE\n");
-            eeprom_ready = true;
             bmi_done = true;
 
             uint8_t ready[] = {0x01, 0x00, 0x01, 0x00, 0x01, 0x00, 0x00, 0x00};
@@ -586,9 +645,12 @@ void WiFi::do_bmi_cmd()
 
             printf("[WiFi] BMI_READ_MEMORY $%08X $%08X\n", addr, len);
 
+            addr &= MEMMAP_MASK;
+            addr -= RAM_BASE;
+
             while (len)
             {
-                uint8_t value = 0;
+                uint8_t value = RAM[addr];
                 write8_mbox(mbox[4], value);
                 len--;
             }
@@ -602,9 +664,14 @@ void WiFi::do_bmi_cmd()
 
             printf("[WiFi] BMI_WRITE_MEMORY $%08X $%08X\n", addr, len);
 
+            addr &= MEMMAP_MASK;
+            addr -= RAM_BASE;
+
             while (len)
             {
                 uint8_t value = read8_mbox(mbox[0]);
+                RAM[addr] = value;
+                addr++;
                 len--;
             }
         }
@@ -619,12 +686,19 @@ void WiFi::do_bmi_cmd()
 
             //Return value
             write32_mbox(mbox[4], 0);
+
+            //The boot stub uploaded by NWM reads the EEPROM and copies it into RAM.
+            write_window(0x520054, 0x530000); //EEPROM data pointer
+            write_window(0x520058, 0x1); //EEPROM ready flag
+
+            memcpy(RAM + 0x10000, eeprom, 0x300);
         }
             break;
         case 0x6:
             //READ_SOC_REGISTER
         {
             uint32_t addr = read32_mbox(mbox[0]);
+            printf("[WiFi] BMI_READ_SOC_REGISTER $%08X\n", addr);
             write32_mbox(mbox[4], read_window(addr));
         }
             break;
@@ -633,11 +707,13 @@ void WiFi::do_bmi_cmd()
         {
             uint32_t addr = read32_mbox(mbox[0]);
             uint32_t value = read32_mbox(mbox[0]);
+            printf("[WiFi] BMI_WRITE_SOC_REGISTER $%08X: $%08X\n", addr, value);
             write_window(addr, value);
         }
             break;
         case 0x8:
             //GET_TARGET_INFO
+            printf("[WiFi] BMI_GET_TARGET_INFO\n");
             write32_mbox(mbox[4], 0xFFFFFFFF);
             write32_mbox(mbox[4], 0x0000000C);
             write32_mbox(mbox[4], 0x230000B3);
@@ -646,8 +722,11 @@ void WiFi::do_bmi_cmd()
         case 0xD:
             //LZ_STREAM_START
         {
-            uint32_t start = read32_mbox(mbox[0]);
-            printf("[WiFi] BMI_LZ_STREAM_START: $%08X\n", start);
+            lz_addr = read32_mbox(mbox[0]);
+            lz_addr &= MEMMAP_MASK;
+            lz_addr -= RAM_BASE;
+            printf("[WiFi] BMI_LZ_STREAM_START: $%08X\n", lz_addr);
+            doing_lz = false;
         }
             break;
         case 0xE:
@@ -655,10 +734,65 @@ void WiFi::do_bmi_cmd()
             uint32_t len = read32_mbox(mbox[0]);
             printf("[WiFi] BMI_LZ_STREAM_DATA: $%08X\n", len);
 
+            if (!doing_lz)
+            {
+                doing_lz = true;
+                lz_tag = read8_mbox(mbox[0]);
+                printf("Tag: $%02X\n", lz_tag);
+                len--;
+            }
+
             while (len)
             {
                 uint8_t value = read8_mbox(mbox[0]);
-                len--;
+                printf("Read LZ stream: $%02X ($%08X)\n", value, lz_addr);
+                if (value == lz_tag)
+                {
+                    uint8_t temp = read8_mbox(mbox[0]);
+                    uint32_t bytes = temp;
+                    while (temp & 0x80)
+                    {
+                        bytes &= ~0x80;
+                        bytes <<= 7;
+                        temp = read8_mbox(mbox[0]);
+                        bytes |= temp;
+                        len--;
+                    }
+
+                    temp = read8_mbox(mbox[0]);
+                    uint32_t offset = temp;
+                    while (temp & 0x80)
+                    {
+                        offset &= ~0x80;
+                        offset <<= 7;
+                        temp = read8_mbox(mbox[0]);
+                        offset |= temp;
+                        len--;
+                    }
+                    printf("Decompress $%08X $%08X\n", bytes, offset);
+                    len -= 3;
+                    if (bytes == 0)
+                    {
+                        EmuException::die("a");
+                        //Literal value
+                        RAM[lz_addr] = value;
+                        lz_addr++;
+                    }
+                    else
+                    {
+                        for (unsigned int i = 0; i < bytes; i++)
+                        {
+                            RAM[lz_addr] = RAM[lz_addr - offset];
+                            lz_addr++;
+                        }
+                    }
+                }
+                else
+                {
+                    RAM[lz_addr] = value;
+                    lz_addr++;
+                    len--;
+                }
             }
         }
             break;
@@ -703,17 +837,34 @@ void WiFi::do_wmi_cmd()
             memset(reply, 0, sizeof(reply));
 
             *(uint16_t*)&reply[0] = 0x1001; //WMI_READY event
+            //*(uint16_t*)&reply[0] = 0;
 
             memcpy(reply + 2, mac, 6);
 
-            reply[8] = 0x2;
-            *(uint32_t*)&reply[10] = 0x230000B3;
+            *(uint16_t*)&reply[8] = 0x0602;
+            *(uint32_t*)&reply[10] = 0x230000EC;
 
-            //memset(reply + 2, 0xFF, 12);
-
-            *(uint32_t*)&reply[14] = 0x00010001;
+            //*(uint32_t*)&reply[14] = 0xDEADBEEF;
 
             send_wmi_reply(reply, sizeof(reply), 1, 0, 0);
+
+            auto blorp = [this](uint64_t param)
+            {
+                uint8_t reply[8];
+                memset(reply, 0, sizeof(reply));
+
+                *(uint16_t*)&reply[0] = 0x000E; //WMI_GET_CHANNEL_LIST
+                *(uint32_t*)&reply[4] = 1;
+                *(uint16_t*)&reply[6] = 0;
+
+                send_wmi_reply(reply, sizeof(reply), 1, 0, 0);
+
+                check_f1_irq();
+                printf("hey\n");
+            };
+
+            scheduler->add_event(blorp, 5000000);
+
             printf("[WiFi] WMI_SYNCHRONIZE\n");
         }
             break;
@@ -739,12 +890,26 @@ void WiFi::send_wmi_reply(uint8_t *reply, uint32_t len, uint8_t eid, uint8_t fla
     for (unsigned int i = 0; i < len; i++)
         write8_mbox(mbox[4], reply[i]);
 
+    if (flag & 0x2)
+    {
+        //Trailer
+        total_len += ctrl;
+        for (unsigned int i = 0; i < ctrl; i++)
+            write8_mbox(mbox[4], 0);
+    }
+
     //Align to a 128-byte boundary by padding with zeroes
     while (total_len & 0x7F)
     {
         write8_mbox(mbox[4], 0);
         total_len++;
     }
+}
+
+void WiFi::send_xtensa_soc_irq(int id)
+{
+    xtensa_irq_stat |= 1 << id;
+    xtensa.send_irq(16 - id);
 }
 
 void WiFi::check_card_irq()
@@ -786,6 +951,7 @@ void WiFi::write_fifo16(uint16_t value)
 {
     if (block.active)
     {
+        printf("[WiFi] Write FIFO16: $%04X\n", value);
         int offset = (block.inc_addr) ? 1 : 0;
         int transfer_amount = 1;
         sdio_write_io(block.func, block.addr, value & 0xFF);
@@ -814,36 +980,16 @@ void WiFi::write_fifo16(uint16_t value)
 
 uint32_t WiFi::read_window(uint32_t addr)
 {
-    printf("[WiFi] Read window: $%08X\n", addr);
-    uint32_t value = 0;
-    if (addr >= 0x1FFC00 && addr < 0x200000)
-        return *(uint32_t*)&eeprom[addr & 0x3FF];
-    switch (addr)
-    {
-        case 0x0040C0:
-            //Reset cause - this indicates a cold boot
-            return 0x2;
-        case 0x0040EC:
-            //Chip ID associated with AR6014
-            return 0x0D000001;
-        case 0x520054:
-            //EEPROM base pointer
-            return 0x001FFC00;
-        case 0x520058:
-            return eeprom_ready;
-        default:
-            printf("[WiFi] Unrecognized window read $%08X\n", addr);
-    }
-    return value;
+    printf("[WiFi] Read window $%08X\n", addr);
+    return read32_xtensa(addr);
 }
 
 void WiFi::write_window(uint32_t addr, uint32_t value)
 {
-    switch (addr)
-    {
-        default:
-            printf("[WiFi] Unrecognized window write $%08X: $%08X\n", addr, value);
-    }
+    printf("[WiFi] Write window $%08X: $%08X\n", addr, value);
+    if (addr == 2)
+        return;
+    write32_xtensa(addr, value);
 }
 
 void WiFi::set_sdio_interrupt_handler(std::function<void ()> func)
@@ -966,6 +1112,253 @@ void WiFi::write16(uint32_t addr, uint16_t value)
     }
 }
 
+uint8_t WiFi::read8_xtensa(uint32_t addr)
+{
+    addr &= MEMMAP_MASK;
+    if (addr >= ROM_BASE && addr < RAM_BASE)
+        return ROM[addr - ROM_BASE];
+    if (addr >= RAM_BASE && addr < RAM_BASE + 0x20000)
+        return RAM[addr - RAM_BASE];
+
+    EmuException::die("[WiFi] Unrecognized Xtensa read8 $%08X\n", addr);
+    return 0;
+}
+
+uint16_t WiFi::read16_xtensa(uint32_t addr)
+{
+    addr &= MEMMAP_MASK;
+    if (addr >= ROM_BASE && addr < RAM_BASE)
+        return *(uint16_t*)&ROM[addr - ROM_BASE];
+    if (addr >= RAM_BASE && addr < RAM_BASE + 0x20000)
+        return *(uint16_t*)&RAM[addr - RAM_BASE];
+
+    EmuException::die("[WiFi] Unrecognized Xtensa read16 $%08X\n", addr);
+    return 0;
+}
+
+uint32_t WiFi::read32_xtensa(uint32_t addr)
+{
+    addr &= MEMMAP_MASK;
+    if (addr >= ROM_BASE && addr < RAM_BASE)
+        return *(uint32_t*)&ROM[addr - ROM_BASE];
+    if (addr >= RAM_BASE && addr < RAM_BASE + 0x20000)
+        return *(uint32_t*)&RAM[addr - RAM_BASE];
+
+    //Patch enable
+    if (addr >= 0x8000 && addr < 0x8080)
+        return 0;
+
+    if (addr >= 0x18080 && addr < 0x180A0)
+    {
+        printf("[WiFi] Read32 Xtensa WLAN_LOCAL_COUNT $%08X\n", addr);
+        return 0;
+    }
+
+    switch (addr)
+    {
+        case 0x04000:
+            //Reset control
+            return 0;
+        case 0x04028:
+            //Clock control?
+            return 0;
+        case 0x04030:
+            //Watchdog control
+            return 0;
+        case 0x04044:
+            return xtensa_irq_stat;
+        case 0x04048:
+        case 0x04058:
+        case 0x04068:
+        case 0x04078:
+            return timers.read_target((addr - 0x4048) / 0x10);
+        case 0x0404C:
+        case 0x0405C:
+        case 0x0406C:
+        case 0x0407C:
+            return timers.read_count((addr - 0x0404C) / 0x10);
+        case 0x04050:
+        case 0x04060:
+        case 0x04070:
+        case 0x04080:
+            return timers.read_ctrl((addr - 0x4050) / 0x10);
+        case 0x04054:
+        case 0x04064:
+        case 0x04074:
+        case 0x04084:
+            return timers.read_int_status((addr - 0x4054) / 0x10);
+        case 0x04094:
+            return timers.read_ctrl(4);
+        case 0x04098:
+            return timers.read_int_status(4);
+        case 0x040C0:
+            //SOC_RESET_CAUSE
+            return 0x2;
+        case 0x040C4:
+            //SOC_SYSTEM_SLEEP
+            return 0;
+        case 0x040EC:
+            //Chip id
+            return 0x0D000001;
+        case 0x040F0:
+            return 0;
+        case 0x04110:
+            //Power control
+            return 0;
+        case 0x14048:
+            printf("[WiFi] Read32 Xtensa GPIO_PIN8\n");
+            return 0;
+        case 0x180C0:
+            //Local scratchpad
+            return 0;
+    }
+
+    EmuException::die("[WiFi] Unrecognized Xtensa read32 $%08X\n", addr);
+    return 0;
+}
+
+void WiFi::write8_xtensa(uint32_t addr, uint8_t value)
+{
+    addr &= MEMMAP_MASK;
+    if (addr >= RAM_BASE && addr < RAM_BASE + 0x20000)
+    {
+        RAM[addr - RAM_BASE] = value;
+        return;
+    }
+
+    EmuException::die("[WiFi] Unrecognized Xtensa write8 $%08X: $%02X\n", addr, value);
+}
+
+void WiFi::write16_xtensa(uint32_t addr, uint16_t value)
+{
+    addr &= MEMMAP_MASK;
+    if (addr >= RAM_BASE && addr < RAM_BASE + 0x20000)
+    {
+        *(uint16_t*)&RAM[addr - RAM_BASE] = value;
+        return;
+    }
+
+    EmuException::die("[WiFi] Unrecognized Xtensa write16 $%08X: $%04X\n", addr, value);
+}
+
+void WiFi::write32_xtensa(uint32_t addr, uint32_t value)
+{
+    addr &= MEMMAP_MASK;
+    if (addr >= RAM_BASE && addr < RAM_BASE + 0x20000)
+    {
+        *(uint32_t*)&RAM[addr - RAM_BASE] = value;
+        return;
+    }
+
+    if (addr >= 0x8000 && addr < 0x8080)
+    {
+        printf("[WiFi] Write32 Xtensa MC_TCAM_VALID $%08X: $%08X\n", addr, value);
+        return;
+    }
+
+    if (addr >= 0x18080 && addr < 0x180A0)
+    {
+        printf("[WiFi] Write32 Xtensa WLAN_LOCAL_COUNT $%08X: $%08X\n", addr, value);
+        return;
+    }
+
+    if (addr >= 0x180A0 && addr < 0x180C0)
+    {
+        printf("[WiFi] Write32 Xtensa WLAN_COUNT_INC $%08X: $%08X\n", addr, value);
+        return;
+    }
+
+    switch (addr)
+    {
+        case 0x04000:
+            printf("[WiFi] Write32 Xtensa SOC_RESET_CONTROL: $%08X\n", value);
+            reset();
+            return;
+        case 0x04014:
+            //Clock control?
+            return;
+        case 0x04020:
+            //SOC_CPU_CLOCK
+            return;
+        case 0x04028:
+            //SOC_CPU_CLOCK_CONTROL
+            return;
+        case 0x04030:
+            //Watchdog control
+            return;
+        case 0x04048:
+        case 0x04058:
+        case 0x04068:
+        case 0x04078:
+            timers.write_target((addr - 0x4048) / 0x10, value);
+            return;
+        case 0x04050:
+        case 0x04060:
+        case 0x04070:
+        case 0x04080:
+            timers.write_ctrl((addr - 0x4050) / 0x10, value);
+            return;
+        case 0x04054:
+        case 0x04064:
+        case 0x04074:
+        case 0x04084:
+            timers.write_int_status((addr - 0x4054) / 0x10, value);
+            return;
+        case 0x04088:
+            timers.write_target(4, value);
+            return;
+        case 0x04094:
+            timers.write_ctrl(4, value);
+            return;
+        case 0x04098:
+            timers.write_int_status(4, value);
+            return;
+        case 0x040C4:
+            printf("[WiFi] Write32 Xtensa SOC_SYSTEM_SLEEP: $%08X\n", value);
+            return;
+        case 0x040D4:
+            printf("[WiFi] Write32 Xtensa SOC_LPO_CAL_TIME: $%08X\n", value);
+            return;
+        case 0x040D8:
+            printf("[WiFi] Write32 Xtensa SOC_LPO_INIT_DIVIDEND_INT: $%08X\n", value);
+            return;
+        case 0x040DC:
+            printf("[WiFi] Write32 Xtensa SOC_LPO_INIT_DIVIDENT_FRACTION: $%08X\n", value);
+            return;
+        case 0x040F0:
+            //More clock control
+            return;
+        case 0x04110:
+            //Power control
+            return;
+        case 0x08200:
+            //Memory error control
+            return;
+        case 0x14010:
+            printf("[WiFi] Write32 Xtensa WLAN_GPIO_ENABLE_W1TS: $%08X\n", value);
+            return;
+        case 0x14048:
+            printf("[WiFi] Write32 Xtensa GPIO_PIN8: $%08X\n", value);
+            return;
+        case 0x18058:
+            printf("[WiFi] Write32 Xtensa WLAN_MBOX_INT_STATUS: $%08X\n", value);
+            xtensa_mbox_irq_stat &= ~value;
+            return;
+        case 0x1805C:
+            printf("[WiFi] Write32 Xtensa WLAN_MBOX_INT_ENABLE: $%08X\n", value);
+            xtensa_mbox_irq_enable = value;
+            return;
+        case 0x180C0:
+            printf("[WiFi] Write32 Xtensa LOCAL_SCRATCH[0]: $%08X\n", value);
+            return;
+        case 0x180E4:
+            //Some sort of SDIO config?
+            return;
+    }
+
+    EmuException::die("[WiFi] Unrecognized Xtensa write32 $%08X: $%08X\n", addr, value);
+}
+
 uint32_t WiFi::read_fifo32()
 {
     uint32_t value = 0;
@@ -977,7 +1370,6 @@ uint32_t WiFi::read_fifo32()
 
 void WiFi::write_fifo32(uint32_t value)
 {
-    printf("Write FIFO32: $%08X\n", value);
     write_fifo16(value & 0xFFFF);
     if (block.active)
         write_fifo16(value >> 16);

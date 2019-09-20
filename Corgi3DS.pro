@@ -46,7 +46,10 @@ SOURCES += src/qt/main.cpp \
     src/core/arm9/cartridge.cpp \
     src/core/arm11/dsp_interpreter.cpp \
     src/core/corelink_dma.cpp \
-    src/core/arm11/wifi.cpp
+    src/core/arm11/wifi.cpp \
+    src/core/arm11/xtensa.cpp \
+    src/core/arm11/xtensa_interpreter.cpp \
+    src/core/arm11/wifi_timers.cpp
 
 HEADERS += \
     src/core/emulator.hpp \
@@ -86,7 +89,10 @@ HEADERS += \
     src/core/arm11/vector_math.hpp \
     src/core/arm11/signextend.hpp \
     src/core/corelink_dma.hpp \
-    src/core/arm11/wifi.hpp
+    src/core/arm11/wifi.hpp \
+    src/core/arm11/xtensa.hpp \
+    src/core/arm11/xtensa_interpreter.hpp \
+    src/core/arm11/wifi_timers.hpp
 
 INCLUDEPATH += /usr/local/include
 

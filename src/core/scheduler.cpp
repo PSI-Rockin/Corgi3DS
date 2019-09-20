@@ -17,6 +17,9 @@ void Scheduler::reset()
 
     cycles9.count = 0;
     cycles9.remainder = 0;
+
+    xtensa_cycles.count = 0;
+    xtensa_cycles.remainder = 0;
 }
 
 void Scheduler::calculate_cycles_to_run()
@@ -44,6 +47,15 @@ void Scheduler::calculate_cycles_to_run()
         cycles9_to_run++;
         cycles9.remainder = 0;
     }
+
+    //The Xtensa runs at 40 MHz on the 3DS. This is approximately 7 times slower than the ARM11
+    xtensa_cycles_to_run = cycles11_to_run / 7;
+    xtensa_cycles.remainder += cycles11_to_run % 7;
+    if (xtensa_cycles.remainder >= 7)
+    {
+        xtensa_cycles_to_run++;
+        xtensa_cycles.remainder -= 7;
+    }
 }
 
 void Scheduler::add_event(std::function<void(uint64_t)> func, int64_t cycles, uint64_t param)
@@ -64,6 +76,7 @@ void Scheduler::process_events()
 {
     cycles11.count += cycles11_to_run;
     cycles9.count += cycles9_to_run;
+    xtensa_cycles.count += xtensa_cycles_to_run;
     if (cycles11.count >= closest_event_time)
     {
         int64_t new_time = 0x7FFFFFFFULL << 32ULL;

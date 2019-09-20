@@ -26,15 +26,18 @@ class Scheduler
 
         CycleCount cycles11;
         CycleCount cycles9;
+        CycleCount xtensa_cycles;
 
         int cycles11_to_run;
         int cycles9_to_run;
+        int xtensa_cycles_to_run;
     public:
         Scheduler();
 
         void calculate_cycles_to_run();
         int get_cycles11_to_run();
         int get_cycles9_to_run();
+        int get_xtensa_cycles_to_run();
         void reset();
 
         void add_event(std::function<void(uint64_t)> func, int64_t cycles, uint64_t param = 0);
@@ -49,6 +52,11 @@ inline int Scheduler::get_cycles11_to_run()
 inline int Scheduler::get_cycles9_to_run()
 {
     return cycles9_to_run;
+}
+
+inline int Scheduler::get_xtensa_cycles_to_run()
+{
+    return xtensa_cycles_to_run;
 }
 
 #endif // SCHEDULER_HPP
