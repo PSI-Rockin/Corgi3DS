@@ -8,6 +8,7 @@ class DSP;
 enum DSP_INSTR
 {
     DSP_NOP,
+    DSP_SWAP,
 
     DSP_ALM_MEMIMM8,
     DSP_ALM_RN_STEP,
@@ -35,6 +36,13 @@ enum DSP_INSTR
     DSP_SET_STTMOD,
     DSP_RST_STTMOD,
 
+    DSP_APP_ZR,
+    DSP_APP_AC_ADD_PA_PA,
+
+    DSP_MUL_ARSTEP_IMM16,
+    DSP_MUL_Y0_ARSTEP,
+    DSP_MUL_Y0_REG,
+
     DSP_MPYI,
 
     DSP_MODA4,
@@ -42,6 +50,7 @@ enum DSP_INSTR
 
     DSP_BKREP_IMM8,
     DSP_BKREP_REG,
+    DSP_BKREP_R6,
     DSP_BKREPRST_MEMSP,
     DSP_BKREPSTO_MEMSP,
 
@@ -89,10 +98,12 @@ enum DSP_INSTR
     DSP_POPA,
 
     DSP_REP_IMM,
+    DSP_REP_REG,
 
     DSP_SHFC,
     DSP_SHFI,
 
+    DSP_TSTB_MEMIMM8,
     DSP_TSTB_RN_STEP,
     DSP_TSTB_REG,
 
@@ -101,9 +112,15 @@ enum DSP_INSTR
     DSP_DINT,
     DSP_EINT,
 
+    DSP_EXP_REG,
+
     DSP_MODR,
     DSP_MODR_I2,
     DSP_MODR_D2,
+    DSP_MODR_EEMOD,
+
+    DSP_MOV_AB_AB,
+    DSP_MOV_Y1,
 
     DSP_MOV_ABLH_MEMIMM8,
     DSP_MOV_AXL_MEMIMM16,
@@ -155,6 +172,8 @@ enum DSP_INSTR
 
     DSP_MOV_AX_PC,
 
+    DSP_MOV_AB_P0,
+
     DSP_MOV2_PX_ARSTEP,
     DSP_MOV2_ARSTEP_PX,
     DSP_MOVA_AB_ARSTEP,
@@ -168,7 +187,16 @@ enum DSP_INSTR
     DSP_MOVS_REG_AB,
     DSP_MOVSI,
 
+    DSP_CLRP,
+
     DSP_MAX_GT,
+    DSP_MIN_LT,
+
+    DSP_MMA_EMOD_EMOD_SYXX_XYXX_AC,
+    DSP_MMA_EMOD_EMOD_SYSX_SYSX_ZR,
+    DSP_MMA_EMOD_EMOD_SYSX_SYSX_AC_2,
+
+    DSP_MMA_MY_MY,
 
     DSP_UNDEFINED
 };
@@ -194,9 +222,12 @@ namespace DSP_Interpreter
 
     void interpret(DSP& dsp, uint16_t instr);
 
+    void swap(DSP& dsp, uint16_t instr);
+
     bool is_alb_modifying(uint8_t op);
     uint16_t do_alb_op(DSP& dsp, uint16_t a, uint16_t b, uint8_t op);
     void do_alm_op(DSP& dsp, DSP_REG acc, uint64_t value, uint8_t op);
+    void do_mul3_op(DSP& dsp, DSP_REG acc, uint8_t op);
 
     void alm_memimm8(DSP& dsp, uint16_t instr);
     void alm_rn_step(DSP& dsp, uint16_t instr);
@@ -224,6 +255,13 @@ namespace DSP_Interpreter
     void set_sttmod(DSP& dsp, uint16_t instr);
     void rst_sttmod(DSP& dsp, uint16_t instr);
 
+    void app_zr(DSP& dsp, uint16_t instr);
+    void app_ac_add_pa_pa(DSP& dsp, uint16_t instr);
+
+    void mul_arstep_imm16(DSP& dsp, uint16_t instr);
+    void mul_y0_arstep(DSP& dsp, uint16_t instr);
+    void mul_y0_reg(DSP& dsp, uint16_t instr);
+
     void mpyi(DSP& dsp, uint16_t instr);
 
     void moda4(DSP& dsp, uint16_t instr);
@@ -231,6 +269,7 @@ namespace DSP_Interpreter
 
     void bkrep_imm8(DSP& dsp, uint16_t instr);
     void bkrep_reg(DSP& dsp, uint16_t instr);
+    void bkrep_r6(DSP& dsp, uint16_t instr);
     void bkreprst_memsp(DSP& dsp, uint16_t instr);
     void bkrepsto_memsp(DSP& dsp, uint16_t instr);
 
@@ -278,10 +317,12 @@ namespace DSP_Interpreter
     void popa(DSP& dsp, uint16_t instr);
 
     void rep_imm(DSP& dsp, uint16_t instr);
+    void rep_reg(DSP& dsp, uint16_t instr);
 
     void shfc(DSP& dsp, uint16_t instr);
     void shfi(DSP& dsp, uint16_t instr);
 
+    void tstb_memimm8(DSP& dsp, uint16_t instr);
     void tstb_rn_step(DSP& dsp, uint16_t instr);
     void tstb_reg(DSP& dsp, uint16_t instr);
 
@@ -290,9 +331,15 @@ namespace DSP_Interpreter
     void dint(DSP& dsp, uint16_t instr);
     void eint(DSP& dsp, uint16_t instr);
 
+    void exp_reg(DSP& dsp, uint16_t instr);
+
     void modr(DSP& dsp, uint16_t instr);
     void modr_i2(DSP& dsp, uint16_t instr);
     void modr_d2(DSP& dsp, uint16_t instr);
+    void modr_eemod(DSP& dsp, uint16_t instr);
+
+    void mov_ab_ab(DSP& dsp, uint16_t instr);
+    void mov_y1(DSP& dsp, uint16_t instr);
 
     void mov_ablh_memimm8(DSP& dsp, uint16_t instr);
     void mov_axl_memimm16(DSP& dsp, uint16_t instr);
@@ -343,6 +390,8 @@ namespace DSP_Interpreter
 
     void mov_ax_pc(DSP& dsp, uint16_t instr);
 
+    void mov_ab_p0(DSP& dsp, uint16_t instr);
+
     void mov2_px_arstep(DSP& dsp, uint16_t instr);
     void mov2_arstep_px(DSP& dsp, uint16_t instr);
     void mova_ab_arstep(DSP& dsp, uint16_t instr);
@@ -356,7 +405,16 @@ namespace DSP_Interpreter
     void movs_reg_ab(DSP& dsp, uint16_t instr);
     void movsi(DSP& dsp, uint16_t instr);
 
+    void clrp(DSP& dsp, uint16_t instr);
+
     void max_gt(DSP& dsp, uint16_t instr);
+    void min_lt(DSP& dsp, uint16_t instr);
+
+    void mma_emod_emod_syxx_xyxx_ac(DSP& dsp, uint16_t instr);
+    void mma_emod_emod_sysx_sysx_zr(DSP& dsp, uint16_t instr);
+    void mma_emod_emod_sysx_sysx_ac_2(DSP& dsp, uint16_t instr);
+
+    void mma_my_my(DSP& dsp, uint16_t instr);
 };
 
 #endif // DSP_INTERPRETER_HPP

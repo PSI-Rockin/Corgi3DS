@@ -13,6 +13,7 @@ Emulator::Emulator() :
     aes(&dma9, &int9),
     cartridge(&dma9, &int9),
     dma9(this, &int9, &scheduler),
+    dsp(&scheduler),
     emmc(&int9, &dma9),
     gpu(this, &scheduler, &mpcore_pmr),
     i2c(&mpcore_pmr, &scheduler),

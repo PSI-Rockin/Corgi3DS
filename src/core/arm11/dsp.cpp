@@ -1,22 +1,32 @@
 #include <cstdio>
 #include <cstring>
 #include "../common/common.hpp"
+#include "../scheduler.hpp"
 #include "dsp.hpp"
 #include "dsp_interpreter.hpp"
 #include "signextend.hpp"
 
-DSP::DSP()
+DSP::DSP(Scheduler* scheduler) : scheduler(scheduler)
 {
     set_cpu_interrupt_sender(nullptr);
 }
 
 void DSP::reset(uint8_t* dsp_mem)
 {
+    this->dsp_mem = dsp_mem;
+    reset_core();
+
+    apbp.cpu_sema_recv = 0;
+    apbp.cpu_sema_mask = 0;
+
+    reset_signal = false;
+}
+
+void DSP::reset_core()
+{
     halted = false;
     running = false;
     pc = 0;
-
-    this->dsp_mem = dsp_mem;
 
     memset(timers, 0, sizeof(timers));
 
@@ -29,8 +39,6 @@ void DSP::reset(uint8_t* dsp_mem)
 
     memset(apbp.cmd_ready, 0, sizeof(apbp.cmd_ready));
     memset(apbp.reply_ready, 0, sizeof(apbp.reply_ready));
-    apbp.cpu_sema_recv = 0;
-    apbp.cpu_sema_mask = 0;
     apbp.dsp_sema_recv = 0;
     apbp.dsp_sema_mask = 0;
 
@@ -41,6 +49,16 @@ void DSP::reset(uint8_t* dsp_mem)
 
     dma.arm_addr = 0;
     dma.fifo_started = false;
+
+    memset(&icu, 0, sizeof(icu));
+
+    btdmp.cycles_per_transmit = 0;
+    btdmp.irq_on_empty_transmit = false;
+    btdmp.transmit_enabled = false;
+    btdmp.transmit_cycles_left = 0;
+
+    std::queue<uint16_t> empty;
+    empty.swap(btdmp.transmit_queue);
 
     memset(&stt2, 0, sizeof(stt2));
     rep_new_pc = 0;
@@ -68,6 +86,23 @@ void DSP::run(int cycles)
                         do_timer_overflow(i);
                 }
             }
+
+            //TODO: Move BTDMP processing to the scheduler
+            if (btdmp.transmit_enabled)
+            {
+                btdmp.transmit_cycles_left--;
+                if (!btdmp.transmit_cycles_left)
+                {
+                    btdmp.transmit_cycles_left = btdmp.cycles_per_transmit;
+                    if (btdmp.transmit_queue.size())
+                    {
+                        btdmp.transmit_queue.pop();
+                        if (!btdmp.transmit_queue.size() && btdmp.irq_on_empty_transmit)
+                            assert_dsp_irq(0xB);
+                    }
+                }
+            }
+
             if (halted)
             {
                 int_check();
@@ -269,8 +304,11 @@ void DSP::write16(uint32_t addr, uint16_t value)
             printf("[DSP_CPU] Write16 PCFG: $%04X\n", value);
         {
             bool old_start = dma.fifo_started;
-            if (value & 0x1)
+            if (!(value & 0x1) && reset_signal)
                 running = true;
+            reset_signal = value & 0x1;
+            if (reset_signal)
+                reset_core();
             dma.auto_inc = (value >> 1) & 0x1;
             dma.fifo_len = (value >> 2) & 0x3;
             dma.fifo_started = (value >> 4) & 0x1;
@@ -447,8 +485,15 @@ uint16_t DSP::read_data_word(uint16_t addr)
             }
             case 0x11E:
                 return miu.mmio_base;
+            case 0x182:
+                return 0;
             case 0x184:
                 return dma.chan_enable;
+            case 0x186:
+                return dma.arm_addr;
+            case 0x18C:
+                //End of transfer flags
+                return 0xFFFF;
             case 0x1BE:
                 return dma.channel;
             case 0x1DA:
@@ -476,9 +521,14 @@ uint16_t DSP::read_data_word(uint16_t addr)
             case 0x280:
                 return 0; //TODO: BTDMP IRQ for receive enable
             case 0x2A0:
-                return 0; //TODO: BTDMP IRQ for transmit enable
+                return btdmp.irq_on_empty_transmit << 8;
             case 0x2C2:
-                return 0; //TODO: BTDMP recv buffer full/empty flags?
+            {
+                uint16_t value = 0;
+                value |= (btdmp.transmit_queue.size() == 16) << 3;
+                value |= (btdmp.transmit_queue.size() == 0) << 4;
+                return value;
+            }
             case 0x2CA:
                 return 0; //TODO: some sort of BTDMP wait flag?
             default:
@@ -549,11 +599,6 @@ void DSP::write_data_word(uint16_t addr, uint16_t value)
                     icu.vector_addr[id] |= value;
                     break;
             }
-            return;
-        }
-        if (addr >= 0x280 && addr < 0x2D0)
-        {
-            printf("[DSP_BTDMP] Write $%04X: $%04X\n", addr, value);
             return;
         }
         switch (addr)
@@ -769,6 +814,37 @@ void DSP::write_data_word(uint16_t addr, uint16_t value)
             case 0x210:
                 icu.int_polarity = value;
                 break;
+            case 0x280:
+            case 0x282:
+            case 0x284:
+            case 0x286:
+            case 0x288:
+            case 0x28A:
+            case 0x28C:
+            case 0x29E:
+                break;
+            case 0x2A0:
+                btdmp.irq_on_empty_transmit = (value >> 8) & 0x1;
+                break;
+            case 0x2A2:
+                btdmp.cycles_per_transmit = value;
+                break;
+            case 0x2A4:
+            case 0x2A6:
+            case 0x2A8:
+            case 0x2AA:
+            case 0x2AC:
+                break;
+            case 0x2BE:
+                btdmp.transmit_enabled = value >> 15;
+                if (btdmp.transmit_enabled)
+                    btdmp.transmit_cycles_left = btdmp.cycles_per_transmit;
+                break;
+            case 0x2C6:
+                btdmp.transmit_queue.push(value);
+                break;
+            case 0x2CA:
+                break;
             default:
                 EmuException::die("[DSP] Unrecognized MMIO write $%04X: $%04X\n", addr, value);
         }
@@ -816,6 +892,9 @@ bool DSP::meets_condition(uint8_t cond)
         case 0x06:
             //le
             return stt0.fm || stt0.fz;
+        case 0x0C:
+            //nr
+            return !st0.fr;
         default:
             EmuException::die("[DSP] Unrecognized condition $%02X", cond);
             return false;
@@ -984,6 +1063,14 @@ uint16_t DSP::get_reg16(DSP_REG reg, bool mov_saturate)
             value |= stt0.fm << 10;
             value |= stt0.fz << 11;
             value |= ((a0 >> 32) & 0xF) << 12;
+            return value;
+        }
+        case DSP_REG_ST1:
+        {
+            uint16_t value = 0;
+            value |= st1.page;
+            value |= st1.PS << 10;
+            value |= ((a1 >> 32) & 0xF) << 12;
             return value;
         }
         case DSP_REG_STT0:
@@ -1187,13 +1274,15 @@ void DSP::set_reg16(DSP_REG reg, uint16_t value)
             stt0.fm = (value >> 10) & 0x1;
             stt0.fz = (value >> 11) & 0x1;
 
-            //TODO: handle writing to A0 extension bits?
+            a0 &= 0xFFFFFFFF;
+            a0 |= ((value >> 12) & 0xFULL) << 32ULL;
             break;
         case DSP_REG_ST1:
             st1.page = value & 0xFF;
             st1.PS = (value >> 10) & 0x3;
 
-            //TODO: handle writing to A1 extension bits?
+            a1 &= 0xFFFFFFFF;
+            a1 |= ((value >> 12) & 0xFULL) << 32ULL;
             break;
         case DSP_REG_ST2:
             printf("[DSP] Write16 ST2: $%04X\n", value);
@@ -1685,6 +1774,22 @@ uint16_t DSP::store_block_repeat(uint16_t addr)
     return addr;
 }
 
+uint16_t DSP::exp(uint64_t value)
+{
+    bool sign = (value >> 39) & 0x1;
+    uint16_t bit = 38, count = 0;
+    while (true)
+    {
+        if (((value >> bit) & 1) != sign)
+            break;
+        count++;
+        if (bit == 0)
+            break;
+        bit--;
+    }
+    return count - 8;
+}
+
 void DSP::shift_reg_40(uint64_t value, DSP_REG dest, uint16_t shift)
 {
     value = trunc_to_40(value);
@@ -1788,11 +1893,95 @@ void DSP::multiply(uint32_t unit, bool x_sign, bool y_sign)
         b = SignExtend<16>(b);
 
     p[unit] = a * b;
+    printf("MULTIPLY: $%04X * $%04X = $%08X\n", a, b, p[unit]);
 
     if (x_sign || y_sign)
         pe[unit] = p[unit] >> 31;
     else
         pe[unit] = 0;
+}
+
+void DSP::product_sum(int base, DSP_REG acc, bool sub_p0, bool p0_align, bool sub_p1, bool p1_align)
+{
+    uint64_t pa = get_product(0);
+    uint64_t pb = get_product(1);
+
+    if (p0_align)
+        pa = SignExtend<24>(pa >> 16);
+    if (p1_align)
+        pb = SignExtend<24>(pb >> 16);
+
+    uint64_t sum = 0;
+    switch (base)
+    {
+        case 0:
+            //Zero
+            sum = 0;
+            break;
+        case 1:
+            //Acc
+            sum = get_acc(acc);
+            break;
+        case 2:
+            //Sv
+            sum = SignExtend<32, uint64_t>((uint64_t)sv << 16);
+            break;
+        case 3:
+            //SvRnd
+            sum = SignExtend<32, uint64_t>((uint64_t)sv << 16) | 0x8000;
+            break;
+    }
+
+    uint64_t result = get_add_sub_result(sum, pa, sub_p0);
+
+    bool fc = stt0.fc;
+    bool fv = stt0.fv;
+
+    result = get_add_sub_result(result, pb, sub_p1);
+
+    //TODO: Is this correct?
+    if (sub_p0 == sub_p1)
+    {
+        stt0.fc |= fc;
+        stt0.fv |= fv;
+    }
+    else
+    {
+        stt0.fc ^= fc;
+        stt0.fv ^= fv;
+    }
+
+    saturate_acc_with_flag(acc, result);
+}
+
+uint8_t DSP::get_arprni(uint8_t value)
+{
+    return arp[value].rn[0];
+}
+
+uint8_t DSP::get_arprnj(uint8_t value)
+{
+    return arp[value].rn[1] + 4;
+}
+
+uint8_t DSP::get_arpstepi(uint8_t value)
+{
+    return arp[value].step[0];
+}
+
+uint8_t DSP::get_arpstepj(uint8_t value)
+{
+    return arp[value].step[1];
+}
+
+uint8_t DSP::get_arpoffseti(uint8_t value)
+{
+    return arp[value].offset[0];
+}
+
+uint8_t DSP::get_arpoffsetj(uint8_t value)
+{
+    return arp[value].offset[1];
 }
 
 uint8_t DSP::get_arrn_unit(uint8_t value)

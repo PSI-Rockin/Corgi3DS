@@ -2,6 +2,7 @@
 #define DSP_HPP
 #include <cstdint>
 #include <functional>
+#include <queue>
 #include "dsp_reg.hpp"
 
 struct DSP_ST0
@@ -169,9 +170,21 @@ struct DSP_ICU
     uint32_t vector_addr[16];
 };
 
+struct DSP_BTDMP
+{
+    bool irq_on_empty_transmit;
+    uint16_t cycles_per_transmit;
+    int transmit_cycles_left;
+    std::queue<uint16_t> transmit_queue;
+    bool transmit_enabled;
+};
+
+class Scheduler;
+
 class DSP
 {
     private:
+        Scheduler* scheduler;
         std::function<void()> send_arm_interrupt;
         bool halted;
         uint32_t pc;
@@ -209,6 +222,7 @@ class DSP
         DSP_AHBM ahbm;
         DSP_DMA dma;
         DSP_ICU icu;
+        DSP_BTDMP btdmp;
 
         DSP_ST0 st0, st0s;
         DSP_ST1 st1, st1s;
@@ -228,6 +242,7 @@ class DSP
 
         uint8_t* dsp_mem;
 
+        bool reset_signal;
         bool running;
 
         uint16_t get_ar(int index);
@@ -245,9 +260,10 @@ class DSP
         void do_timer_overflow(int index);
         void apbp_send_cmd(int index, uint16_t value);
     public:
-        DSP();
+        DSP(Scheduler* scheduler);
 
         void reset(uint8_t* dsp_mem);
+        void reset_core();
         void set_cpu_interrupt_sender(std::function<void()> func);
         void run(int cycles);
         void halt();
@@ -330,8 +346,17 @@ class DSP
         uint16_t restore_block_repeat(uint16_t addr);
         uint16_t store_block_repeat(uint16_t addr);
 
+        uint16_t exp(uint64_t value);
         void shift_reg_40(uint64_t value, DSP_REG dest, uint16_t shift);
         void multiply(uint32_t unit, bool x_sign, bool y_sign);
+        void product_sum(int base, DSP_REG acc, bool sub_p0, bool p0_align, bool sub_p1, bool p1_align);
+
+        uint8_t get_arprni(uint8_t value);
+        uint8_t get_arprnj(uint8_t value);
+        uint8_t get_arpstepi(uint8_t value);
+        uint8_t get_arpstepj(uint8_t value);
+        uint8_t get_arpoffseti(uint8_t value);
+        uint8_t get_arpoffsetj(uint8_t value);
 
         uint8_t get_arrn_unit(uint8_t value);
         uint8_t get_arstep(uint8_t value);

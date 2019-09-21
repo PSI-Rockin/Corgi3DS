@@ -16,6 +16,9 @@ DSP_INSTR decode(uint16_t instr)
     if (instr == 0)
         return DSP_NOP;
 
+    if ((instr & ~0x000F) == 0x4980)
+        return DSP_SWAP;
+
     if ((instr & ~0x1FFF) == 0xA000)
         return DSP_ALM_MEMIMM8;
 
@@ -85,6 +88,21 @@ DSP_INSTR decode(uint16_t instr)
     if ((instr & ~0x0007) == 0x4388)
         return DSP_RST_STTMOD;
 
+    if ((instr & ~0x000F) == 0x5DC0)
+        return DSP_APP_ZR;
+
+    if ((instr & ~0x000C) == 0x4593)
+        return DSP_APP_AC_ADD_PA_PA;
+
+    if ((instr & ~0x0F1F) == 0x8000)
+        return DSP_MUL_ARSTEP_IMM16;
+
+    if ((instr & ~0x0F1F) == 0x8020)
+        return DSP_MUL_Y0_ARSTEP;
+
+    if ((instr & ~0x0F1F) == 0x8040)
+        return DSP_MUL_Y0_REG;
+
     if ((instr & ~0x00FF) == 0x0800)
         return DSP_MPYI;
 
@@ -102,6 +120,9 @@ DSP_INSTR decode(uint16_t instr)
 
     if ((instr & ~0x007F) == 0x5D00)
         return DSP_BKREP_REG;
+
+    if ((instr & ~0x0003) == 0x8FDC)
+        return DSP_BKREP_R6;
 
     if (instr == 0x5F48)
         return DSP_BKREPRST_MEMSP;
@@ -217,11 +238,17 @@ DSP_INSTR decode(uint16_t instr)
     if ((instr & ~0x00FF) == 0x0C00)
         return DSP_REP_IMM;
 
+    if ((instr & ~0x001F) == 0x0D00)
+        return DSP_REP_REG;
+
     if ((instr & ~0x0C6F) == 0xD280)
         return DSP_SHFC;
 
     if ((instr & ~0x003F & ~0x0180 & ~0x0C00) == 0x9240)
         return DSP_SHFI;
+
+    if ((instr & ~0x0FFF) == 0xF000)
+        return DSP_TSTB_MEMIMM8;
 
     if ((instr & ~0x0F1F) == 0x9020)
         return DSP_TSTB_RN_STEP;
@@ -238,6 +265,9 @@ DSP_INSTR decode(uint16_t instr)
     if (instr == 0x4380)
         return DSP_EINT;
 
+    if ((instr & ~0x001F) == 0x9440)
+        return DSP_EXP_REG;
+
     if ((instr & ~0x001F) == 0x0080)
         return DSP_MODR;
 
@@ -246,6 +276,15 @@ DSP_INSTR decode(uint16_t instr)
 
     if ((instr & ~0x0007) == 0x5DA0)
         return DSP_MODR_D2;
+
+    if ((instr & ~0x0C63) == 0xD294)
+        return DSP_MODR_EEMOD;
+
+    if ((instr & ~0x0C60) == 0xD290)
+        return DSP_MOV_AB_AB;
+
+    if ((instr & ~0x0003) == 0xD384)
+        return DSP_MOV_Y1;
 
     if ((instr & ~0x0EFF) == 0x3000)
         return DSP_MOV_ABLH_MEMIMM8;
@@ -379,6 +418,9 @@ DSP_INSTR decode(uint16_t instr)
     if ((instr & ~0x0100) == 0x886B)
         return DSP_MOV_AX_PC;
 
+    if ((instr & ~0x0003) == 0x8FD4)
+        return DSP_MOV_AB_P0;
+
     if ((instr & ~0x030E) == 0x88D0)
         return DSP_MOV2_PX_ARSTEP;
 
@@ -411,6 +453,24 @@ DSP_INSTR decode(uint16_t instr)
 
     if ((instr & ~0x0118) == 0x8660)
         return DSP_MAX_GT;
+
+    if (instr == 0x5DFF)
+        return DSP_CLRP;
+
+    if ((instr & ~0x0118) == 0x8A60)
+        return DSP_MIN_LT;
+
+    if ((instr & ~0x01FF) == 0xCA00)
+        return DSP_MMA_EMOD_EMOD_SYXX_XYXX_AC;
+
+    if ((instr & ~0x0D07) == 0x82C8)
+        return DSP_MMA_EMOD_EMOD_SYSX_SYSX_ZR;
+
+    if ((instr & ~0x01FF) == 0xC800)
+        return DSP_MMA_EMOD_EMOD_SYSX_SYSX_AC_2;
+
+    if ((instr & ~0x011F) == 0x94E0)
+        return DSP_MMA_MY_MY;
 
     return DSP_UNDEFINED;
 }
@@ -665,6 +725,9 @@ void interpret(DSP &dsp, uint16_t instr)
     {
         case DSP_NOP:
             break;
+        case DSP_SWAP:
+            swap(dsp, instr);
+            break;
         case DSP_ALM_MEMIMM8:
             alm_memimm8(dsp, instr);
             break;
@@ -722,6 +785,21 @@ void interpret(DSP &dsp, uint16_t instr)
         case DSP_RST_STTMOD:
             rst_sttmod(dsp, instr);
             break;
+        case DSP_APP_ZR:
+            app_zr(dsp, instr);
+            break;
+        case DSP_APP_AC_ADD_PA_PA:
+            app_ac_add_pa_pa(dsp, instr);
+            break;
+        case DSP_MUL_ARSTEP_IMM16:
+            mul_arstep_imm16(dsp, instr);
+            break;
+        case DSP_MUL_Y0_ARSTEP:
+            mul_y0_arstep(dsp, instr);
+            break;
+        case DSP_MUL_Y0_REG:
+            mul_y0_reg(dsp, instr);
+            break;
         case DSP_MPYI:
             mpyi(dsp, instr);
             break;
@@ -736,6 +814,9 @@ void interpret(DSP &dsp, uint16_t instr)
             break;
         case DSP_BKREP_REG:
             bkrep_reg(dsp, instr);
+            break;
+        case DSP_BKREP_R6:
+            bkrep_r6(dsp, instr);
             break;
         case DSP_BKREPRST_MEMSP:
             bkreprst_memsp(dsp, instr);
@@ -851,11 +932,17 @@ void interpret(DSP &dsp, uint16_t instr)
         case DSP_REP_IMM:
             rep_imm(dsp, instr);
             break;
+        case DSP_REP_REG:
+            rep_reg(dsp, instr);
+            break;
         case DSP_SHFC:
             shfc(dsp, instr);
             break;
         case DSP_SHFI:
             shfi(dsp, instr);
+            break;
+        case DSP_TSTB_MEMIMM8:
+            tstb_memimm8(dsp, instr);
             break;
         case DSP_TSTB_RN_STEP:
             tstb_rn_step(dsp, instr);
@@ -872,6 +959,9 @@ void interpret(DSP &dsp, uint16_t instr)
         case DSP_EINT:
             eint(dsp, instr);
             break;
+        case DSP_EXP_REG:
+            exp_reg(dsp, instr);
+            break;
         case DSP_MODR:
             modr(dsp, instr);
             break;
@@ -880,6 +970,15 @@ void interpret(DSP &dsp, uint16_t instr)
             break;
         case DSP_MODR_D2:
             modr_d2(dsp, instr);
+            break;
+        case DSP_MODR_EEMOD:
+            modr_eemod(dsp, instr);
+            break;
+        case DSP_MOV_AB_AB:
+            mov_ab_ab(dsp, instr);
+            break;
+        case DSP_MOV_Y1:
+            mov_y1(dsp, instr);
             break;
         case DSP_MOV_ABLH_MEMIMM8:
             mov_ablh_memimm8(dsp, instr);
@@ -1007,6 +1106,9 @@ void interpret(DSP &dsp, uint16_t instr)
         case DSP_MOV_AX_PC:
             mov_ax_pc(dsp, instr);
             break;
+        case DSP_MOV_AB_P0:
+            mov_ab_p0(dsp, instr);
+            break;
         case DSP_MOV2_PX_ARSTEP:
             mov2_px_arstep(dsp, instr);
             break;
@@ -1037,8 +1139,26 @@ void interpret(DSP &dsp, uint16_t instr)
         case DSP_MOVSI:
             movsi(dsp, instr);
             break;
+        case DSP_CLRP:
+            clrp(dsp, instr);
+            break;
         case DSP_MAX_GT:
             max_gt(dsp, instr);
+            break;
+        case DSP_MIN_LT:
+            min_lt(dsp, instr);
+            break;
+        case DSP_MMA_EMOD_EMOD_SYXX_XYXX_AC:
+            mma_emod_emod_syxx_xyxx_ac(dsp, instr);
+            break;
+        case DSP_MMA_EMOD_EMOD_SYSX_SYSX_ZR:
+            mma_emod_emod_sysx_sysx_zr(dsp, instr);
+            break;
+        case DSP_MMA_EMOD_EMOD_SYSX_SYSX_AC_2:
+            mma_emod_emod_sysx_sysx_ac_2(dsp, instr);
+            break;
+        case DSP_MMA_MY_MY:
+            mma_my_my(dsp, instr);
             break;
         default:
             EmuException::die("[DSP_Interpreter] Unrecognized instr $%04X", instr);
@@ -1165,11 +1285,23 @@ void do_alm_op(DSP &dsp, DSP_REG acc, uint64_t value, uint8_t op)
             result = dsp.get_add_sub_result(acc_value, value, false);
             dsp.saturate_acc_with_flag(acc, result);
             break;
+        case 0xA:
+            //ADDL
+            result = dsp.get_add_sub_result(acc_value, value, false);
+            dsp.saturate_acc_with_flag(acc, result);
+            break;
         case 0xB:
             //SUBH
             value = SignExtend<32, uint64_t>(value << 16);
             result = dsp.get_add_sub_result(acc_value, value, true);
             dsp.saturate_acc_with_flag(acc, result);
+            break;
+        case 0xD:
+            //SQR
+            value &= 0xFFFF;
+            dsp.set_x(0, value);
+            dsp.set_y(0, value);
+            dsp.multiply(0, true, true);
             break;
         case 0xF:
             //CMPU
@@ -1179,6 +1311,41 @@ void do_alm_op(DSP &dsp, DSP_REG acc, uint64_t value, uint8_t op)
         default:
             EmuException::die("[DSP_Interpreter] Unrecognized alm op $%02X", op);
     }
+}
+
+void do_mul3_op(DSP &dsp, DSP_REG acc, uint8_t op)
+{
+    switch (op)
+    {
+        case 0x0:
+            //MPY
+            dsp.multiply(0, true, true);
+            break;
+        default:
+            EmuException::die("[DSP_Intepreter] Unrecognized mul3 op $%02X", op);
+    }
+}
+
+void swap(DSP &dsp, uint16_t instr)
+{
+    DSP_REG s0, d0, s1, d1;
+    int type = instr & 0xF;
+    switch (type)
+    {
+        case 0x0:
+            //A0B0
+            s0 = d1 = DSP_REG_A0;
+            s1 = d0 = DSP_REG_B0;
+            break;
+        default:
+            s0 = d0 = s1 = d1 = DSP_REG_UNK;
+            EmuException::die("[DSP_Interpreter] Unrecognized swap op $%02X", type);
+    }
+
+    uint64_t u = dsp.get_acc(s0);
+    uint64_t v = dsp.get_acc(s1);
+    dsp.saturate_acc_with_flag(d0, u);
+    dsp.saturate_acc_with_flag(d1, v);
 }
 
 void alm_memimm8(DSP &dsp, uint16_t instr)
@@ -1265,12 +1432,21 @@ void alu_imm8(DSP &dsp, uint16_t instr)
     uint8_t ax = (instr >> 8) & 0x1;
     uint8_t op = (instr >> 9) & 0x7;
 
-    if (op == 1)
-        EmuException::die("[DSP_Interpreter] Special case for ALU imm8 AND!");
-
     DSP_REG acc = get_ax_reg(ax);
 
+    uint64_t backup = 0;
+
+    //Special case for AND
+    if (op == 1)
+        backup = dsp.get_acc(acc) & 0xFF00;
+
     do_alm_op(dsp, acc, imm, op);
+
+    if (op == 1)
+    {
+        uint64_t and_new = dsp.get_acc(acc) & 0xFFFFFFFFFFFF00FFULL;
+        dsp.set_acc(acc, backup | and_new);
+    }
 }
 
 void alu_memr7imm7s(DSP &dsp, uint16_t instr)
@@ -1455,6 +1631,21 @@ void rst_sttmod(DSP &dsp, uint16_t instr)
     dsp.set_reg16(sttmod, result);
 }
 
+void app_zr(DSP &dsp, uint16_t instr)
+{
+    DSP_REG ab = get_ab_reg((instr >> 2) & 0x3);
+    bool sub = (instr >> 1) & 0x1;
+    bool p1_align = instr & 0x1;
+    dsp.product_sum(0, ab, false, false, sub, p1_align);
+}
+
+void app_ac_add_pa_pa(DSP &dsp, uint16_t instr)
+{
+    DSP_REG ab = get_ab_reg((instr >> 2) & 0x3);
+
+    dsp.product_sum(1, ab, false, true, false, true);
+}
+
 void mpyi(DSP &dsp, uint16_t instr)
 {
     uint16_t imm = instr & 0xFF;
@@ -1462,6 +1653,46 @@ void mpyi(DSP &dsp, uint16_t instr)
 
     dsp.set_x(0, imm);
     dsp.multiply(0, true, true);
+}
+
+void mul_arstep_imm16(DSP &dsp, uint16_t instr)
+{
+    uint8_t rn = instr & 0x7;
+    uint8_t arstep = (instr >> 3) & 0x3;
+    DSP_REG ax = get_ax_reg((instr >> 11) & 0x1);
+    uint8_t op = (instr >> 8) & 0x3;
+
+    uint16_t addr = dsp.rn_addr_and_modify(rn, arstep, false);
+
+    dsp.set_y(0, dsp.read_data_word(addr));
+    dsp.set_x(0, dsp.fetch_code_word());
+
+    do_mul3_op(dsp, ax, op);
+}
+
+void mul_y0_arstep(DSP &dsp, uint16_t instr)
+{
+    uint8_t rn = instr & 0x7;
+    uint8_t arstep = (instr >> 3) & 0x3;
+    DSP_REG ax = get_ax_reg((instr >> 11) & 0x1);
+    uint8_t op = (instr >> 8) & 0x3;
+
+    uint16_t addr = dsp.rn_addr_and_modify(rn, arstep, false);
+
+    dsp.set_x(0, dsp.read_data_word(addr));
+
+    do_mul3_op(dsp, ax, op);
+}
+
+void mul_y0_reg(DSP &dsp, uint16_t instr)
+{
+    DSP_REG reg = get_register(instr & 0x1F);
+    DSP_REG ax = get_ax_reg((instr >> 11) & 0x1);
+    uint8_t op = (instr >> 8) & 0x3;
+
+    dsp.set_x(0, dsp.get_reg16(reg, false));
+
+    do_mul3_op(dsp, ax, op);
 }
 
 void moda4(DSP &dsp, uint16_t instr)
@@ -1476,6 +1707,14 @@ void moda4(DSP &dsp, uint16_t instr)
     {
         switch (op)
         {
+            case 0x0:
+                //SHR
+                dsp.shift_reg_40(dsp.get_acc(acc), acc, 0xFFFF);
+                break;
+            case 0x2:
+                //SHL
+                dsp.shift_reg_40(dsp.get_acc(acc), acc, 1);
+                break;
             case 0x6:
                 //CLR
                 dsp.saturate_acc_with_flag(acc, 0);
@@ -1546,6 +1785,10 @@ void moda3(DSP &dsp, uint16_t instr)
     {
         switch (op)
         {
+            case 0x2:
+                //SHL
+                dsp.shift_reg_40(dsp.get_acc(acc), acc, 1);
+                break;
             case 0x6:
                 //CLR
                 dsp.saturate_acc_with_flag(acc, 0);
@@ -1574,6 +1817,17 @@ void bkrep_reg(DSP &dsp, uint16_t instr)
     DSP_REG reg = get_register(instr & 0x1F);
 
     uint16_t lc = dsp.get_reg16(reg, false);
+
+    dsp.block_repeat(lc, addr);
+}
+
+void bkrep_r6(DSP &dsp, uint16_t instr)
+{
+    uint32_t addr = dsp.fetch_code_word();
+    uint32_t addr_hi = instr & 0x3;
+    addr |= addr_hi << 16;
+
+    uint16_t lc = dsp.get_reg16(DSP_REG_R6, false);
 
     dsp.block_repeat(lc, addr);
 }
@@ -1897,6 +2151,12 @@ void rep_imm(DSP &dsp, uint16_t instr)
     dsp.repeat(value);
 }
 
+void rep_reg(DSP &dsp, uint16_t instr)
+{
+    DSP_REG reg = get_register(instr & 0x1F);
+    dsp.repeat(dsp.get_reg16(reg, false));
+}
+
 void shfc(DSP &dsp, uint16_t instr)
 {
     DSP_REG a = get_ab_reg((instr >> 10) & 0x3);
@@ -1921,6 +2181,16 @@ void shfi(DSP &dsp, uint16_t instr)
     DSP_REG dest = get_ab_reg(ab_b);
 
     dsp.shift_reg_40(value, dest, shift);
+}
+
+void tstb_memimm8(DSP &dsp, uint16_t instr)
+{
+    uint8_t memimm = instr & 0xFF;
+    uint8_t imm = (instr >> 8) & 0xF;
+
+    uint16_t value = dsp.read_from_page(memimm);
+
+    dsp.set_fz((value >> imm) & 0x1);
 }
 
 void tstb_rn_step(DSP &dsp, uint16_t instr)
@@ -1965,6 +2235,19 @@ void eint(DSP &dsp, uint16_t instr)
     dsp.set_master_int_enable(true);
 }
 
+void exp_reg(DSP &dsp, uint16_t instr)
+{
+    DSP_REG reg = get_register(instr & 0x1F);
+
+    uint64_t value = 0;
+    if (reg == DSP_REG_A0 || reg == DSP_REG_A1)
+        value = dsp.get_acc(reg);
+    else
+        value = SignExtend<32>((uint64_t)dsp.get_reg16(reg, false) << 16);
+
+    dsp.set_sv(dsp.exp(value));
+}
+
 void modr(DSP &dsp, uint16_t instr)
 {
     uint8_t rn = instr & 0x7;
@@ -1988,6 +2271,36 @@ void modr_d2(DSP &dsp, uint16_t instr)
 
     dsp.rn_and_modify(rn, 5, false);
     dsp.check_fr(rn);
+}
+
+void modr_eemod(DSP &dsp, uint16_t instr)
+{
+    //TODO: Checkme
+    uint8_t ri = dsp.get_arprni((instr >> 10) & 0x3);
+    uint8_t rj = dsp.get_arprnj((instr >> 10) & 0x3);
+
+    uint8_t stepi = dsp.get_arpstepi(instr & 0x3);
+    uint8_t stepj = dsp.get_arpstepj((instr >> 5) & 0x3);
+
+    dsp.rn_and_modify(ri, stepi, false);
+    dsp.rn_and_modify(rj, stepj, false);
+}
+
+void mov_ab_ab(DSP &dsp, uint16_t instr)
+{
+    DSP_REG a = get_ab_reg((instr >> 10) & 0x3);
+    DSP_REG b = get_ab_reg((instr >> 5) & 0x3);
+
+    uint64_t value = dsp.get_acc(a);
+    dsp.saturate_acc_with_flag(b, value);
+}
+
+void mov_y1(DSP &dsp, uint16_t instr)
+{
+    uint8_t abl = instr & 0x3;
+
+    uint16_t value = dsp.get_reg16(get_abl_reg(abl), true);
+    dsp.set_y(1, value);
 }
 
 void mov_ablh_memimm8(DSP &dsp, uint16_t instr)
@@ -2147,7 +2460,15 @@ void mov_reg_bx(DSP &dsp, uint16_t instr)
     DSP_REG bx = get_bx_reg((instr >> 5) & 0x1);
 
     if (reg == DSP_REG_P)
-        EmuException::die("[DSP_Interpreter] Register is P for mov_reg_bx!");
+    {
+        uint64_t value = dsp.get_product(0);
+        dsp.saturate_acc_with_flag(bx, value);
+    }
+    else if (reg == DSP_REG_A0 || reg == DSP_REG_A1)
+    {
+        uint64_t value = dsp.get_acc(reg);
+        dsp.saturate_acc_with_flag(bx, value);
+    }
     else
     {
         uint16_t value = dsp.get_reg16(reg, true);
@@ -2362,6 +2683,15 @@ void mov_ax_pc(DSP &dsp, uint16_t instr)
     dsp.set_pc(value & 0xFFFFFFFF);
 }
 
+void mov_ab_p0(DSP &dsp, uint16_t instr)
+{
+    DSP_REG ab = get_ab_reg(instr & 0x3);
+
+    uint32_t value = dsp.get_saturated_acc(ab) & 0xFFFFFFFF;
+
+    dsp.set_product(0, value);
+}
+
 void mov2_px_arstep(DSP &dsp, uint16_t instr)
 {
     uint32_t value = dsp.get_product_no_shift((instr >> 1) & 0x1);
@@ -2495,6 +2825,12 @@ void movsi(DSP &dsp, uint16_t instr)
     dsp.shift_reg_40(value, ab, imm);
 }
 
+void clrp(DSP &dsp, uint16_t instr)
+{
+    dsp.set_product(0, 0);
+    dsp.set_product(1, 0);
+}
+
 void max_gt(DSP &dsp, uint16_t instr)
 {
     DSP_REG ax = get_ax_reg((instr >> 8) & 0x1);
@@ -2514,6 +2850,152 @@ void max_gt(DSP &dsp, uint16_t instr)
     }
     else
         dsp.set_fm(false);
+}
+
+void min_lt(DSP &dsp, uint16_t instr)
+{
+    DSP_REG ax = get_ax_reg((instr >> 8) & 0x1);
+    DSP_REG counter = get_counter_acc(ax);
+
+    uint64_t u = dsp.get_acc(ax);
+    uint64_t v = dsp.get_acc(counter);
+    uint64_t d = v - u;
+
+    uint16_t r0 = dsp.rn_and_modify(0, (instr >> 3) & 0x3, false);
+
+    if (((d >> 63) & 0x1) == 1)
+    {
+        dsp.set_mixp(r0);
+        dsp.set_acc(ax, v);
+        dsp.set_fm(true);
+    }
+    else
+        dsp.set_fm(false);
+}
+
+void mma_emod_emod_syxx_xyxx_ac(DSP &dsp, uint16_t instr)
+{
+    DSP_REG ab = get_ab_reg((instr >> 6) & 0x3);
+
+    uint8_t ui = dsp.get_arprni((instr >> 5) & 0x1);
+    uint8_t uj = dsp.get_arprnj((instr >> 5) & 0x1);
+
+    uint8_t stepi = dsp.get_arpstepi((instr >> 3) & 0x1);
+    uint8_t stepj = dsp.get_arpstepj((instr >> 4) & 0x1);
+
+    uint8_t oi = dsp.get_arpoffseti((instr >> 3) & 0x1);
+    uint8_t oj = dsp.get_arpoffsetj((instr >> 4) & 0x1);
+
+    bool sub, p0_align, p1_align, x0_sign, x1_sign, y1_sign;
+
+    x1_sign = instr & 0x1;
+    y1_sign = !x1_sign;
+
+    sub = !((instr >> 2) & 0x1);
+
+    if ((instr >> 8) & 0x1)
+    {
+        x0_sign = true;
+        p0_align = false;
+        p1_align = (instr >> 1) & 0x1;
+    }
+    else
+    {
+        x0_sign = false;
+        p0_align = (instr >> 1) & 0x1;
+        p1_align = true;
+    }
+
+    dsp.product_sum(1, ab, sub, p0_align, sub, p1_align);
+
+    uint16_t x = dsp.rn_addr_and_modify(ui, stepi, false);
+    uint16_t y = dsp.rn_addr_and_modify(uj, stepj, false);
+
+    dsp.set_x(0, dsp.read_data_word(x));
+    dsp.set_y(0, dsp.read_data_word(y));
+    dsp.set_x(1, dsp.read_data_word(dsp.offset_addr(ui, x, oi, false)));
+    dsp.set_y(1, dsp.read_data_word(dsp.offset_addr(uj, y, oj, false)));
+
+    dsp.multiply(0, x0_sign, true);
+    dsp.multiply(1, x1_sign, y1_sign);
+}
+
+void mma_emod_emod_sysx_sysx_zr(DSP &dsp, uint16_t instr)
+{
+    DSP_REG ab = get_ab_reg((instr >> 10) & 0x3);
+
+    uint8_t ui = dsp.get_arprni((instr >> 2) & 0x1);
+    uint8_t uj = dsp.get_arprnj((instr >> 2) & 0x1);
+
+    uint8_t stepi = dsp.get_arpstepi(instr & 0x1);
+    uint8_t stepj = dsp.get_arpstepj((instr >> 1) & 0x1);
+
+    uint8_t oi = dsp.get_arpoffseti(instr & 0x1);
+    uint8_t oj = dsp.get_arpoffsetj((instr >> 1) & 0x1);
+
+    dsp.product_sum(0, ab, false, false, false, (instr >> 8) & 0x1);
+
+    uint16_t x = dsp.rn_addr_and_modify(ui, stepi, false);
+    uint16_t y = dsp.rn_addr_and_modify(uj, stepj, false);
+
+    dsp.set_x(0, dsp.read_data_word(x));
+    dsp.set_y(0, dsp.read_data_word(y));
+    dsp.set_x(1, dsp.read_data_word(dsp.offset_addr(ui, x, oi, false)));
+    dsp.set_y(1, dsp.read_data_word(dsp.offset_addr(uj, y, oj, false)));
+
+    dsp.multiply(0, true, true);
+    dsp.multiply(1, true, true);
+}
+
+void mma_emod_emod_sysx_sysx_ac_2(DSP &dsp, uint16_t instr)
+{
+    DSP_REG ab = get_ab_reg((instr >> 6) & 0x3);
+
+    uint8_t ui = dsp.get_arprni((instr >> 4) & 0x3);
+    uint8_t uj = dsp.get_arprnj((instr >> 4) & 0x3);
+
+    uint8_t stepi = dsp.get_arpstepi(instr & 0x3);
+    uint8_t stepj = dsp.get_arpstepj((instr >> 2) & 0x1);
+
+    uint8_t oi = dsp.get_arpoffseti(instr & 0x3);
+    uint8_t oj = dsp.get_arpoffsetj((instr >> 2) & 0x1);
+
+    bool sub = (instr >> 8) & 0x1;
+
+    dsp.product_sum(1, ab, sub, false, sub, false);
+
+    uint16_t x = dsp.rn_addr_and_modify(ui, stepi, false);
+    uint16_t y = dsp.rn_addr_and_modify(uj, stepj, false);
+
+    dsp.set_x(0, dsp.read_data_word(x));
+    dsp.set_y(0, dsp.read_data_word(y));
+    dsp.set_x(1, dsp.read_data_word(dsp.offset_addr(ui, x, oi, false)));
+    dsp.set_y(1, dsp.read_data_word(dsp.offset_addr(uj, y, oj, false)));
+
+    dsp.multiply(0, true, true);
+    dsp.multiply(1, true, true);
+}
+
+void mma_my_my(DSP &dsp, uint16_t instr)
+{
+    DSP_REG ax = get_ax_reg((instr >> 8) & 0x1);
+    uint8_t arrn = dsp.get_arrn_unit((instr >> 4) & 0x1);
+    uint8_t arstep = dsp.get_arstep((instr >> 3) & 0x1);
+    uint8_t aroffset = dsp.get_aroffset((instr >> 3) & 0x1);
+
+    bool x1_sign = !(instr & 0x1);
+    bool p1_align = (instr >> 1) & 0x1;
+    bool sub = !((instr >> 2) & 0x1);
+
+    dsp.product_sum(1, ax, sub, false, sub, p1_align);
+
+    uint16_t addr = dsp.rn_addr_and_modify(arrn, arstep, false);
+
+    dsp.set_x(0, dsp.read_data_word(addr));
+    dsp.set_x(1, dsp.offset_addr(arrn, addr, aroffset, false));
+
+    dsp.multiply(0, true, true);
+    dsp.multiply(1, x1_sign, true);
 }
 
 };
