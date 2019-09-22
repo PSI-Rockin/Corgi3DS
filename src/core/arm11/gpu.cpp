@@ -149,9 +149,9 @@ void GPU::render_fb_pixel(uint8_t *screen, int fb_index, int x, int y)
         case 2:
         {
             uint16_t cin = e->arm11_read16(0, start + (index * 2));
-            uint32_t pr = ((cin >> 11) & 0x1F) << 3; //byte-aligned pixel red
-            uint32_t pb = ((cin >>  0) & 0x1F) << 3; //byte-aligned pixel blue
-            uint32_t pg = ((cin >>  5) & 0x3F) << 2; //byte-aligned pixel green
+            uint32_t pr = Convert5To8((cin >> 11) & 0x1F); //byte-aligned pixel red
+            uint32_t pb = Convert5To8((cin >>  0) & 0x1F); //byte-aligned pixel blue
+            uint32_t pg = Convert6To8((cin >>  5) & 0x3F); //byte-aligned pixel green
 
             color |= (pb << 16) | (pg << 8) | pr;
         }
@@ -273,9 +273,9 @@ void GPU::do_transfer_engine_dma(uint64_t param)
                     case 2:
                     {
                         color = e->arm11_read16(0, input_addr);
-                        uint32_t pr = ((color >> 11) & 0x1F) << 3; //byte-aligned pixel red
-                        uint32_t pb = ((color >>  0) & 0x1F) << 3; //byte-aligned pixel blue
-                        uint32_t pg = ((color >>  5) & 0x3F) << 2; //byte-aligned pixel green
+                        uint32_t pr = Convert5To8((color >> 11) & 0x1F); //byte-aligned pixel red
+                        uint32_t pb = Convert5To8((color >>  0) & 0x1F); //byte-aligned pixel blue
+                        uint32_t pg = Convert6To8((color >>  5) & 0x3F); //byte-aligned pixel green
 
                         color = (pb << 16) | (pg << 8) | pr;
                         break;
@@ -342,9 +342,9 @@ void GPU::do_transfer_engine_dma(uint64_t param)
                         break;
                     case 2:
                         color = 0;
-                        color |= b >> 3;
-                        color |= (g >> 2) << 5;
-                        color |= (r >> 3) << 11;
+                        color |= Convert8To5(b);
+                        color |= Convert8To6(g) << 5;
+                        color |= Convert8To5(r) << 11;
                         e->arm11_write16(0, output_addr, color);
                         break;
                     case 3:
@@ -515,9 +515,9 @@ void GPU::write_cmd_register(int reg, uint32_t param, uint8_t mask)
                 ctx.texcomb_rgb_operand[index][1] = (param >> 4) & 0xF;
                 ctx.texcomb_rgb_operand[index][2] = (param >> 8) & 0xF;
 
-                ctx.texcomb_alpha_operand[index][0] = (param >> 16) & 0xF;
-                ctx.texcomb_alpha_operand[index][1] = (param >> 20) & 0xF;
-                ctx.texcomb_alpha_operand[index][2] = (param >> 24) & 0xF;
+                ctx.texcomb_alpha_operand[index][0] = (param >> 12) & 0xF;
+                ctx.texcomb_alpha_operand[index][1] = (param >> 16) & 0xF;
+                ctx.texcomb_alpha_operand[index][2] = (param >> 20) & 0xF;
                 break;
             case 2:
                 ctx.texcomb_rgb_op[index] = param & 0xF;
@@ -2070,6 +2070,7 @@ void GPU::rasterize_half_tri(float24 x0, float24 x1, int y0, int y1, Vertex &x_s
 
             uint32_t final_color = 0;
             final_color = source_color.r | (source_color.g << 8) | (source_color.b << 16) | (source_color.a << 24);
+
             //printf("Color: $%08X (%d %d)\n", final_color, x >> 4, y >> 4);
 
             e->arm11_write32(0, frame_addr, bswp32(final_color));
@@ -2168,6 +2169,14 @@ void GPU::tex_lookup(int index, RGBA_Color &tex_color, Vertex &vtx)
             tex_color.b = (texel >> 16) & 0xFF;
             tex_color.a = texel >> 24;
             break;
+        case 0x1:
+            //RGB888
+            addr = get_swizzled_tile_addr(addr, width, u, v, 3);
+            tex_color.r = e->arm11_read8(0, addr + 2);
+            tex_color.g = e->arm11_read8(0, addr + 1);
+            tex_color.b = e->arm11_read8(0, addr);
+            tex_color.a = 0xFF;
+            break;
         case 0x2:
             //RGB5A1
             addr = get_swizzled_tile_addr(addr, width, u, v, 2);
@@ -2185,7 +2194,7 @@ void GPU::tex_lookup(int index, RGBA_Color &tex_color, Vertex &vtx)
             texel = e->arm11_read16(0, addr);
 
             tex_color.r = Convert5To8((texel >> 11) & 0x1F);
-            tex_color.g = Convert5To8((texel >> 5) & 0x3F);
+            tex_color.g = Convert6To8((texel >> 5) & 0x3F);
             tex_color.b = Convert5To8(texel & 0x1F);
             tex_color.a = 0xFF;
             break;
@@ -2435,6 +2444,7 @@ void GPU::combine_textures(RGBA_Color &source, Vertex& vtx)
             ctx.texcomb_rgb_op[i] == 0 && ctx.texcomb_alpha_op[i] == 0)
             continue;
         RGBA_Color sources[3], operands[3];
+        int32_t source_a;
 
         for (int j = 0; j < 3; j++)
         {
@@ -2471,6 +2481,8 @@ void GPU::combine_textures(RGBA_Color &source, Vertex& vtx)
                     EmuException::die("[GPU] Unrecognized texcomb RGB source $%02X",
                                       ctx.texcomb_rgb_source[i][j]);
             }
+
+            source_a = sources[j].a;
 
             if (ctx.texcomb_alpha_source[i][j] != ctx.texcomb_rgb_source[i][j])
             {
@@ -2520,14 +2532,14 @@ void GPU::combine_textures(RGBA_Color &source, Vertex& vtx)
                     operands[j].b = 255 - sources[j].b;
                     break;
                 case 0x2:
-                    operands[j].r = sources[j].a;
-                    operands[j].g = sources[j].a;
-                    operands[j].b = sources[j].a;
+                    operands[j].r = source_a;
+                    operands[j].g = source_a;
+                    operands[j].b = source_a;
                     break;
                 case 0x3:
-                    operands[j].r = 255 - sources[j].a;
-                    operands[j].g = 255 - sources[j].a;
-                    operands[j].b = 255 - sources[j].a;
+                    operands[j].r = 255 - source_a;
+                    operands[j].g = 255 - source_a;
+                    operands[j].b = 255 - source_a;
                     break;
                 case 0x4:
                     operands[j].r = sources[j].r;
@@ -2595,10 +2607,6 @@ void GPU::combine_textures(RGBA_Color &source, Vertex& vtx)
                                       ctx.texcomb_alpha_operand[i][j]);
             }
         }
-
-        uint32_t array[3];
-        for (int i = 0; i < 3; i++)
-            array[i] = sources[i].r | (sources[i].g << 8) | (sources[i].b << 16) | (sources[i].a << 24);
 
         switch (ctx.texcomb_rgb_op[i])
         {
@@ -2672,8 +2680,6 @@ void GPU::combine_textures(RGBA_Color &source, Vertex& vtx)
             default:
                 EmuException::die("[GPU] Unrecognized texcomb alpha op $%02X", ctx.texcomb_alpha_op[i]);
         }
-
-        //printf("New: $%08X\n", prev.r | (prev.g << 8) | (prev.b << 16) | (prev.a << 24));
 
         comb_buffer = ctx.texcomb_buffer;
 
