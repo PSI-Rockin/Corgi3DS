@@ -68,15 +68,18 @@ uint32_t MPCore_PMR::find_highest_priority_pending(int core)
 
         if (private_int_pending[core][index] & (1 << bit))
         {
-            uint8_t priority = get_int_priority(core, i);
-            if (priority <= last_priority)
+            if (global_int_mask[index] & (1 << bit))
             {
-                pending = i;
-                last_priority = priority;
+                uint8_t priority = get_int_priority(core, i);
+                if (priority <= last_priority)
+                {
+                    pending = i;
+                    last_priority = priority;
 
-                //Get ID of the core that requested an SWI
-                if (i < 16)
-                    pending |= private_int_requestor[core][i] << 10;
+                    //Get ID of the core that requested an SWI
+                    if (i < 16)
+                        pending |= private_int_requestor[core][i] << 10;
+                }
             }
         }
     }
@@ -95,51 +98,45 @@ void MPCore_PMR::check_if_can_assert_irq(int core)
     if (int_id == SPURIOUS_INT)
         return;
 
-    int index = int_id / 32;
-    int bit = int_id & 0x1F;
-
-    if (global_int_mask[index] & (1 << bit))
+    uint8_t priority = get_int_priority(core, int_id);
+    if (priority < local_irq_ctrl[core].priority_mask)
     {
-        uint8_t priority = get_int_priority(core, int_id);
-        if (priority < local_irq_ctrl[core].priority_mask)
+        //If there is an active IRQ for this core, we must check if we can preempt it
+        uint32_t cur_active_irq = local_irq_ctrl[core].cur_active_irq & 0x3FF;
+        if (cur_active_irq != SPURIOUS_INT)
         {
-            //If there is an active IRQ for this core, we must check if we can preempt it
-            uint32_t cur_active_irq = local_irq_ctrl[core].cur_active_irq & 0x3FF;
-            if (cur_active_irq != SPURIOUS_INT)
+            uint8_t active_priority = get_int_priority(core, cur_active_irq);
+            switch (local_irq_ctrl[core].preemption_mask)
             {
-                uint8_t active_priority = get_int_priority(core, cur_active_irq);
-                switch (local_irq_ctrl[core].preemption_mask)
-                {
-                    case 0x4: //Bits 3-1 only.
-                        priority &= ~0x1;
-                        active_priority &= ~0x1;
-                        break;
-                    case 0x5: //Bits 3-2 only.
-                        priority &= ~0x3;
-                        active_priority &= ~0x3;
-                        break;
-                    case 0x6: //Bit 3 only.
-                        priority &= ~0x7;
-                        active_priority &= ~0x7;
-                        break;
-                    case 0x7: //No preemption allowed.
-                        return;
-                    default: //All bits used
-                        break;
-                }
-
-                //Preemption check
-                if (priority < active_priority)
-                    EmuException::die("[PMR%d] PREEMPTION!", core);
-                else
+                case 0x4: //Bits 3-1 only.
+                    priority &= ~0x1;
+                    active_priority &= ~0x1;
+                    break;
+                case 0x5: //Bits 3-2 only.
+                    priority &= ~0x3;
+                    active_priority &= ~0x3;
+                    break;
+                case 0x6: //Bit 3 only.
+                    priority &= ~0x7;
+                    active_priority &= ~0x7;
+                    break;
+                case 0x7: //No preemption allowed.
                     return;
+                default: //All bits used
+                    break;
             }
 
-            //Interrupt has occurred. Send signal to the CPU and set the IRQ cause.
-            local_irq_ctrl[core].irq_cause = local_irq_ctrl[core].highest_priority_pending;
-
-            set_int_signal(core, true);
+            //Preemption check
+            if (priority < active_priority)
+                EmuException::die("[PMR%d] PREEMPTION!", core);
+            else
+                return;
         }
+
+        //Interrupt has occurred. Send signal to the CPU and set the IRQ cause.
+        local_irq_ctrl[core].irq_cause = local_irq_ctrl[core].highest_priority_pending;
+
+        set_int_signal(core, true);
     }
 }
 

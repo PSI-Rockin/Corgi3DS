@@ -390,6 +390,18 @@ uint32_t DSP::convert_addr(uint16_t addr)
     return real_addr << 1;
 }
 
+unsigned int DSP::std20_log2p1(unsigned int value)
+{
+    if (!value)
+        return 0;
+
+    int bits = 31;
+    while (!(value >> bits))
+        bits--;
+
+    return bits + 1;
+}
+
 uint16_t DSP::fetch_code_word()
 {
     uint16_t word = *(uint16_t*)&dsp_mem[pc << 1];
@@ -404,7 +416,7 @@ uint16_t DSP::read_program_word(uint32_t addr)
 
 uint16_t DSP::read_data_word(uint16_t addr)
 {
-    printf("[DSP] Read data word $%04X\n", addr);
+    //printf("[DSP] Read data word $%04X\n", addr);
     if (addr >= miu.mmio_base && addr < miu.mmio_base + 0x800)
     {
         //Read from MMIO
@@ -552,9 +564,14 @@ uint16_t DSP::read_data_r7s(int16_t imm)
     return read_data_word(r[7] + imm);
 }
 
+uint16_t DSP::read_data_r16()
+{
+    return read_data_word(r[7] + fetch_code_word());
+}
+
 void DSP::write_data_word(uint16_t addr, uint16_t value)
 {
-    printf("[DSP] Write data word $%04X: $%04X\n", addr, value);
+    //printf("[DSP] Write data word $%04X: $%04X\n", addr, value);
     if (addr >= miu.mmio_base && addr < miu.mmio_base + 0x800)
     {
         addr &= 0x7FF;
@@ -1893,7 +1910,7 @@ void DSP::multiply(uint32_t unit, bool x_sign, bool y_sign)
         b = SignExtend<16>(b);
 
     p[unit] = a * b;
-    printf("MULTIPLY: $%04X * $%04X = $%08X\n", a, b, p[unit]);
+    //printf("MULTIPLY: $%04X * $%04X = $%08X\n", a, b, p[unit]);
 
     if (x_sign || y_sign)
         pe[unit] = p[unit] >> 31;
@@ -2124,7 +2141,77 @@ uint16_t DSP::step_addr(uint8_t rn, uint16_t value, uint8_t step, bool dmod)
 
     if (!dmod && !mod2.br[rn] && mod2.m[rn])
     {
-        EmuException::die("[DSP] Modulo enabled for step_addr");
+        uint16_t mod = (rn < 4) ? modi : modj;
+
+        if (!mod || (mod == 1 && step2_mode2))
+            return value;
+
+        int iteration = 1;
+
+        if (step2_mode1)
+        {
+            iteration = 2;
+            delta = SignExtend<15, uint16_t>(delta >> 1);
+        }
+
+        for (int i = 0; i < iteration; i++)
+        {
+            if (mod1.cmd || step2_mode2)
+            {
+                bool neg = false;
+                uint16_t m = mod;
+                if (delta >> 15)
+                {
+                    neg = true;
+                    m |= ~delta;
+                }
+                else
+                    m |= delta;
+
+                uint16_t mask = (1 << std20_log2p1(m)) - 1;
+                uint16_t next;
+                if (!neg)
+                {
+                    if ((value & mask) == mod && (!step2_mode2 || mod != mask))
+                        next = 0;
+                    else
+                        next = (value + delta) & mask;
+                }
+                else
+                {
+                    if ((value & mask) == 0 && (!step2_mode2 || mod != mask))
+                        next = 0;
+                    else
+                        next = (value + delta) & mask;
+                }
+
+                value &= ~mask;
+                value |= next;
+            }
+            else
+            {
+                uint16_t mask = (1 << std20_log2p1(mod)) - 1;
+                uint16_t next;
+
+                if (delta < 0x8000)
+                {
+                    next = (value + delta) & mask;
+                    if (next == ((mod + 1) & mask))
+                        next = 0;
+                }
+                else
+                {
+                    next = value & mask;
+                    if (next == 0)
+                        next = mod + 1;
+                    next += delta;
+                    next &= mask;
+                }
+
+                value &= ~mask;
+                value |= next;
+            }
+        }
     }
     else
         value += delta;

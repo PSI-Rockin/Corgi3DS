@@ -34,6 +34,12 @@ DSP_INSTR decode(uint16_t instr)
             return DSP_ALU_MEMIMM16;
     }
 
+    if ((instr & ~0x0107) == 0xD4D8)
+    {
+        if (no_match(instr, 0, 3, 4) && no_match(instr, 0, 3, 5))
+            return DSP_ALU_MEMR7IMM16;
+    }
+
     if ((instr & ~0x0F00) == 0x80C0)
     {
         if (no_match(instr, 9, 3, 4) && no_match(instr, 9, 3, 5))
@@ -90,6 +96,9 @@ DSP_INSTR decode(uint16_t instr)
 
     if ((instr & ~0x000F) == 0x5DC0)
         return DSP_APP_ZR;
+
+    if ((instr & ~0x000C) == 0x4592)
+        return DSP_APP_AC_ADD_PP_PA;
 
     if ((instr & ~0x000C) == 0x4593)
         return DSP_APP_AC_ADD_PA_PA;
@@ -333,6 +342,9 @@ DSP_INSTR decode(uint16_t instr)
 
     if ((instr & ~0x017F) == 0xD880)
         return DSP_MOV_MEMR7IMM7S_AX;
+
+    if ((instr & ~0x0100) == 0xD498)
+        return DSP_MOV_MEMR7IMM16_AX;
 
     if ((instr & ~0x003F) == 0x5EC0)
         return DSP_MOV_REG_BX;
@@ -740,6 +752,9 @@ void interpret(DSP &dsp, uint16_t instr)
         case DSP_ALU_MEMIMM16:
             alu_memimm16(dsp, instr);
             break;
+        case DSP_ALU_MEMR7IMM16:
+            alu_memr7imm16(dsp, instr);
+            break;
         case DSP_ALU_IMM16:
             alu_imm16(dsp, instr);
             break;
@@ -787,6 +802,9 @@ void interpret(DSP &dsp, uint16_t instr)
             break;
         case DSP_APP_ZR:
             app_zr(dsp, instr);
+            break;
+        case DSP_APP_AC_ADD_PP_PA:
+            app_ac_add_pp_pa(dsp, instr);
             break;
         case DSP_APP_AC_ADD_PA_PA:
             app_ac_add_pa_pa(dsp, instr);
@@ -1024,6 +1042,9 @@ void interpret(DSP &dsp, uint16_t instr)
             break;
         case DSP_MOV_RN_STEP_REG:
             mov_rn_step_reg(dsp, instr);
+            break;
+        case DSP_MOV_MEMR7IMM16_AX:
+            mov_memr7imm16_ax(dsp, instr);
             break;
         case DSP_MOV_MEMR7IMM7S_AX:
             mov_memr7imm7s_ax(dsp, instr);
@@ -1415,6 +1436,18 @@ void alu_memimm16(DSP &dsp, uint16_t instr)
     do_alm_op(dsp, acc, dsp.read_data_word(addr), op);
 }
 
+void alu_memr7imm16(DSP &dsp, uint16_t instr)
+{
+    uint16_t imm = dsp.read_data_r16();
+
+    uint8_t ax = (instr >> 8) & 0x1;
+    uint8_t op = instr & 0x7;
+
+    DSP_REG acc = get_ax_reg(ax);
+
+    do_alm_op(dsp, acc, imm, op);
+}
+
 void alu_imm16(DSP &dsp, uint16_t instr)
 {
     uint16_t imm = dsp.fetch_code_word();
@@ -1637,6 +1670,13 @@ void app_zr(DSP &dsp, uint16_t instr)
     bool sub = (instr >> 1) & 0x1;
     bool p1_align = instr & 0x1;
     dsp.product_sum(0, ab, false, false, sub, p1_align);
+}
+
+void app_ac_add_pp_pa(DSP &dsp, uint16_t instr)
+{
+    DSP_REG ab = get_ab_reg((instr >> 2) & 0x3);
+
+    dsp.product_sum(1, ab, false, false, false, true);
 }
 
 void app_ac_add_pa_pa(DSP &dsp, uint16_t instr)
@@ -2441,6 +2481,15 @@ void mov_rn_step_reg(DSP &dsp, uint16_t instr)
     DSP_REG reg = get_register((instr >> 5) & 0x1F);
 
     dsp.set_reg16(reg, dsp.read_data_word(addr));
+}
+
+void mov_memr7imm16_ax(DSP &dsp, uint16_t instr)
+{
+    DSP_REG ax = get_ax_reg((instr >> 8) & 0x1);
+
+    uint16_t value = dsp.read_data_r16();
+
+    dsp.set_reg16(ax, value);
 }
 
 void mov_memr7imm7s_ax(DSP &dsp, uint16_t instr)

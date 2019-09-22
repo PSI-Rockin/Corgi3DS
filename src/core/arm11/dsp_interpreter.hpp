@@ -15,6 +15,7 @@ enum DSP_INSTR
     DSP_ALM_REG,
 
     DSP_ALU_MEMIMM16,
+    DSP_ALU_MEMR7IMM16,
     DSP_ALU_IMM16,
     DSP_ALU_IMM8,
     DSP_ALU_MEMR7IMM7S,
@@ -37,6 +38,7 @@ enum DSP_INSTR
     DSP_RST_STTMOD,
 
     DSP_APP_ZR,
+    DSP_APP_AC_ADD_PP_PA,
     DSP_APP_AC_ADD_PA_PA,
 
     DSP_MUL_ARSTEP_IMM16,
@@ -139,6 +141,8 @@ enum DSP_INSTR
     DSP_MOV_IMM8_AXL,
     DSP_MOV_RN_STEP_BX,
     DSP_MOV_RN_STEP_REG,
+
+    DSP_MOV_MEMR7IMM16_AX,
     DSP_MOV_MEMR7IMM7S_AX,
     DSP_MOV_REG_BX,
     DSP_MOV_MIXP_REG,
@@ -234,6 +238,7 @@ namespace DSP_Interpreter
     void alm_reg(DSP& dsp, uint16_t instr);
 
     void alu_memimm16(DSP& dsp, uint16_t instr);
+    void alu_memr7imm16(DSP& dsp, uint16_t instr);
     void alu_imm16(DSP& dsp, uint16_t instr);
     void alu_imm8(DSP& dsp, uint16_t instr);
     void alu_memr7imm7s(DSP& dsp, uint16_t instr);
@@ -256,6 +261,7 @@ namespace DSP_Interpreter
     void rst_sttmod(DSP& dsp, uint16_t instr);
 
     void app_zr(DSP& dsp, uint16_t instr);
+    void app_ac_add_pp_pa(DSP& dsp, uint16_t instr);
     void app_ac_add_pa_pa(DSP& dsp, uint16_t instr);
 
     void mul_arstep_imm16(DSP& dsp, uint16_t instr);
@@ -358,6 +364,8 @@ namespace DSP_Interpreter
     void mov_imm8_axl(DSP& dsp, uint16_t instr);
     void mov_rn_step_bx(DSP& dsp, uint16_t instr);
     void mov_rn_step_reg(DSP& dsp, uint16_t instr);
+
+    void mov_memr7imm16_ax(DSP& dsp, uint16_t instr);
     void mov_memr7imm7s_ax(DSP& dsp, uint16_t instr);
     void mov_reg_bx(DSP& dsp, uint16_t instr);
     void mov_mixp_reg(DSP& dsp, uint16_t instr);

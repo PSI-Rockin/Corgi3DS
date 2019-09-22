@@ -274,12 +274,15 @@ class DSP
 
         void print_state();
 
+        unsigned int std20_log2p1(unsigned int value);
+
         uint16_t fetch_code_word();
 
         uint16_t read_program_word(uint32_t addr);
         uint16_t read_data_word(uint16_t addr);
         uint16_t read_from_page(uint8_t imm);
         uint16_t read_data_r7s(int16_t imm);
+        uint16_t read_data_r16();
         void write_data_word(uint16_t addr, uint16_t value);
         void write_to_page(uint8_t imm, uint16_t value);
         void write_data_r7s(int16_t imm, uint16_t value);

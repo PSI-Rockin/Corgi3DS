@@ -259,6 +259,17 @@ void GPU::do_transfer_engine_dma(uint64_t param)
                     case 0:
                         color = bswp32(e->arm11_read32(0, input_addr));
                         break;
+                    case 1:
+                    {
+                        color = e->arm11_read32(0, input_addr);
+
+                        uint8_t pr = (color >> 16) & 0xFF;
+                        uint8_t pg = (color >> 8) & 0xFF;
+                        uint8_t pb = color & 0xFF;
+
+                        color = (pb << 16) | (pg << 8) | pr;
+                    }
+                        break;
                     case 2:
                     {
                         color = e->arm11_read16(0, input_addr);
@@ -430,6 +441,16 @@ void GPU::do_memfill(int index)
     {
         switch (memfill[index].fill_width)
         {
+            case 0:
+                write_vram<uint16_t>(i, memfill[index].value & 0xFFFF);
+                i++;
+                break;
+            case 1:
+                write_vram<uint8_t>(i, memfill[index].value & 0xFF);
+                write_vram<uint8_t>(i + 1, (memfill[index].value >> 8) & 0xFF);
+                write_vram<uint8_t>(i + 2, (memfill[index].value >> 16) & 0xFF);
+                i += 2;
+                break;
             case 2:
                 write_vram<uint32_t>(i, memfill[index].value);
                 i += 3;
