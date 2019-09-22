@@ -137,6 +137,8 @@ void vfp_load_store(ARM_CPU& cpu, VFP &vfp, uint32_t instr)
         case 0x1A:
         case 0x0B:
         case 0x1B:
+        case 0x0D:
+        case 0x1D:
             vfp_load_block(cpu, vfp, instr);
             break;
         case 0x02:
@@ -1022,17 +1024,18 @@ void vfp_fuito(ARM_CPU &cpu, VFP &vfp, uint32_t instr)
     bool source_low_bit = (instr >> 5) & 0x1;
     bool is_double = (instr >> 8) & 0x1;
 
+    source <<= 1;
+    source |= source_low_bit;
+
     if (is_double)
     {
-        double source_reg = (double)vfp.get_reg64(source);
+        double source_reg = (double)vfp.get_reg32(source);
         vfp.set_double(dest, source_reg);
     }
     else
     {
         dest <<= 1;
         dest |= dest_low_bit;
-        source <<= 1;
-        source |= source_low_bit;
 
         float source_reg = (float)vfp.get_reg32(source);
         vfp.set_float(dest, source_reg);
@@ -1047,17 +1050,18 @@ void vfp_fsito(ARM_CPU &cpu, VFP &vfp, uint32_t instr)
     bool source_low_bit = (instr >> 5) & 0x1;
     bool is_double = (instr >> 8) & 0x1;
 
+    source <<= 1;
+    source |= source_low_bit;
+
     if (is_double)
     {
-        double source_reg = (double)(int64_t)vfp.get_reg64(source);
+        double source_reg = (double)(int32_t)vfp.get_reg32(source);
         vfp.set_double(dest, source_reg);
     }
     else
     {
         dest <<= 1;
         dest |= dest_low_bit;
-        source <<= 1;
-        source |= source_low_bit;
 
         float source_reg = (float)(int32_t)vfp.get_reg32(source);
         vfp.set_float(dest, source_reg);
@@ -1072,15 +1076,16 @@ void vfp_ftoui(ARM_CPU &cpu, VFP &vfp, uint32_t instr)
     bool source_low_bit = (instr >> 5) & 0x1;
     bool is_double = (instr >> 8) & 0x1;
 
+    dest <<= 1;
+    dest |= dest_low_bit;
+
     if (is_double)
     {
         uint64_t source_reg = (uint64_t)vfp.get_double(source);
-        vfp.set_reg64(dest, source_reg);
+        vfp.set_reg32(dest, source_reg);
     }
     else
     {
-        dest <<= 1;
-        dest |= dest_low_bit;
         source <<= 1;
         source |= source_low_bit;
 
@@ -1097,16 +1102,16 @@ void vfp_ftosi(ARM_CPU &cpu, VFP &vfp, uint32_t instr)
     bool source_low_bit = (instr >> 5) & 0x1;
     bool is_double = (instr >> 8) & 0x1;
 
+    dest <<= 1;
+    dest |= dest_low_bit;
+
     if (is_double)
     {
-        //TODO: Does passing in an int64_t to a function using uint64_t harm anything?
-        int64_t source_reg = (int64_t)vfp.get_double(source);
-        vfp.set_reg64(dest, source_reg);
+        int32_t source_reg = (int64_t)vfp.get_double(source);
+        vfp.set_reg32(dest, source_reg);
     }
     else
     {
-        dest <<= 1;
-        dest |= dest_low_bit;
         source <<= 1;
         source |= source_low_bit;
 

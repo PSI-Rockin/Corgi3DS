@@ -208,7 +208,7 @@ void ARM_CPU::jp(uint32_t addr, bool change_thumb_state)
                    printf("Error: $%08X\n", gpr[0]);
             }
         }
-        if (pid == 15)
+        if (pid == 40)
         {
             //can_disassemble = true;
 
