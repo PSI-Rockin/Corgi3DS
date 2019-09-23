@@ -667,6 +667,12 @@ void GPU::write_cmd_register(int reg, uint32_t param, uint8_t mask)
         case 0x044:
             ctx.viewport_invh = float24::FromFloat32(*(float*)&param);
             break;
+        case 0x04D:
+            ctx.depth_scale = float24::FromRaw(param);
+            break;
+        case 0x04E:
+            ctx.depth_offset = float24::FromRaw(param);
+            break;
         case 0x04F:
             ctx.sh_output_total = param & 0x7;
             break;
@@ -690,6 +696,9 @@ void GPU::write_cmd_register(int reg, uint32_t param, uint8_t mask)
             ctx.viewport_x = SignExtend<10>(param & 0x3FF);
             ctx.viewport_y = SignExtend<10>((param >> 16) & 0x3FF);
             break;
+        case 0x06D:
+            ctx.use_z_for_depth = param & 0x1;
+            break;
         case 0x080:
             ctx.tex_enable[0] = param & 0x1;
             ctx.tex_enable[1] = (param >> 1) & 0x1;
@@ -705,8 +714,8 @@ void GPU::write_cmd_register(int reg, uint32_t param, uint8_t mask)
             ctx.tex_border[0].a = param >> 24;
             break;
         case 0x082:
-            ctx.tex_height[0] = param & 0x3FF;
-            ctx.tex_width[0] = (param >> 16) & 0x3FF;
+            ctx.tex_height[0] = param & 0x7FF;
+            ctx.tex_width[0] = (param >> 16) & 0x7FF;
             break;
         case 0x083:
             ctx.tex_twrap[0] = (param >> 8) & 0x7;
@@ -735,8 +744,8 @@ void GPU::write_cmd_register(int reg, uint32_t param, uint8_t mask)
             break;
         case 0x092:
         case 0x09A:
-            ctx.tex_height[((reg - 0x092) / 8) + 1] = param & 0x3FF;
-            ctx.tex_width[((reg - 0x092) / 8) + 1] = (param >> 16) & 0x3FF;
+            ctx.tex_height[((reg - 0x092) / 8) + 1] = param & 0x7FF;
+            ctx.tex_width[((reg - 0x092) / 8) + 1] = (param >> 16) & 0x7FF;
             break;
         case 0x093:
         case 0x09B:
@@ -873,6 +882,7 @@ void GPU::write_cmd_register(int reg, uint32_t param, uint8_t mask)
         case 0x25F:
             ctx.submitted_vertices = 0;
             ctx.gsh_attrs_input = 0;
+            ctx.even_strip = true;
             break;
         case 0x280:
             ctx.gsh.bool_uniform = param & 0xFFFF;
@@ -1231,9 +1241,15 @@ void GPU::submit_vtx(Vertex& v, bool winding)
                 break;
             case 1:
                 //Triangle strip
-                ctx.vertex_queue[0] = ctx.vertex_queue[1];
-                ctx.vertex_queue[1] = ctx.vertex_queue[2];
                 ctx.submitted_vertices--;
+
+                //Preserve the original orientation of the strip
+                if (ctx.even_strip)
+                    ctx.vertex_queue[0] = ctx.vertex_queue[2];
+                else
+                    ctx.vertex_queue[1] = ctx.vertex_queue[2];
+
+                ctx.even_strip = !ctx.even_strip;
                 break;
             case 2:
                 //Triangle fan
@@ -1351,9 +1367,6 @@ void GPU::viewport_transform(Vertex &v)
     v.view *= inv_w;
 
     v.pos[3] = inv_w;
-
-    //Textures are laid from bottom to top, so we invert the T coordinate
-    v.texcoords[0][1] = float24::FromFloat32(1.0f) - v.texcoords[0][1];
 
     //Apply viewport transform
     //The y coordinate must also be inverted
@@ -1683,7 +1696,6 @@ void GPU::rasterize_tri(Vertex &v0, Vertex &v1, Vertex &v2)
     //https://fgiesen.wordpress.com/2013/02/06/the-barycentric-conspirac/
 
     printf("[GPU] Rasterizing triangle\n");
-    printf("w: (%f %f %f)\n", v0.pos[3].ToFloat32(), v0.pos[3].ToFloat32(), v0.pos[3].ToFloat32());
 
     //Check if texture combiners are unused - this lets us save time by not looping through all six of them
     ctx.texcomb_start = 0;
@@ -1708,9 +1720,25 @@ void GPU::rasterize_tri(Vertex &v0, Vertex &v1, Vertex &v2)
         break;
     }
 
+    std::swap(v1, v2);
+
     //Keep front face mode - reverse vertex order
     if (orient2D(v0, v1, v2).ToFloat32() < 0.0f)
-        std::swap(v1, v2);
+    {
+        if (ctx.cull_mode)
+        {
+            if (ctx.cull_mode == 1)
+            {
+                std::swap(v1, v2);
+                if (orient2D(v0, v1, v2).ToFloat32() < 0.0f)
+                    return;
+            }
+            else
+                return;
+        }
+        else
+            std::swap(v1, v2);
+    }
 
     //int32_t divider = orient2D(v0, v1, v2).ToFloat32();
     //Calculate bounding box of triangle
@@ -1837,9 +1865,23 @@ void GPU::rasterize_tri(Vertex &v0, Vertex &v1, Vertex &v2)
                             float24 divider = float24::FromFloat32(1.0f) / (v0.pos[3] * f1 +
                                     v1.pos[3] * f2 + v2.pos[3] * f3);
 
+                            float24 z = (v0.pos[2] * f1 + v1.pos[2] * f2 + v2.pos[2] * f3) / (f1 + f2 + f3);
+
+                            float depth = (z * ctx.depth_scale + ctx.depth_offset).ToFloat32();
+
+                            if (!ctx.use_z_for_depth)
+                                depth *= ((f1 + f2 + f3) * divider).ToFloat32();
+
+                            if (depth < 0.0)
+                                depth = 0.0;
+                            if (depth > 1.0)
+                                depth = 1.0;
+
                             for (int i = 0; i < 4; i++)
-                            {
                                 vtx.color[i] = (v0.color[i] * f1 + v1.color[i] * f2 + v2.color[i] * f3) * divider;
+
+                            for (int i = 0; i < 2; i++)
+                            {
                                 vtx.texcoords[0][i] = (v0.texcoords[0][i] * f1 + v1.texcoords[0][i] * f2 + v2.texcoords[0][i] * f3) * divider;
                                 vtx.texcoords[1][i] = (v0.texcoords[1][i] * f1 + v1.texcoords[1][i] * f2 + v2.texcoords[1][i] * f3) * divider;
                                 vtx.texcoords[2][i] = (v0.texcoords[2][i] * f1 + v1.texcoords[2][i] * f2 + v2.texcoords[2][i] * f3) * divider;
@@ -1856,8 +1898,33 @@ void GPU::rasterize_tri(Vertex &v0, Vertex &v1, Vertex &v2)
 
                             combine_textures(source_color, vtx);
 
-                            uint32_t frame_addr = get_swizzled_tile_addr(ctx.color_buffer_base, ctx.frame_width, x >> 4, y >> 4, 4);
-                            uint32_t frame = bswp32(e->arm11_read32(0, frame_addr));
+                            uint32_t frame_addr = 0, frame = 0;
+                            switch (ctx.color_format)
+                            {
+                                case 0:
+                                    frame_addr = get_swizzled_tile_addr(ctx.color_buffer_base, ctx.frame_width, x >> 4, y >> 4, 4);
+                                    frame = bswp32(e->arm11_read32(0, frame_addr));
+                                    break;
+                                case 1:
+                                    frame_addr = get_swizzled_tile_addr(ctx.color_buffer_base, ctx.frame_width, x >> 4, y >> 4, 3);
+                                    frame = e->arm11_read8(0, frame_addr + 2);
+                                    frame |= e->arm11_read8(0, frame_addr + 1) << 8;
+                                    frame |= e->arm11_read8(0, frame_addr) << 16;
+                                    frame |= 0xFF << 24;
+                                    break;
+                                case 3:
+                                {
+                                    frame_addr = get_swizzled_tile_addr(ctx.color_buffer_base, ctx.frame_width, x >> 4, y >> 4, 2);
+                                    uint16_t temp = e->arm11_read16(0, frame_addr);
+                                    frame = Convert5To8(temp >> 11);
+                                    frame |= Convert6To8((temp >> 5) & 0x3F) << 8;
+                                    frame |= Convert5To8(temp & 0x1F) << 16;
+                                    frame |= 0xFF << 24;
+                                }
+                                    break;
+                                default:
+                                    EmuException::die("[GPU] Unrecognized color format $%02X\n", ctx.color_format);
+                            }
 
                             frame_color.r = frame & 0xFF;
                             frame_color.g = (frame >> 8) & 0xFF;
@@ -1872,7 +1939,7 @@ void GPU::rasterize_tri(Vertex &v0, Vertex &v1, Vertex &v2)
                                 uint32_t depth_addr = get_swizzled_tile_addr(ctx.depth_buffer_base,
                                                                              ctx.frame_width, x >> 4, y >> 4, 4);
 
-                                uint8_t stencil = e->arm11_read32(0, frame_addr) >> 24;
+                                uint8_t stencil = e->arm11_read32(0, depth_addr) >> 24;
                                 uint8_t dest = stencil & ctx.stencil_input_mask;
                                 uint8_t ref = ctx.stencil_ref & ctx.stencil_input_mask;
 
@@ -1919,15 +1986,122 @@ void GPU::rasterize_tri(Vertex &v0, Vertex &v1, Vertex &v2)
                                 }
                             }
 
-                            if (ctx.depth_test_enabled)
-                            {
+                            uint32_t depth_addr = 0;
+                            uint32_t old_depth = 0;
+                            uint32_t new_depth = 0;
 
+                            switch (ctx.depth_format)
+                            {
+                                case 0x0:
+                                    depth_addr = get_swizzled_tile_addr(ctx.depth_buffer_base,
+                                                                         ctx.frame_width, x >> 4, y >> 4, 2);
+                                    new_depth = (uint32_t)(depth * 0xFFFF);
+                                    break;
+                                case 0x2:
+                                    depth_addr = get_swizzled_tile_addr(ctx.depth_buffer_base,
+                                                                         ctx.frame_width, x >> 4, y >> 4, 3);
+                                    new_depth = (uint32_t)(depth * 0xFFFFFF);
+                                    break;
+                                case 0x3:
+                                    depth_addr = get_swizzled_tile_addr(ctx.depth_buffer_base,
+                                                                         ctx.frame_width, x >> 4, y >> 4, 4);
+                                    new_depth = (uint32_t)(depth * 0xFFFFFF);
+                                    break;
+                                default:
+                                    EmuException::die("[GPU] Unrecognized depth format %d\n", ctx.depth_format);
                             }
 
-                            uint32_t final_color = 0;
-                            final_color = source_color.r | (source_color.g << 8) | (source_color.b << 16) | (source_color.a << 24);
+                            if (ctx.depth_write_enabled)
+                            {
+                                switch (ctx.depth_format)
+                                {
+                                    case 0x0:
+                                        e->arm11_write16(0, depth_addr, new_depth);
+                                        break;
+                                    case 0x2:
+                                    case 0x3:
+                                        e->arm11_write8(0, depth_addr, new_depth & 0xFF);
+                                        e->arm11_write8(0, depth_addr + 1, (new_depth >> 8) & 0xFF);
+                                        e->arm11_write8(0, depth_addr + 2, (new_depth >> 16) & 0xFF);
+                                        break;
+                                }
+                            }
 
-                            e->arm11_write32(0, frame_addr, bswp32(final_color));
+                            bool depth_passed = true;
+
+                            if (ctx.depth_test_enabled)
+                            {
+                                switch (ctx.depth_format)
+                                {
+                                    case 0:
+                                        old_depth = e->arm11_read16(0, depth_addr);
+                                        break;
+                                    case 2:
+                                    case 3:
+                                        old_depth = e->arm11_read16(0, depth_addr);
+                                        old_depth |= e->arm11_read8(0, depth_addr + 2) << 16;
+                                        break;
+                                }
+                                switch (ctx.depth_test_func)
+                                {
+                                    case 0x0:
+                                        //NEVER
+                                        depth_passed = false;
+                                        break;
+                                    case 0x1:
+                                        //ALWAYS
+                                        break;
+                                    case 0x2:
+                                        //EQUAL
+                                        depth_passed = new_depth == old_depth;
+                                        break;
+                                    case 0x3:
+                                        //NEQUAL
+                                        depth_passed = new_depth != old_depth;
+                                        break;
+                                    case 0x4:
+                                        //LESS THAN
+                                        depth_passed = new_depth < old_depth;
+                                        break;
+                                    case 0x5:
+                                        //LESS THAN OR EQUAL
+                                        depth_passed = new_depth <= old_depth;
+                                        break;
+                                    case 0x6:
+                                        //GREATER THAN
+                                        depth_passed = new_depth > old_depth;
+                                        break;
+                                    case 0x7:
+                                        //GREATER THAN OR EQUAL
+                                        depth_passed = new_depth >= old_depth;
+                                        break;
+                                }
+                            }
+
+                            //TODO: We should do a stencil action here if enabled
+                            if (!depth_passed)
+                                continue;
+
+                            uint32_t final_color = 0;
+
+                            switch (ctx.color_format)
+                            {
+                                case 0:
+                                    final_color = source_color.r | (source_color.g << 8) | (source_color.b << 16) | (source_color.a << 24);
+                                    e->arm11_write32(0, frame_addr, bswp32(final_color));
+                                    break;
+                                case 1:
+                                    e->arm11_write8(0, frame_addr + 2, source_color.r);
+                                    e->arm11_write8(0, frame_addr + 1, source_color.g);
+                                    e->arm11_write8(0, frame_addr, source_color.b);
+                                    break;
+                                case 3:
+                                    final_color = Convert8To5(source_color.r) << 11;
+                                    final_color |= Convert8To6(source_color.g) << 5;
+                                    final_color |= Convert8To5(source_color.b);
+                                    e->arm11_write16(0, frame_addr, final_color & 0xFFFF);
+                                    break;
+                            }
                         }
                         else
                             break;
@@ -1969,7 +2143,7 @@ void GPU::rasterize_tri(Vertex &v0, Vertex &v1, Vertex &v2)
  * @param scx2    - right x scissor (fp px)
  * @param tex_info - texture data
  */
-void GPU::rasterize_half_tri(float24 x0, float24 x1, int y0, int y1, Vertex &x_step,
+/*void GPU::rasterize_half_tri(float24 x0, float24 x1, int y0, int y1, Vertex &x_step,
                                   Vertex &y_step, Vertex &init, float24 step_x0, float24 step_x1) {
     bool can_do_stencil = ctx.stencil_test_enabled && ctx.depth_format == 0x3;
     for(int y = y0; y < y1; y += 16) // loop over scanlines of triangle
@@ -1978,8 +2152,8 @@ void GPU::rasterize_half_tri(float24 x0, float24 x1, int y0, int y1, Vertex &x_s
         Vertex vtx = init + y_step * height;       // interpolate to point (x_init, y)
         float24 x0l = x0 + step_x0 * height;          // start x coordinates of scanline from interpolation
         float24 x1l = x1 + step_x1 * height;          // end   x coordinate of scanline from interpolation
-        /*x0l = std::max(scx1, std::ceil(x0l));       // round and scissor
-        x1l = std::min(scx2, std::ceil(x1l));       // round and scissor*/
+        x0l = std::max(scx1, std::ceil(x0l));       // round and scissor
+        x1l = std::min(scx2, std::ceil(x1l));       // round and scissor
         int xStop = roundf(x1l.ToFloat32());                            // integer start/stop pixels
         int xStart = roundf(x0l.ToFloat32());
 
@@ -2078,7 +2252,7 @@ void GPU::rasterize_half_tri(float24 x0, float24 x1, int y0, int y1, Vertex &x_s
             vtx += x_step * float24::FromFloat32(16.0);                       // get values for the adjacent pixel
         }
     }
-}
+}*/
 
 void GPU::tex_lookup(int index, RGBA_Color &tex_color, Vertex &vtx)
 {
@@ -2153,6 +2327,9 @@ void GPU::tex_lookup(int index, RGBA_Color &tex_color, Vertex &vtx)
         default:
             EmuException::die("[GPU] Unrecognized twrap %d", ctx.tex_twrap[index]);
     }
+
+    //Texcoords are vertically flipped
+    v = ctx.tex_height[index] - 1 - v;
 
     uint32_t addr = ctx.tex_addr[index];
     uint32_t texel;
@@ -2679,6 +2856,30 @@ void GPU::combine_textures(RGBA_Color &source, Vertex& vtx)
                 break;
             default:
                 EmuException::die("[GPU] Unrecognized texcomb alpha op $%02X", ctx.texcomb_alpha_op[i]);
+        }
+
+        switch (ctx.texcomb_rgb_scale[i])
+        {
+            case 1:
+                prev.r = std::min(255, prev.r << 1);
+                prev.g = std::min(255, prev.g << 1);
+                prev.b = std::min(255, prev.b << 1);
+                break;
+            case 2:
+                prev.r = std::min(255, prev.r << 2);
+                prev.g = std::min(255, prev.g << 2);
+                prev.b = std::min(255, prev.b << 2);
+                break;
+        }
+
+        switch (ctx.texcomb_alpha_scale[i])
+        {
+            case 1:
+                prev.a = std::min(255, prev.a << 1);
+                break;
+            case 2:
+                prev.a = std::min(255, prev.a << 2);
+                break;
         }
 
         comb_buffer = ctx.texcomb_buffer;

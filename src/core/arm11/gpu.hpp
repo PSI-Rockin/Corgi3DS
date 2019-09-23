@@ -162,8 +162,12 @@ struct GPU_Context
     float24 viewport_invw, viewport_invh;
     int16_t viewport_x, viewport_y;
 
+    float24 depth_scale, depth_offset;
+
     uint8_t sh_output_total;
     uint8_t sh_output_mapping[7][4];
+
+    bool use_z_for_depth;
 
     //Texturing registers
     bool tex_enable[4];
@@ -231,6 +235,7 @@ struct GPU_Context
     //Geometry pipeline
     Vertex vertex_queue[4];
     int submitted_vertices;
+    bool even_strip;
 
     uint32_t vtx_buffer_base;
 
