@@ -2011,22 +2011,6 @@ void GPU::rasterize_tri(Vertex &v0, Vertex &v1, Vertex &v2)
                                     EmuException::die("[GPU] Unrecognized depth format %d\n", ctx.depth_format);
                             }
 
-                            if (ctx.depth_write_enabled)
-                            {
-                                switch (ctx.depth_format)
-                                {
-                                    case 0x0:
-                                        e->arm11_write16(0, depth_addr, new_depth);
-                                        break;
-                                    case 0x2:
-                                    case 0x3:
-                                        e->arm11_write8(0, depth_addr, new_depth & 0xFF);
-                                        e->arm11_write8(0, depth_addr + 1, (new_depth >> 8) & 0xFF);
-                                        e->arm11_write8(0, depth_addr + 2, (new_depth >> 16) & 0xFF);
-                                        break;
-                                }
-                            }
-
                             bool depth_passed = true;
 
                             if (ctx.depth_test_enabled)
@@ -2074,6 +2058,23 @@ void GPU::rasterize_tri(Vertex &v0, Vertex &v1, Vertex &v2)
                                     case 0x7:
                                         //GREATER THAN OR EQUAL
                                         depth_passed = new_depth >= old_depth;
+                                        break;
+                                }
+                            }
+
+                            //Note that writes to the depth buffer happen even if the depth test is disabled
+                            if (ctx.depth_write_enabled)
+                            {
+                                switch (ctx.depth_format)
+                                {
+                                    case 0x0:
+                                        e->arm11_write16(0, depth_addr, new_depth);
+                                        break;
+                                    case 0x2:
+                                    case 0x3:
+                                        e->arm11_write8(0, depth_addr, new_depth & 0xFF);
+                                        e->arm11_write8(0, depth_addr + 1, (new_depth >> 8) & 0xFF);
+                                        e->arm11_write8(0, depth_addr + 2, (new_depth >> 16) & 0xFF);
                                         break;
                                 }
                             }
