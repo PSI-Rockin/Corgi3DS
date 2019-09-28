@@ -3326,7 +3326,7 @@ Vec4<float24> GPU::get_src(ShaderUnit& sh, uint8_t src)
     return sh.float_uniform[src - 0x20];
 }
 
-uint8_t GPU::get_idx1(ShaderUnit& sh, uint8_t idx1, uint8_t src1)
+int GPU::get_idx1(ShaderUnit& sh, uint8_t idx1, uint8_t src1)
 {
     if (src1 < 0x20)
         return 0;
@@ -3336,13 +3336,9 @@ uint8_t GPU::get_idx1(ShaderUnit& sh, uint8_t idx1, uint8_t src1)
         case 0:
             return 0;
         case 1:
-            if (sh.addr_reg[0].ToFloat32() < 0.0)
-                EmuException::die("a");
-            return (uint8_t)sh.addr_reg[0].ToFloat32();
+            return sh.addr_reg[0].ToFloat32();
         case 2:
-            if (sh.addr_reg[1].ToFloat32() < 0.0)
-                EmuException::die("a");
-            return (uint8_t)sh.addr_reg[1].ToFloat32();
+            return sh.addr_reg[1].ToFloat32();
         default:
             EmuException::die("[GPU] Unrecognized idx %d", idx1);
             return 0;

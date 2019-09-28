@@ -352,7 +352,7 @@ class GPU
         void exec_shader(ShaderUnit& sh);
         Vec4<float24> swizzle_sh_src(Vec4<float24> src, uint32_t op_desc, int src_type);
         Vec4<float24> get_src(ShaderUnit& sh, uint8_t src);
-        uint8_t get_idx1(ShaderUnit& sh, uint8_t idx1, uint8_t src1);
+        int get_idx1(ShaderUnit& sh, uint8_t idx1, uint8_t src1);
         void set_sh_dest(ShaderUnit& sh, uint8_t dst, float24 value, int index);
 
         void shader_add(ShaderUnit& sh, uint32_t instr);
