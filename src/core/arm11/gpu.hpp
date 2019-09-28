@@ -210,6 +210,10 @@ struct GPU_Context
     uint8_t blend_alpha_src_func;
     uint8_t blend_alpha_dst_func;
 
+    bool alpha_test_enabled;
+    uint8_t alpha_test_func;
+    uint8_t alpha_test_ref;
+
     bool stencil_test_enabled;
     uint8_t stencil_test_func;
     uint8_t stencil_write_mask;
@@ -217,13 +221,15 @@ struct GPU_Context
     uint8_t stencil_input_mask;
 
     uint8_t stencil_fail_func;
-    uint8_t depth_fail_func;
-    uint8_t depth_pass_func;
+    uint8_t stencil_depth_fail_func;
+    uint8_t stencil_depth_pass_func;
 
     bool depth_test_enabled;
     uint8_t depth_test_func;
     bool rgba_write_enabled[4];
-    uint8_t depth_write_enabled;
+    bool depth_write_enabled;
+
+    uint8_t allow_stencil_depth_write;
 
     uint8_t color_format;
     uint8_t depth_format;
