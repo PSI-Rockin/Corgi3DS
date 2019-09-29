@@ -364,6 +364,7 @@ class GPU
         void shader_rsq(ShaderUnit& sh, uint32_t instr);
         void shader_mova(ShaderUnit& sh, uint32_t instr);
         void shader_mov(ShaderUnit& sh, uint32_t instr);
+        void shader_break(ShaderUnit& sh, uint32_t instr);
         void shader_breakc(ShaderUnit& sh, uint32_t instr);
         void shader_call(ShaderUnit& sh, uint32_t instr);
         void shader_callu(ShaderUnit& sh, uint32_t instr);

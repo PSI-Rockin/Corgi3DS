@@ -2834,6 +2834,9 @@ void GPU::exec_shader(ShaderUnit& sh)
             case 0x13:
                 shader_mov(sh, instr);
                 break;
+            case 0x20:
+                shader_break(sh, instr);
+                break;
             case 0x21:
                 //NOP
                 break;
@@ -3261,6 +3264,12 @@ void GPU::shader_mov(ShaderUnit& sh, uint32_t instr)
             set_sh_dest(sh, dest, src[3 - i], 3 - i);
         }
     }
+}
+
+void GPU::shader_break(ShaderUnit &sh, uint32_t instr)
+{
+    sh.pc = sh.loop_stack[sh.loop_ptr - 1];
+    sh.loop_ptr--;
 }
 
 void GPU::shader_breakc(ShaderUnit &sh, uint32_t instr)
