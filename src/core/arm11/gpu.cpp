@@ -1430,264 +1430,6 @@ static void order3(float a, float b, float c, uint8_t* order)
     }
 }
 
-/*void GPU::rasterize_tri(Vertex& v0, Vertex& v1, Vertex& v2) {
-    // This is a "scanline" algorithm which reduces flops/pixel
-    //  at the cost of a longer setup time.
-
-    // per-pixel work:
-    //         add   mult   div
-    // stupid  13     7      1
-    // old      5     3      1
-    // scan     3     0      0
-    //
-    // per-line work:
-    //         add   mult   div
-    // stupid  0     0      0
-    // old     3     0      0
-    // scan    1     1      0   (possible to do 1 add, but rounding issues with floats occur)
-
-    // it divides a triangle like this:
-
-    //             * v0
-    //
-    //     v1  * ----
-    //
-    //
-    //               * v2
-
-    // where v0, v1, v2 are floating point pixel locations, ordered from low to high
-    // (this triangles also has a positive area because the vertices are CCW)
-
-    printf("[GPU] Rasterizing triangle\n");
-
-    //Check if texture combiners are unused - this lets us save time by not looping through all six of them
-    ctx.texcomb_start = 0;
-    for (int i = 0; i < 6; i++)
-    {
-        if (ctx.texcomb_rgb_source[i][0] == 0xF && ctx.texcomb_alpha_source[i][0] == 0xF &&
-            ctx.texcomb_rgb_op[i] == 0 && ctx.texcomb_alpha_op[i] == 0)
-            continue;
-
-        ctx.texcomb_start = i;
-        break;
-    }
-
-    ctx.texcomb_end = 6;
-    for (int i = 5; i >= 0; i--)
-    {
-        if (ctx.texcomb_rgb_source[i][0] == 0xF && ctx.texcomb_alpha_source[i][0] == 0xF &&
-            ctx.texcomb_rgb_op[i] == 0 && ctx.texcomb_alpha_op[i] == 0)
-            continue;
-
-        ctx.texcomb_end = i + 1;
-        break;
-    }
-
-    Vertex unsortedVerts[3]; // vertices in the order they were sent to GS
-    unsortedVerts[0] = v2;
-    unsortedVerts[1] = v1;
-    unsortedVerts[2] = v0;
-
-    printf("Positions: ");
-    for (int i = 0; i < 3; i++)
-    {
-        printf("(");
-        for (int j = 0; j < 4; j++)
-        {
-            printf("%f", unsortedVerts[i].pos[j].ToFloat32() / 16);
-            if (j < 3)
-                printf(", ");
-        }
-        printf(") ");
-    }
-    printf("\n");
-
-    for (int i = 0; i < 3; i++)
-    {
-        printf("Texcoord%ds: ", i);
-        for (int j = 0; j < 3; j++)
-        {
-            printf("(%f %f) ", unsortedVerts[j].texcoords[i][0].ToFloat32(), unsortedVerts[j].texcoords[i][1].ToFloat32());
-        }
-        printf("\n");
-    }
-
-    // sort the three vertices by their y coordinate (increasing)
-    uint8_t order[3];
-    order3(unsortedVerts[0].pos[1].ToFloat32(), unsortedVerts[1].pos[1].ToFloat32(), unsortedVerts[2].pos[1].ToFloat32(), order);
-
-    v0 = unsortedVerts[order[0]];
-    v1 = unsortedVerts[order[1]];
-    v2 = unsortedVerts[order[2]];
-
-    // COMMONLY USED VALUES
-
-    // check if we only have a single triangle like this:
-    //     v0  * ----*  v1         v1 *-----* v0
-    //                        OR
-    //             * v2                 * v2
-    // the other orientations of single triangle (where v1 v2 is horizontal) works fine.
-    bool lower_tri_only = (v0.pos[1] == v1.pos[1]);
-
-    // the edge e21 is the edge from v1 -> v2.  So v1 + e21 = v2
-    // edges (difference of the ENTIRE vertex properties, not just position)
-    Vertex e21 = v2 - v1;
-    Vertex e20 = v2 - v0;
-    Vertex e10 = v1 - v0;
-
-    // interpolating z (or any value) at point P in a triangle can be done by computing the barycentric coordinates
-    // (w0, w1, w2) and using P_z = w0 * v1_z + w1 * v2_z + w2 * v3_z
-
-    // derivative of P_z wrt x and y is constant everywhere
-    // dP_z/dx = dw0/dx * v1_z + dw1/dx * v2_z + dw2/dx * v3_z
-
-    // w0 = (v2_y - v3_y)*(P_x - v3_x) + (v3_x - v2_x) * (P_y - v3_y)
-    //      ----------------------------------------------------------
-    //      (v1_y - v0_y)*(v2_x - v0_x) + (v1_x - v0_x)*(v2_y - v0_y)
-
-    // dw0/dx =           v2_y - v3_y
-    //          ------------------------------
-    //           the same denominator as above
-
-    // The denominator of this fraction shows up everywhere, so we compute it once.
-    float24 div = (e10.pos[1] * e20.pos[0] - e10.pos[0] * e20.pos[1]);
-
-    // If the vertices of the triangle are CCW, the denominator will be negative
-    // if the triangle is degenerate (has 0 area), it will be zero.
-    bool reversed = div.ToFloat32() < 0.f;
-
-    if (div.ToFloat32() == 0.f)
-    {
-        return;
-    }*/
-
-    /*// next we need to determine the horizontal scanlines that will have pixels.
-    // GS pixel draw condition for scissor
-    //   >= minimum value, <= maximum value (draw left/top, but not right/bottom)
-    // Our scanline loop
-    //   >= minimum value, < maximum value
-
-    // MINIMUM SCISSOR
-    // -------------------  y = 0.0 (pixel)
-    //
-    //  XXXXXXXXXXXXXXXXXX  scissor minimum (y = 0.125 to y = 0.875)
-    //                           (round to y = 1.0 - the first scanline we should consider)
-    // -------------------- y = 1.0 (pixel)
-    int scissorY1 = (current_ctx->scissor.y1 + 15) / 16; // min y coordinate, round up because we don't draw px below scissor
-    int scissorX1 = (current_ctx->scissor.x1 + 15) / 16;
-
-    // MAXIMUM SCISSOR
-    // -------------------  y = 3.0 (pixel)
-    //
-    //  XXXXXXXXXXXXXXXXXX  scissor maximum (y = 3.125 to y = 3.875)
-    //                           (round to y = 4.0 - will do scanlines at y = 1, 2, 3)
-    // -------------------- y = 4.0 (pixel)
-
-    // however, if SCISSOR = 4, we should round that up to 5 because we do want to draw pixels on y = 4 (<= max value)
-    int scissorY2 = (current_ctx->scissor.y2 + 16) / 16;
-    int scissorX2 = (current_ctx->scissor.x2 + 16) / 16;
-
-    // scissor triangle top/bottoms
-    // we can get away with only checking min scissor for tops and max scissors for bottom
-    // because it will give negative height triangles for completely scissored half tris
-    // and the correct answer for half tris that aren't completely killed
-    int upperTop = std::max((int)std::ceil(v0.y), scissorY1); // we draw this
-    int upperBot = std::min((int)std::ceil(v1.y), scissorY2); // we don't draw this, (< max value, different from scissor)
-    int lowerTop = std::max((int)std::ceil(v1.y), scissorY1); // we draw this
-    int lowerBot = std::min((int)std::ceil(v2.y), scissorY2); // we don't draw this, (< max value, different from scissor)*/
-
-    /*int upperTop = (int)std::ceil(v0.pos[1].ToFloat32());
-    int upperBot = (int)std::ceil(v1.pos[1].ToFloat32());
-    int lowerTop = (int)std::ceil(v1.pos[1].ToFloat32());
-    int lowerBot = (int)std::ceil(v2.pos[1].ToFloat32());
-
-    // compute the derivatives of the weights, like shown in the formula above
-    float24 ndw2dy = e10.pos[0] / div; // n is negative
-    float24 dw2dx  = e10.pos[1] / div;
-    float24 dw1dy  = e20.pos[0] / div;
-    float24 ndw1dx = e20.pos[1] / div; // also negative
-
-    // derivatives wrt x and y would normally be computed as dz/dx = dw0/dx * z0 + dw1/dx * z1 + dw2/dx * z2
-    // however, w0 + w1 + w2 = 1 so dw0/dx + dw1/dx + dw2/dx = 0,
-    //   and we can use some clever rearranging and reuse of the edges to simplify this
-    //   we can replace dw0/dx with (-dw1/dx - dw2/dx):
-
-    // dz/dx = dw0/dx*z0 + dw1/dx*z1 + dw2/dx*z2
-    // dz/dx = (-dw1/dx - dw2/dx)*z0 + dw1/dx*z1 + dw2/dx*z2
-    // dz/dx = -dw1/dx*z0 - dw2/dx*z0 + dw1/dx*z1 + dw2/dx*z2
-    // dz/dx = dw1/dx*(z1 - z0) + dw2/dx*(z2 - z0)
-
-    // the value to step per field per x/y pixel
-    Vertex dvdx = e20 * dw2dx - e10 * ndw1dx;
-    Vertex dvdy = e10 * dw1dy - e20 * ndw2dy;
-
-    // slopes of the edges
-    float24 e20dxdy = e20.pos[0] / e20.pos[1];
-    float24 e21dxdy = e21.pos[0] / e21.pos[1];
-    float24 e10dxdy = e10.pos[0] / e10.pos[1];
-
-    // we need to know the left/right side slopes. They can be different if v1 is on the opposite side of e20
-    float24 lowerLeftEdgeStep  = reversed ? e20dxdy : e21dxdy;
-    float24 lowerRightEdgeStep = reversed ? e21dxdy : e20dxdy;
-
-    // draw triangles
-    if(lower_tri_only)
-    {
-        if(lowerTop < lowerBot) // if we weren't killed by scissoring
-        {
-            // we don't know which vertex is on the left or right, but the two configures have opposite sign areas:
-            //     v0  * ----*  v1         v1 *-----* v0
-            //                        OR
-            //             * v2                 * v2
-            Vertex& left_vertex = reversed ? v0 : v1;
-            Vertex& right_vertex = reversed ? v1 : v0;
-            rasterize_half_tri(left_vertex.pos[0],    // upper edge left vertex, floating point pixels
-                                 right_vertex.pos[0],   // upper edge right vertex, floating point pixels
-                                 upperTop,         // start scanline (included)
-                                 lowerBot,         // end scanline   (not included)
-                                 dvdx,             // derivative of values wrt x coordinate
-                                 dvdy,             // derivative of values wrt y coordinate
-                                 left_vertex,      // one point to interpolate from
-                                 lowerLeftEdgeStep, // slope of left edge
-                                 lowerRightEdgeStep  // slope of right edge
-                                );
-        }
-    }
-    else
-    {
-        // again, left/right slopes
-        float24 upperLeftEdgeStep = reversed ? e20dxdy : e10dxdy;
-        float24 upperRightEdgeStep = reversed ? e10dxdy : e20dxdy;
-
-        // upper triangle
-        if(upperTop < upperBot) // if we weren't killed by scissoring
-        {
-            rasterize_half_tri(v0.pos[0], v0.pos[0],          // upper edge is just the highest point on triangle
-                                 upperTop, upperBot,  // scanline bounds
-                                 dvdx, dvdy,          // derivatives of values
-                                 v0,                  // interpolate from this vertex
-                                 upperLeftEdgeStep, upperRightEdgeStep // slopes
-                                 );
-        }
-
-        if(lowerTop < lowerBot)
-        {
-            //             * v0
-            //
-            //     v1  * ----
-            //
-            //
-            //               * v2
-            rasterize_half_tri(v0.pos[0] + upperLeftEdgeStep * e10.pos[1], // one of our upper edge vertices isn't v0,v1,v2, but we don't know which. todo is this faster than branch?
-                                 v0.pos[0] + upperRightEdgeStep * e10.pos[1],
-                                 lowerTop, lowerBot, dvdx, dvdy, v1,
-                                 lowerLeftEdgeStep, lowerRightEdgeStep);
-        }
-
-    }
-
-}*/
-
 // Returns positive value if the points are in counter-clockwise order
 // 0 if they it's on the same line
 // Negative value if they are in a clockwise order
@@ -1748,7 +1490,6 @@ void GPU::rasterize_tri(Vertex &v0, Vertex &v1, Vertex &v2)
             std::swap(v1, v2);
     }
 
-    //int32_t divider = orient2D(v0, v1, v2).ToFloat32();
     //Calculate bounding box of triangle
     int32_t min_x = std::min({v0.pos[0].ToFloat32(), v1.pos[0].ToFloat32(), v2.pos[0].ToFloat32()});
     int32_t min_y = std::min({v0.pos[1].ToFloat32(), v1.pos[1].ToFloat32(), v2.pos[1].ToFloat32()});
@@ -2060,6 +1801,16 @@ void GPU::rasterize_tri(Vertex &v0, Vertex &v1, Vertex &v2)
                         frame |= 0xFF << 24;
                     }
                         break;
+                    case 4:
+                    {
+                        frame_addr = get_swizzled_tile_addr(ctx.color_buffer_base, ctx.frame_width, x >> 4, y >> 4, 2);
+                        uint16_t temp = e->arm11_read16(0, frame_addr);
+                        frame = Convert4To8(temp >> 12);
+                        frame |= Convert4To8((temp >> 8) & 0xF) << 8;
+                        frame |= Convert4To8((temp >> 4) & 0xF) << 16;
+                        frame |= Convert4To8(temp & 0xF) << 24;
+                    }
+                        break;
                     default:
                         EmuException::die("[GPU] Unrecognized color format $%02X\n", ctx.color_format);
                 }
@@ -2097,7 +1848,14 @@ void GPU::rasterize_tri(Vertex &v0, Vertex &v1, Vertex &v2)
                         final_color = Convert8To5(source_color.r) << 11;
                         final_color |= Convert8To6(source_color.g) << 5;
                         final_color |= Convert8To5(source_color.b);
-                        e->arm11_write16(0, frame_addr, final_color & 0xFFFF);
+                        e->arm11_write16(0, frame_addr, final_color);
+                        break;
+                    case 4:
+                        final_color = Convert8To4(source_color.r) << 12;
+                        final_color |= Convert8To4(source_color.g) << 8;
+                        final_color |= Convert8To4(source_color.b) << 4;
+                        final_color |= Convert8To4(source_color.a);
+                        e->arm11_write16(0, frame_addr, final_color);
                         break;
                 }
             }
@@ -2110,132 +1868,6 @@ void GPU::rasterize_tri(Vertex &v0, Vertex &v1, Vertex &v2)
         w3_row += w3_dy;*/
     }
 }
-
-/*!
- * Render a "half-triangle" which has a horizontal edge
- * @param x0 - the x coordinate of the upper left most point of the triangle. floating point pixels
- * @param x1 - the x coordinate of the upper right most point of the triangle (can be the same as x0), floating point px
- * @param y0 - the y coordinate of the first scanline which will contain the triangle (integer pixels)
- * @param y1 - the y coordinate of the last scanline which will contain the triangle (integer pixels)
- * @param x_step - the derivatives of all parameters wrt x
- * @param y_step - the derivatives of all parameters wrt y
- * @param init   - the vertex we interpolate from
- * @param step_x0 - how far to step to the left on each step down (floating point px)
- * @param step_x1 - how far to step to the right on each step down (floating point px)
- * @param scx1    - left x scissor (fp px)
- * @param scx2    - right x scissor (fp px)
- * @param tex_info - texture data
- */
-/*void GPU::rasterize_half_tri(float24 x0, float24 x1, int y0, int y1, Vertex &x_step,
-                                  Vertex &y_step, Vertex &init, float24 step_x0, float24 step_x1) {
-    bool can_do_stencil = ctx.stencil_test_enabled && ctx.depth_format == 0x3;
-    for(int y = y0; y < y1; y += 16) // loop over scanlines of triangle
-    {
-        float24 height = float24::FromFloat32(y) - init.pos[1]; //how far down we've made it
-        Vertex vtx = init + y_step * height;       // interpolate to point (x_init, y)
-        float24 x0l = x0 + step_x0 * height;          // start x coordinates of scanline from interpolation
-        float24 x1l = x1 + step_x1 * height;          // end   x coordinate of scanline from interpolation
-        x0l = std::max(scx1, std::ceil(x0l));       // round and scissor
-        x1l = std::min(scx2, std::ceil(x1l));       // round and scissor
-        int xStop = roundf(x1l.ToFloat32());                            // integer start/stop pixels
-        int xStart = roundf(x0l.ToFloat32());
-
-        if(xStop == xStart) continue;               // skip rows of zero length
-
-        vtx += (x_step * (x0l - init.pos[0]));           // interpolate to point (x0l, y)
-
-        for (int x = xStart; x < xStop; x += 16)            // loop over x pixels of scanline
-        {
-            RGBA_Color source_color, frame_color;
-
-            source_color.r = (uint8_t)(vtx.color[0].ToFloat32() * 255.0);
-            source_color.g = (uint8_t)(vtx.color[1].ToFloat32() * 255.0);
-            source_color.b = (uint8_t)(vtx.color[2].ToFloat32() * 255.0);
-            source_color.a = (uint8_t)(vtx.color[3].ToFloat32() * 255.0);
-
-            //printf("%d %d\n", x >> 4, y >> 4);
-
-            combine_textures(source_color, vtx);
-
-            uint32_t frame_addr = get_swizzled_tile_addr(ctx.color_buffer_base, ctx.frame_width, x >> 4, y >> 4, 4);
-            uint32_t frame = bswp32(e->arm11_read32(0, frame_addr));
-
-            frame_color.r = frame & 0xFF;
-            frame_color.g = (frame >> 8) & 0xFF;
-            frame_color.b = (frame >> 16) & 0xFF;
-            frame_color.a = frame >> 24;
-
-            blend_fragment(source_color, frame_color);
-
-            //The stencil test only works on 24-bit depth + 8-bit stencil
-            if (can_do_stencil)
-            {
-                uint32_t depth_addr = get_swizzled_tile_addr(ctx.depth_buffer_base,
-                                                             ctx.frame_width, x >> 4, y >> 4, 4);
-
-                uint8_t stencil = e->arm11_read32(0, frame_addr) >> 24;
-                uint8_t dest = stencil & ctx.stencil_input_mask;
-                uint8_t ref = ctx.stencil_ref & ctx.stencil_input_mask;
-
-                bool pass = false;
-                switch (ctx.stencil_test_func)
-                {
-                    case 0:
-                        //NEVER
-                        break;
-                    case 1:
-                        //ALWAYS
-                        pass = true;
-                        break;
-                    case 2:
-                        //EQUAL
-                        pass = ref == dest;
-                        break;
-                    case 3:
-                        //NEQUAL
-                        pass = ref != dest;
-                        break;
-                    case 4:
-                        //LESS THAN
-                        pass = ref < dest;
-                        break;
-                    case 5:
-                        //LESS THAN OR EQUAL
-                        pass = ref <= dest;
-                        break;
-                    case 6:
-                        //GREATER THAN
-                        pass = ref > dest;
-                        break;
-                    case 7:
-                        //GREATER THAN OR EQUAL
-                        pass = ref >= dest;
-                        break;
-                }
-
-                if (!pass)
-                {
-                    update_stencil(depth_addr, stencil, ctx.stencil_ref, ctx.stencil_fail_func);
-                    continue;
-                }
-            }
-
-            if (ctx.depth_test_enabled)
-            {
-
-            }
-
-            uint32_t final_color = 0;
-            final_color = source_color.r | (source_color.g << 8) | (source_color.b << 16) | (source_color.a << 24);
-
-            //printf("Color: $%08X (%d %d)\n", final_color, x >> 4, y >> 4);
-
-            e->arm11_write32(0, frame_addr, bswp32(final_color));
-
-            vtx += x_step * float24::FromFloat32(16.0);                       // get values for the adjacent pixel
-        }
-    }
-}*/
 
 void GPU::tex_lookup(int index, RGBA_Color &tex_color, Vertex &vtx)
 {
@@ -2379,6 +2011,16 @@ void GPU::tex_lookup(int index, RGBA_Color &tex_color, Vertex &vtx)
             tex_color.b = texel >> 8;
             tex_color.a = texel & 0xFF;
             break;
+        case 0x6:
+            //RG8/HILO
+            addr = get_swizzled_tile_addr(addr, width, u, v, 2);
+            texel = e->arm11_read16(0, addr);
+
+            tex_color.r = texel >> 8;
+            tex_color.g = texel & 0xFF;
+            tex_color.b = 0;
+            tex_color.a = 0xFF;
+            break;
         case 0x7:
             //I8
             addr = get_swizzled_tile_addr(addr, width, u, v, 1);
@@ -2431,8 +2073,6 @@ void GPU::tex_lookup(int index, RGBA_Color &tex_color, Vertex &vtx)
                 texel = e->arm11_read8(0, addr) >> 4;
             else
                 texel = e->arm11_read8(0, addr) & 0xF;
-
-            //texel = 0xF;
 
             tex_color.a = Convert4To8(texel);
             break;
@@ -2597,12 +2237,6 @@ void GPU::combine_textures(RGBA_Color &source, Vertex& vtx)
     get_tex0(tex[0], vtx);
     get_tex1(tex[1], vtx);
     get_tex2(tex[2], vtx);
-
-    if (ctx.texcomb_rgb_source[0][0] == 4 && ctx.texcomb_rgb_source[0][1] == 3 && ctx.texcomb_rgb_operand[0][1] == 2)
-    {
-         printf("$%08X ", tex[0].r | (tex[0].g << 8) | (tex[0].b << 16) | (tex[0].a << 24));
-         printf("$%08X\n", tex[1].r | (tex[1].g << 8) | (tex[1].b << 16) | (tex[1].a << 24));
-    }
 
     for (int i = ctx.texcomb_start; i < ctx.texcomb_end; i++)
     {
@@ -2886,8 +2520,8 @@ void GPU::combine_textures(RGBA_Color &source, Vertex& vtx)
 
 void GPU::blend_fragment(RGBA_Color &source, RGBA_Color &frame)
 {
-    int source_alpha = source.a;
-    int dest_alpha = frame.a;
+    RGBA_Color temp_source = source;
+    RGBA_Color dest = frame;
     switch (ctx.fragment_op)
     {
         case 0:
@@ -2911,21 +2545,27 @@ void GPU::blend_fragment(RGBA_Color &source, RGBA_Color &frame)
                     break;
                 case 0x2:
                     //Source color
-                    source.r *= source.r;
-                    source.g *= source.g;
-                    source.b *= source.b;
+                    source.r *= temp_source.r;
+                    source.g *= temp_source.g;
+                    source.b *= temp_source.b;
                     break;
                 case 0x4:
                     //Dest color
-                    source.r *= frame.r;
-                    source.g *= frame.g;
-                    source.b *= frame.b;
+                    source.r *= dest.r;
+                    source.g *= dest.g;
+                    source.b *= dest.b;
                     break;
                 case 0x6:
                     //Source alpha
-                    source.r *= source_alpha;
-                    source.g *= source_alpha;
-                    source.b *= source_alpha;
+                    source.r *= temp_source.a;
+                    source.g *= temp_source.a;
+                    source.b *= temp_source.a;
+                    break;
+                case 0x9:
+                    //One minus dest alpha
+                    source.r *= 255 - dest.a;
+                    source.g *= 255 - dest.a;
+                    source.b *= 255 - dest.a;
                     break;
                 default:
                     EmuException::die("[GPU] Unrecognized blend RGB src function $%02X",
@@ -2941,16 +2581,16 @@ void GPU::blend_fragment(RGBA_Color &source, RGBA_Color &frame)
                     source.a *= 255;
                     break;
                 case 0x2:
-                    source.a *= source_alpha;
+                    source.a *= temp_source.a;
                     break;
                 case 0x4:
-                    source.a *= dest_alpha;
+                    source.a *= dest.a;
                     break;
                 case 0x6:
-                    source.a *= source_alpha;
+                    source.a *= temp_source.a;
                     break;
                 case 0x9:
-                    source.a *= dest_alpha;
+                    source.a *= 255 - dest.a;
                     break;
                 default:
                     EmuException::die("[GPU] Unrecognized blend alpha src function $%02X",
@@ -2970,19 +2610,24 @@ void GPU::blend_fragment(RGBA_Color &source, RGBA_Color &frame)
                     frame.b *= 255;
                     break;
                 case 0x2:
-                    frame.r *= frame.r;
-                    frame.g *= frame.g;
-                    frame.b *= frame.b;
+                    frame.r *= temp_source.r;
+                    frame.g *= temp_source.g;
+                    frame.b *= temp_source.b;
                     break;
                 case 0x7:
-                    frame.r *= 255 - source_alpha;
-                    frame.g *= 255 - source_alpha;
-                    frame.b *= 255 - source_alpha;
+                    frame.r *= 255 - temp_source.a;
+                    frame.g *= 255 - temp_source.a;
+                    frame.b *= 255 - temp_source.a;
+                    break;
+                case 0x8:
+                    frame.r *= dest.a;
+                    frame.g *= dest.a;
+                    frame.b *= dest.a;
                     break;
                 case 0xC:
-                    frame.r *= ctx.blend_color.r;
-                    frame.g *= ctx.blend_color.g;
-                    frame.b *= ctx.blend_color.b;
+                    frame.r *= ctx.blend_color.a;
+                    frame.g *= ctx.blend_color.a;
+                    frame.b *= ctx.blend_color.a;
                     break;
                 default:
                     EmuException::die("[GPU] Unrecognized blend rgb dest function $%02X",
@@ -2998,10 +2643,13 @@ void GPU::blend_fragment(RGBA_Color &source, RGBA_Color &frame)
                     frame.a *= 255;
                     break;
                 case 0x2:
-                    frame.a *= dest_alpha;
+                    frame.a *= temp_source.a;
                     break;
                 case 0x7:
-                    frame.a *= 255 - source_alpha;
+                    frame.a *= 255 - temp_source.a;
+                    break;
+                case 0x8:
+                    frame.a *= dest.a;
                     break;
                 case 0xC:
                     frame.a *= ctx.blend_color.a;
@@ -3191,6 +2839,9 @@ void GPU::exec_shader(ShaderUnit& sh)
                 break;
             case 0x22:
                 ended = true;
+                break;
+            case 0x23:
+                shader_breakc(sh, instr);
                 break;
             case 0x24:
                 shader_call(sh, instr);
@@ -3607,6 +3258,37 @@ void GPU::shader_mov(ShaderUnit& sh, uint32_t instr)
         {
             set_sh_dest(sh, dest, src[3 - i], 3 - i);
         }
+    }
+}
+
+void GPU::shader_breakc(ShaderUnit &sh, uint32_t instr)
+{
+    uint8_t cond = (instr >> 22) & 0x3;
+    bool ref_y = (instr >> 24) & 0x1;
+    bool ref_x = (instr >> 25) & 0x1;
+
+    bool passed;
+
+    switch (cond)
+    {
+        case 0:
+            passed = sh.cmp_regs[0] == ref_x || sh.cmp_regs[1] == ref_y;
+            break;
+        case 1:
+            passed = sh.cmp_regs[0] == ref_x && sh.cmp_regs[1] == ref_y;
+            break;
+        case 2:
+            passed = sh.cmp_regs[0] == ref_x;
+            break;
+        case 3:
+            passed = sh.cmp_regs[1] == ref_y;
+            break;
+    }
+
+    if (passed)
+    {
+        sh.pc = sh.loop_stack[sh.loop_ptr - 1];
+        sh.loop_ptr--;
     }
 }
 
