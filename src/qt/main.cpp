@@ -78,6 +78,12 @@ int main(int argc, char** argv)
         a.processEvents();
         uint16_t pad = emuwindow->get_pad_state();
         e.set_pad(pad);
+
+        if (emuwindow->is_touchscreen_pressed())
+            e.set_touchscreen(emuwindow->get_touchscreen_x(), emuwindow->get_touchscreen_y());
+        else
+            e.clear_touchscreen();
+
         try
         {
             e.run();

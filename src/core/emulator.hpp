@@ -23,6 +23,7 @@
 #include "i2c.hpp"
 #include "pxi.hpp"
 #include "scheduler.hpp"
+#include "spi.hpp"
 #include "timers.hpp"
 
 class Emulator
@@ -62,6 +63,7 @@ class Emulator
         RSA rsa;
         Scheduler scheduler;
         SHA sha;
+        SPI spi;
         Timers timers;
         WiFi wifi;
 
@@ -113,6 +115,9 @@ class Emulator
         uint8_t* get_top_buffer();
         uint8_t* get_bottom_buffer();
         void set_pad(uint16_t pad);
+
+        void set_touchscreen(uint16_t x, uint16_t y);
+        void clear_touchscreen();
 };
 
 #endif // EMULATOR_HPP

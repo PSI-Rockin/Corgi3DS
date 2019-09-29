@@ -67,6 +67,7 @@ void Emulator::reset(bool cold_boot)
     dsp.set_cpu_interrupt_sender([this] {mpcore_pmr.assert_hw_irq(0x4A);});
     gpu.reset(vram);
     i2c.reset();
+    spi.reset();
     wifi.reset();
     wifi.set_sdio_interrupt_handler([this] {mpcore_pmr.assert_hw_irq(0x40);});
 
@@ -445,11 +446,8 @@ uint16_t Emulator::arm9_read16(uint32_t addr)
 
 uint32_t Emulator::arm9_read32(uint32_t addr)
 {
-
-    if (addr >= 0x10141200 && addr < 0x10144000) {
-      printf("[SPI] Unrecognized read32 $%08X\n", addr);
-      return 0;
-    }
+    if (addr >= 0x10141200 && addr < 0x10144000)
+        return spi.read32(addr);
 
     if (addr >= 0x08000000 && addr < 0x08100000)
         return *(uint32_t*)&arm9_RAM[addr & 0xFFFFF];
@@ -778,10 +776,7 @@ void Emulator::arm9_write32(uint32_t addr, uint32_t value)
     }
 
     if (addr >= 0x10160000 && addr < 0x10161000)
-    {
-        printf("[SPI] Unrecognized write32 $%08X: $%08X\n", addr, value);
-        return;
-    }
+        spi.write32(addr, value);
 
     if (addr >= 0x10164000 && addr < 0x10165000)
     {
@@ -959,21 +954,15 @@ uint32_t Emulator::arm11_read32(int core, uint32_t addr)
         printf("[LCD] Unrecognized read $%08X\n", addr);
         return 0;
     }
-    if (addr >= 0x10142000 && addr < 0x10144000)
-    {
-        printf("[SPI] Unrecognized read32 $%08X\n", addr);
-        return 0;
-    }
+    if (addr >= 0x10142800 && addr < 0x10144000)
+        return spi.read32(addr);
     if (addr >= 0x10147000 && addr < 0x10148000)
     {
         printf("[GPIO] Unrecognized read32 $%08X\n", addr);
         return 0;
     }
     if (addr >= 0x10160000 && addr < 0x10161000)
-    {
-        printf("[SPI] Unrecognized read32 $%08X\n", addr);
-        return 0;
-    }
+        return spi.read32(addr);
     if (addr >= 0x10162000 && addr < 0x10163000)
     {
         printf("[MIC] Unrecognized read32 $%08X\n", addr);
@@ -1212,9 +1201,9 @@ void Emulator::arm11_write32(int core, uint32_t addr, uint32_t value)
         gpu.write32(addr, value);
         return;
     }
-    if (addr >= 0x10142000 && addr < 0x10144000)
+    if (addr >= 0x10142800 && addr < 0x10144000)
     {
-        printf("[SPI] Unrecognized write32 $%08X: $%08X\n", addr, value);
+        spi.write32(addr, value);
         return;
     }
     if (addr >= 0x10147000 && addr < 0x10148000)
@@ -1224,7 +1213,7 @@ void Emulator::arm11_write32(int core, uint32_t addr, uint32_t value)
     }
     if (addr >= 0x10160000 && addr < 0x10161000)
     {
-        printf("[SPI] Unrecognized write32 $%08X: $%08X\n", addr, value);
+        spi.write32(addr, value);
         return;
     }
     if (addr >= 0x18000000 && addr < 0x18600000)
@@ -1284,4 +1273,14 @@ void Emulator::set_pad(uint16_t pad)
 {
     HID_PAD = ~pad;
     HID_PAD &= 0xFFF;
+}
+
+void Emulator::set_touchscreen(uint16_t x, uint16_t y)
+{
+    spi.set_touchscreen(x, y);
+}
+
+void Emulator::clear_touchscreen()
+{
+    spi.clear_touchscreen();
 }

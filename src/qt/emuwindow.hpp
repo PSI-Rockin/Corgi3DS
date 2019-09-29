@@ -5,6 +5,8 @@
 #include <QCloseEvent>
 #include <QImage>
 #include <QKeyEvent>
+#include <QMouseEvent>
+
 #include <cstdint>
 
 enum HID_PAD_STATE
@@ -32,6 +34,9 @@ class EmuWindow : public QMainWindow
 
         uint16_t pad_state;
 
+        bool touchscreen_pressed;
+        uint16_t touchscreen_x, touchscreen_y;
+
         void press_key(HID_PAD_STATE state);
         void release_key(HID_PAD_STATE state);
     public:
@@ -40,9 +45,16 @@ class EmuWindow : public QMainWindow
         uint16_t get_pad_state();
         bool is_running();
 
+        bool is_touchscreen_pressed();
+        uint16_t get_touchscreen_x();
+        uint16_t get_touchscreen_y();
+
         void keyPressEvent(QKeyEvent* event) override;
         void keyReleaseEvent(QKeyEvent* event) override;
         void closeEvent(QCloseEvent* event) override;
+
+        void mousePressEvent(QMouseEvent* event) override;
+        void mouseReleaseEvent(QMouseEvent* event) override;
 
         void draw(uint8_t* top_screen, uint8_t* bottom_screen);
         void paintEvent(QPaintEvent* event) override;
@@ -56,6 +68,21 @@ inline bool EmuWindow::is_running()
 inline uint16_t EmuWindow::get_pad_state()
 {
     return pad_state;
+}
+
+inline bool EmuWindow::is_touchscreen_pressed()
+{
+    return touchscreen_pressed;
+}
+
+inline uint16_t EmuWindow::get_touchscreen_x()
+{
+    return touchscreen_x;
+}
+
+inline uint16_t EmuWindow::get_touchscreen_y()
+{
+    return touchscreen_y;
 }
 
 #endif // EMUWINDOW_HPP

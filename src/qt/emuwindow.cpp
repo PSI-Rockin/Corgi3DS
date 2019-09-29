@@ -15,6 +15,7 @@ EmuWindow::EmuWindow()
     resize(400, 240 + 240);
     show();
     running = true;
+    touchscreen_pressed = false;
     pad_state = 0;
 }
 
@@ -147,6 +148,27 @@ void EmuWindow::keyReleaseEvent(QKeyEvent *event)
             release_key(PAD_SELECT);
             break;
     }
+}
+
+void EmuWindow::mousePressEvent(QMouseEvent *event)
+{
+    event->accept();
+
+    if (event->y() >= 240 && event->x() >= 40 && event->x() < 40 + 320)
+    {
+        touchscreen_pressed = true;
+        touchscreen_x = event->x() - 40;
+        touchscreen_y = event->y() - 240;
+    }
+    else
+        touchscreen_pressed = false;
+}
+
+void EmuWindow::mouseReleaseEvent(QMouseEvent *event)
+{
+    event->accept();
+
+    touchscreen_pressed = false;
 }
 
 void EmuWindow::press_key(HID_PAD_STATE state)
