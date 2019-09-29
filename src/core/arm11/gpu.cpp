@@ -2896,7 +2896,7 @@ void GPU::exec_shader(ShaderUnit& sh)
             {
                 sh.pc = sh.loop_stack[sh.loop_ptr - 1];
                 sh.loop_iter_stack[sh.loop_ptr - 1]--;
-                sh.loop_ctr_reg += sh.loop_inc_reg;
+                sh.loop_ctr_reg += sh.loop_inc_reg[sh.loop_ptr - 1];
 
                 if (!sh.loop_iter_stack[sh.loop_ptr - 1])
                     sh.loop_ptr--;
@@ -2990,6 +2990,8 @@ int GPU::get_idx1(ShaderUnit& sh, uint8_t idx1, uint8_t src1)
             return sh.addr_reg[0].ToFloat32();
         case 2:
             return sh.addr_reg[1].ToFloat32();
+        case 3:
+            return sh.loop_ctr_reg;
         default:
             EmuException::die("[GPU] Unrecognized idx %d", idx1);
             return 0;
@@ -3388,7 +3390,7 @@ void GPU::shader_loop(ShaderUnit &sh, uint32_t instr)
     sh.loop_cmp_stack[sh.loop_ptr] = (dst * 4) + 4;
     sh.loop_iter_stack[sh.loop_ptr] = sh.int_regs[int_id][0] + 1;
     sh.loop_ctr_reg = sh.int_regs[int_id][1];
-    sh.loop_inc_reg = sh.int_regs[int_id][2];
+    sh.loop_inc_reg[sh.loop_ptr] = sh.int_regs[int_id][2];
 
     sh.loop_ptr++;
 }

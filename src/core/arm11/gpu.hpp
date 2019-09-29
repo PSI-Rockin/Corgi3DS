@@ -62,8 +62,6 @@ struct ShaderUnit
     uint16_t bool_uniform;
     uint8_t int_regs[4][4];
     bool cmp_regs[2];
-    uint32_t loop_ctr_reg;
-    uint32_t loop_inc_reg;
     Vec2<float24> addr_reg;
 
     uint8_t total_inputs;
@@ -89,6 +87,8 @@ struct ShaderUnit
     uint16_t loop_stack[4];
     uint8_t loop_iter_stack[4];
     uint8_t loop_ptr;
+    uint32_t loop_ctr_reg;
+    uint32_t loop_inc_reg[4];
 
     uint16_t if_cmp_stack[8];
     uint16_t if_stack[8];
