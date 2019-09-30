@@ -2422,6 +2422,15 @@ void GPU::combine_textures(RGBA_Color &source, Vertex& vtx)
                 prev.g = std::min(255, operands[0].g + operands[1].g);
                 prev.b = std::min(255, operands[0].b + operands[1].b);
                 break;
+            case 3:
+                prev.r = std::min(255, operands[0].r + operands[1].r - 128);
+                prev.g = std::min(255, operands[0].g + operands[1].g - 128);
+                prev.b = std::min(255, operands[0].b + operands[1].b - 128);
+
+                prev.r = std::max(0, prev.r);
+                prev.g = std::max(0, prev.g);
+                prev.b = std::max(0, prev.b);
+                break;
             case 4:
                 prev.r = (operands[0].r * operands[2].r + operands[1].r * (255 - operands[2].r)) / 255;
                 prev.g = (operands[0].g * operands[2].g + operands[1].g * (255 - operands[2].g)) / 255;
@@ -2460,6 +2469,10 @@ void GPU::combine_textures(RGBA_Color &source, Vertex& vtx)
                 break;
             case 2:
                 prev.a = std::min(255, operands[0].a + operands[1].a);
+                break;
+            case 3:
+                prev.a = std::min(255, operands[0].a + operands[1].a - 128);
+                prev.a = std::max(0, prev.a);
                 break;
             case 4:
                 prev.a = (operands[0].a * operands[2].a + operands[1].a * (255 - operands[2].a)) / 255;
@@ -2614,6 +2627,11 @@ void GPU::blend_fragment(RGBA_Color &source, RGBA_Color &frame)
                     frame.g *= temp_source.g;
                     frame.b *= temp_source.b;
                     break;
+                case 0x6:
+                    frame.r *= temp_source.a;
+                    frame.g *= temp_source.a;
+                    frame.b *= temp_source.a;
+                    break;
                 case 0x7:
                     frame.r *= 255 - temp_source.a;
                     frame.g *= 255 - temp_source.a;
@@ -2643,6 +2661,9 @@ void GPU::blend_fragment(RGBA_Color &source, RGBA_Color &frame)
                     frame.a *= 255;
                     break;
                 case 0x2:
+                    frame.a *= temp_source.a;
+                    break;
+                case 0x6:
                     frame.a *= temp_source.a;
                     break;
                 case 0x7:
