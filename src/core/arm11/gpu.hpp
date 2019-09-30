@@ -338,7 +338,7 @@ class GPU
         void rasterize_half_tri(float24 x0, float24 x1, int y0, int y1, Vertex &x_step,
                                 Vertex &y_step, Vertex &init, float24 step_x0, float24 step_x1);
 
-        void tex_lookup(int index, RGBA_Color& tex_color, Vertex& vtx);
+        void tex_lookup(int index, int coord_index, RGBA_Color& tex_color, Vertex& vtx);
         void decode_etc1(RGBA_Color& tex_color, int u, int v, uint64_t data);
         void get_tex0(RGBA_Color& tex_color, Vertex& vtx);
         void get_tex1(RGBA_Color& tex_color, Vertex& vtx);

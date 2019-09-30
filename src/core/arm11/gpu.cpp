@@ -1629,7 +1629,7 @@ void GPU::rasterize_tri(Vertex &v0, Vertex &v1, Vertex &v2)
                     uint32_t depth_addr = get_swizzled_tile_addr(ctx.depth_buffer_base,
                                                                  ctx.frame_width, x >> 4, y >> 4, 4);
 
-                    uint8_t stencil = e->arm11_read32(0, depth_addr) >> 24;
+                    stencil = e->arm11_read32(0, depth_addr) >> 24;
                     uint8_t dest = stencil & ctx.stencil_input_mask;
                     uint8_t ref = ctx.stencil_ref & ctx.stencil_input_mask;
 
@@ -1871,7 +1871,7 @@ void GPU::rasterize_tri(Vertex &v0, Vertex &v1, Vertex &v2)
     }
 }
 
-void GPU::tex_lookup(int index, RGBA_Color &tex_color, Vertex &vtx)
+void GPU::tex_lookup(int index, int coord_index, RGBA_Color &tex_color, Vertex &vtx)
 {
     tex_color.r = 0;
     tex_color.g = 0;
@@ -1884,8 +1884,8 @@ void GPU::tex_lookup(int index, RGBA_Color &tex_color, Vertex &vtx)
 
     int height = ctx.tex_height[index];
     int width = ctx.tex_width[index];
-    int u = vtx.texcoords[index][0].ToFloat32() * ctx.tex_width[index];
-    int v = vtx.texcoords[index][1].ToFloat32() * ctx.tex_height[index];
+    int u = vtx.texcoords[coord_index][0].ToFloat32() * ctx.tex_width[index];
+    int v = vtx.texcoords[coord_index][1].ToFloat32() * ctx.tex_height[index];
 
     switch (ctx.tex_swrap[index])
     {
@@ -2211,7 +2211,7 @@ void GPU::get_tex0(RGBA_Color &tex_color, Vertex &vtx)
     switch (ctx.tex0_type)
     {
         case 0:
-            tex_lookup(0, tex_color, vtx);
+            tex_lookup(0, 0, tex_color, vtx);
             break;
         default:
             EmuException::die("[GPU] Unrecognized tex0 type %d", ctx.tex0_type);
@@ -2220,12 +2220,15 @@ void GPU::get_tex0(RGBA_Color &tex_color, Vertex &vtx)
 
 void GPU::get_tex1(RGBA_Color &tex_color, Vertex &vtx)
 {
-    tex_lookup(1, tex_color, vtx);
+    tex_lookup(1, 1, tex_color, vtx);
 }
 
 void GPU::get_tex2(RGBA_Color &tex_color, Vertex &vtx)
 {
-    tex_lookup(2, tex_color, vtx);
+    if (ctx.tex2_uses_tex1_coords)
+        tex_lookup(2, 1, tex_color, vtx);
+    else
+        tex_lookup(2, 2, tex_color, vtx);
 }
 
 void GPU::combine_textures(RGBA_Color &source, Vertex& vtx)
