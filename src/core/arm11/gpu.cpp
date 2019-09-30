@@ -1452,7 +1452,8 @@ void GPU::rasterize_tri(Vertex &v0, Vertex &v1, Vertex &v2)
     for (int i = 0; i < 6; i++)
     {
         if (ctx.texcomb_rgb_source[i][0] == 0xF && ctx.texcomb_alpha_source[i][0] == 0xF &&
-            ctx.texcomb_rgb_op[i] == 0 && ctx.texcomb_alpha_op[i] == 0)
+            ctx.texcomb_rgb_op[i] == 0 && ctx.texcomb_alpha_op[i] == 0 &&
+            ctx.texcomb_rgb_operand[i][0] == 0 && ctx.texcomb_alpha_operand[i][0] == 0)
             continue;
 
         ctx.texcomb_start = i;
@@ -1463,7 +1464,8 @@ void GPU::rasterize_tri(Vertex &v0, Vertex &v1, Vertex &v2)
     for (int i = 5; i >= 0; i--)
     {
         if (ctx.texcomb_rgb_source[i][0] == 0xF && ctx.texcomb_alpha_source[i][0] == 0xF &&
-            ctx.texcomb_rgb_op[i] == 0 && ctx.texcomb_alpha_op[i] == 0)
+            ctx.texcomb_rgb_op[i] == 0 && ctx.texcomb_alpha_op[i] == 0 &&
+            ctx.texcomb_rgb_operand[i][0] == 0 && ctx.texcomb_alpha_operand[i][0] == 0)
             continue;
 
         ctx.texcomb_end = i + 1;
@@ -2240,9 +2242,6 @@ void GPU::combine_textures(RGBA_Color &source, Vertex& vtx)
 
     for (int i = ctx.texcomb_start; i < ctx.texcomb_end; i++)
     {
-        if (ctx.texcomb_rgb_source[i][0] == 0xF && ctx.texcomb_alpha_source[i][0] == 0xF &&
-            ctx.texcomb_rgb_op[i] == 0 && ctx.texcomb_alpha_op[i] == 0)
-            continue;
         RGBA_Color sources[3], alpha_sources[3], operands[3];
         int32_t source_a;
 
