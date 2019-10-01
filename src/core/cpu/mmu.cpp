@@ -35,7 +35,7 @@ void MMU::reset()
     for (uint64_t i = 0; i < 1024 * 1024; i++)
     {
         uint64_t addr = i * 4096;
-        addr |= 0xFUL << 60UL;
+        addr |= 0xFULL << 60ULL;
         direct_mapping[i] = (uint8_t*)addr;
     }
 
@@ -50,7 +50,7 @@ void MMU::reset()
 void MMU::add_physical_mapping(uint8_t *mem, uint32_t base, uint32_t size)
 {
     uint64_t addr = (uint64_t)mem;
-    addr |= 7UL << 60UL;
+    addr |= 7ULL << 60ULL;
 
     //Convert to page offsets
     base /= 4096;
@@ -70,7 +70,7 @@ void MMU::remove_physical_mapping(uint32_t base, uint32_t size)
     for (unsigned int i = base; i < base + size; i++)
     {
         uint64_t addr = i * 4096;
-        addr |= 0xFUL << 60UL;
+        addr |= 0xFULL << 60ULL;
         direct_mapping[i] = (uint8_t*)addr;
     }
 }
@@ -136,7 +136,7 @@ void MMU::reload_tlb_section(uint32_t addr)
     uint32_t page = addr / 4096;
 
     uint64_t mem = (uint64_t)direct_mapping[l1_addr / 4096];
-    mem &= ~(0xFUL << 60UL);
+    mem &= ~(0xFULL << 60ULL);
     uint8_t* ptr = (uint8_t*)mem;
     uint32_t entry = *(uint32_t*)&ptr[l1_addr & 0xFFF];
     addr &= ~0xFFFFF;
@@ -180,7 +180,7 @@ void MMU::reload_tlb_section(uint32_t addr)
         for (int i = 0; i < 1024; i += 4)
         {
             uint64_t l2_mem = (uint64_t)direct_mapping[(l2_addr + i) / 4096];
-            l2_mem &= ~(0xFUL << 60UL);
+            l2_mem &= ~(0xFULL << 60ULL);
             uint8_t* l2_ptr = (uint8_t*)l2_mem;
             uint32_t l2_entry = *(uint32_t*)&l2_ptr[(l2_addr + i) & 0xFFF];
 
@@ -249,7 +249,7 @@ void MMU::reload_tlb_by_table(int index)
     while (addr < l1_table_base[index] + size)
     {
         uint64_t mem = (uint64_t)direct_mapping[addr / 4096];
-        mem &= ~(0xFUL << 60UL);
+        mem &= ~(0xFULL << 60ULL);
         uint8_t* ptr = (uint8_t*)mem;
         uint32_t entry = *(uint32_t*)&ptr[addr & 0xFFF];
 
@@ -299,7 +299,7 @@ void MMU::reload_tlb_by_table(int index)
             for (int i = 0; i < 1024; i += 4)
             {
                 uint64_t l2_mem = (uint64_t)direct_mapping[(l2_addr + i) / 4096];
-                l2_mem &= ~(0xFUL << 60UL);
+                l2_mem &= ~(0xFULL << 60ULL);
                 uint8_t* l2_ptr = (uint8_t*)l2_mem;
                 uint32_t l2_entry = *(uint32_t*)&l2_ptr[(l2_addr + i) & 0xFFF];
                 //printf("[$%08X] $%08X - ", pc, l2_entry);
@@ -363,14 +363,14 @@ void MMU::remap_mmu_region(uint32_t base, uint32_t size, uint64_t paddr,
     if (exec_never)
         priv_perm &= ~0x1;
 
-    priv_perm <<= 60UL;
+    priv_perm <<= 60ULL;
 
     for (unsigned int i = 0; i < size; i++)
     {
         uint64_t mapping = (uint64_t)direct_mapping[paddr + i];
 
         //Strip permission bits off
-        mapping &= ~(0x7UL << 60UL);
+        mapping &= ~(0x7ULL << 60ULL);
 
         privileged_mapping[base + i] = (uint8_t*)(mapping | priv_perm);
     }
@@ -405,7 +405,7 @@ void MMU::set_l1_table_control(uint32_t value)
     //If control is 0, translation table 0 will cover all of memory.
     printf("[MMU] Set control: $%08X\n", value);
     l1_table_control = value;
-    l1_table_cutoff = 1UL << 32UL;
+    l1_table_cutoff = 1ULL << 32UL;
     l1_table_cutoff >>= value & 0x7;
     l1_table_cutoff /= (1024 * 256);
 }
@@ -526,15 +526,15 @@ void MMU::remap_pu_region(int index)
         uint64_t addr = (uint64_t)direct_mapping[start];
 
         //Strip RWX permissions from the address
-        addr &= ~(0x7UL << 60UL);
+        addr &= ~(0x7ULL << 60ULL);
 
         uint64_t privileged_addr = addr, user_addr = addr;
 
-        privileged_addr |= (uint64_t)(pu_regions[index].instr_privileged_perm) << 60UL;
-        privileged_addr |= (uint64_t)(pu_regions[index].data_privileged_perm) << 60UL;
+        privileged_addr |= (uint64_t)(pu_regions[index].instr_privileged_perm) << 60ULL;
+        privileged_addr |= (uint64_t)(pu_regions[index].data_privileged_perm) << 60ULL;
 
-        user_addr |= (uint64_t)(pu_regions[index].instr_user_perm) << 60UL;
-        user_addr |= (uint64_t)(pu_regions[index].data_user_perm) << 60UL;
+        user_addr |= (uint64_t)(pu_regions[index].instr_user_perm) << 60ULL;
+        user_addr |= (uint64_t)(pu_regions[index].data_user_perm) << 60ULL;
 
         privileged_mapping[start] = (uint8_t*)privileged_addr;
         user_mapping[start] = (uint8_t*)user_addr;

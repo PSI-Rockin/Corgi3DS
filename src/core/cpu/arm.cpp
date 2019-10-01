@@ -598,33 +598,33 @@ bool ARM_CPU::meets_condition(int cond)
 void ARM_CPU::fetch_new_instr_ptr(uint32_t addr)
 {
     uint64_t mem = (uint64_t)tlb_map[addr / 4096];
-    if (!(mem & (1UL << 60UL)))
+    if (!(mem & (1ULL << 60ULL)))
     {
         cp15->reload_tlb(addr);
         mem = (uint64_t)tlb_map[addr / 4096];
-        if (!(mem & (1UL << 60UL)))
+        if (!(mem & (1ULL << 60ULL)))
             prefetch_abort_occurred = true;
     }
-    if (mem & (1UL << 63UL))
+    if (mem & (1ULL << 63ULL))
         EmuException::die("[ARM%d] PC points to MMIO $%08X", id, addr);
-    mem &= ~(0xFUL << 60UL);
+    mem &= ~(0xFULL << 60ULL);
     instr_ptr = (uint8_t*)mem;
 }
 
 uint8_t ARM_CPU::read8(uint32_t addr)
 {
     uint64_t mem = (uint64_t)tlb_map[addr / 4096];
-    if (!(mem & (1UL << 62UL)))
+    if (!(mem & (1ULL << 62ULL)))
     {
         //TLB miss - reload and check the vaddr again
         cp15->reload_tlb(addr);
         mem = (uint64_t)tlb_map[addr / 4096];
-        if (!(mem & (1UL << 62UL)))
+        if (!(mem & (1ULL << 62ULL)))
             throw EmuException::ARMDataAbort(addr, false);
     }
-    if (!(mem & (1UL << 63UL)))
+    if (!(mem & (1ULL << 63ULL)))
     {
-        mem &= ~(0xFUL << 60UL);
+        mem &= ~(0xFULL << 60ULL);
         uint8_t* ptr = (uint8_t*)mem;
         return ptr[addr & 0xFFF];
     }
@@ -645,17 +645,17 @@ uint16_t ARM_CPU::read16(uint32_t addr)
         return value;
     }
     uint64_t mem = (uint64_t)tlb_map[addr / 4096];
-    if (!(mem & (1UL << 62UL)))
+    if (!(mem & (1ULL << 62ULL)))
     {
         //TLB miss - reload and check the vaddr again
         cp15->reload_tlb(addr);
         mem = (uint64_t)tlb_map[addr / 4096];
-        if (!(mem & (1UL << 62UL)))
+        if (!(mem & (1ULL << 62ULL)))
             throw EmuException::ARMDataAbort(addr, false);
     }
-    if (!(mem & (1UL << 63UL)))
+    if (!(mem & (1ULL << 63ULL)))
     {
-        mem &= ~(0xFUL << 60UL);
+        mem &= ~(0xFULL << 60ULL);
         uint8_t* ptr = (uint8_t*)mem;
         return *(uint16_t*)&ptr[addr & 0xFFF];
     }
@@ -683,17 +683,17 @@ uint32_t ARM_CPU::read32(uint32_t addr)
         return word;
     }
     uint64_t mem = (uint64_t)tlb_map[addr / 4096];
-    if (!(mem & (1UL << 62UL)))
+    if (!(mem & (1ULL << 62ULL)))
     {
         //TLB miss - reload and check the vaddr again
         cp15->reload_tlb(addr);
         mem = (uint64_t)tlb_map[addr / 4096];
-        if (!(mem & (1UL << 62UL)))
+        if (!(mem & (1ULL << 62ULL)))
             throw EmuException::ARMDataAbort(addr, false);
     }
-    if (!(mem & (1UL << 63UL)))
+    if (!(mem & (1ULL << 63ULL)))
     {
-        mem &= ~(0xFUL << 60UL);
+        mem &= ~(0xFULL << 60ULL);
         uint8_t* ptr = (uint8_t*)mem;
         return *(uint32_t*)&ptr[addr & 0xFFF];
     }
@@ -715,17 +715,17 @@ uint64_t ARM_CPU::read64(uint32_t addr)
 void ARM_CPU::write8(uint32_t addr, uint8_t value)
 {
     uint64_t mem = (uint64_t)tlb_map[addr / 4096];
-    if (!(mem & (1UL << 61UL)))
+    if (!(mem & (1ULL << 61ULL)))
     {
         //TLB miss - reload and check the vaddr again
         cp15->reload_tlb(addr);
         mem = (uint64_t)tlb_map[addr / 4096];
-        if (!(mem & (1UL << 62UL)))
+        if (!(mem & (1ULL << 62ULL)))
             throw EmuException::ARMDataAbort(addr, true);
     }
-    if (!(mem & (1UL << 63UL)))
+    if (!(mem & (1ULL << 63ULL)))
     {
-        mem &= ~(0xFUL << 60UL);
+        mem &= ~(0xFULL << 60ULL);
         uint8_t* ptr = (uint8_t*)mem;
         ptr[addr & 0xFFF] = value;
         return;
@@ -745,17 +745,17 @@ void ARM_CPU::write16(uint32_t addr, uint16_t value)
     if ((addr & 0xFFF) > 0xFFE)
         EmuException::die("[ARM%d] Unaligned write16 on page boundary $%08X: $%08X", id, addr, value);
     uint64_t mem = (uint64_t)tlb_map[addr / 4096];
-    if (!(mem & (1UL << 61UL)))
+    if (!(mem & (1ULL << 61ULL)))
     {
         //TLB miss - reload and check the vaddr again
         cp15->reload_tlb(addr);
         mem = (uint64_t)tlb_map[addr / 4096];
-        if (!(mem & (1UL << 62UL)))
+        if (!(mem & (1ULL << 62ULL)))
             throw EmuException::ARMDataAbort(addr, true);
     }
-    if (!(mem & (1UL << 63UL)))
+    if (!(mem & (1ULL << 63ULL)))
     {
-        mem &= ~(0xFUL << 60UL);
+        mem &= ~(0xFULL << 60ULL);
         uint8_t* ptr = (uint8_t*)mem;
         *(uint16_t*)&ptr[addr & 0xFFF] = value;
         return;
@@ -796,19 +796,19 @@ void ARM_CPU::write32(uint32_t addr, uint32_t value)
         //EmuException::die("Unaligned write32 on page boundary");
     }
     uint64_t mem = (uint64_t)tlb_map[addr / 4096];
-    if (!(mem & (1UL << 61UL)))
+    if (!(mem & (1ULL << 61ULL)))
     {
         //TLB miss - reload and check the vaddr again
         if (id == 9 && (addr & 0xF0000000) == 0xC0000000)
             return;
         cp15->reload_tlb(addr);
         mem = (uint64_t)tlb_map[addr / 4096];
-        if (!(mem & (1UL << 61UL)))
+        if (!(mem & (1ULL << 61ULL)))
             throw EmuException::ARMDataAbort(addr, true);
     }
-    if (!(mem & (1UL << 63UL)))
+    if (!(mem & (1ULL << 63ULL)))
     {
-        mem &= ~(0xFUL << 60UL);
+        mem &= ~(0xFULL << 60ULL);
         uint8_t* ptr = (uint8_t*)mem;
         *(uint32_t*)&ptr[addr & 0xFFF] = value;
         return;
@@ -830,7 +830,7 @@ void ARM_CPU::write64(uint32_t addr, uint64_t value)
 bool ARM_CPU::has_exclusive(uint32_t addr)
 {
     uint64_t paddr = (uint64_t)tlb_map[addr / 4096] + (addr & 0xFFF);
-    paddr &= ~(0xFFUL << 56UL);
+    paddr &= ~(0xFFULL << 56ULL);
 
     if (paddr < local_exclusive_start || paddr > local_exclusive_end)
         return false;
@@ -847,7 +847,7 @@ void ARM_CPU::set_exclusive(uint32_t addr, uint32_t size)
 {
     uint64_t paddr = (uint64_t)tlb_map[addr / 4096] + (addr & 0xFFF);
 
-    paddr &= ~(0xFFUL << 56UL);
+    paddr &= ~(0xFFULL << 56ULL);
     local_exclusive_start = paddr;
     local_exclusive_end = paddr + size;
 
@@ -861,7 +861,7 @@ void ARM_CPU::clear_global_exclusives(uint32_t addr)
         return;
     uint64_t paddr = (uint64_t)tlb_map[addr / 4096] + (addr & 0xFFF);
 
-    paddr &= ~(0xFFUL << 56UL);
+    paddr &= ~(0xFFULL << 56ULL);
 
     for (int i = 0; i < 4; i++)
     {
