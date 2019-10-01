@@ -112,6 +112,9 @@ DSP_INSTR decode(uint16_t instr)
     if ((instr & ~0x0F1F) == 0x8040)
         return DSP_MUL_Y0_REG;
 
+    if ((instr & ~0x0F7F) == 0xD000)
+        return DSP_MUL_R45_ARSTEP;
+
     if ((instr & ~0x00FF) == 0x0800)
         return DSP_MPYI;
 
@@ -463,11 +466,20 @@ DSP_INSTR decode(uint16_t instr)
     if ((instr & ~0x0E7F) == 0x4080)
         return DSP_MOVSI;
 
-    if ((instr & ~0x0118) == 0x8660)
-        return DSP_MAX_GT;
+    if ((instr & ~0x003F) == 0x9D40)
+        return DSP_MOV2_ABH_M;
+
+    if (instr == 0x5DFE)
+        return DSP_CLRP0;
+
+    if (instr == 0x5DFD)
+        return DSP_CLRP1;
 
     if (instr == 0x5DFF)
         return DSP_CLRP;
+
+    if ((instr & ~0x0118) == 0x8660)
+        return DSP_MAX_GT;
 
     if ((instr & ~0x0118) == 0x8A60)
         return DSP_MIN_LT;
@@ -614,6 +626,23 @@ DSP_REG get_abe_reg(uint8_t abe)
             return DSP_REG_A0e;
         case 0x3:
             return DSP_REG_A1e;
+        default:
+            return DSP_REG_UNK;
+    }
+}
+
+DSP_REG get_abh_reg(uint8_t abh)
+{
+    switch (abh)
+    {
+        case 0x0:
+            return DSP_REG_B0h;
+        case 0x1:
+            return DSP_REG_B1h;
+        case 0x2:
+            return DSP_REG_A0h;
+        case 0x3:
+            return DSP_REG_A1h;
         default:
             return DSP_REG_UNK;
     }
@@ -817,6 +846,9 @@ void interpret(DSP &dsp, uint16_t instr)
             break;
         case DSP_MUL_Y0_REG:
             mul_y0_reg(dsp, instr);
+            break;
+        case DSP_MUL_R45_ARSTEP:
+            mul_r45_arstep(dsp, instr);
             break;
         case DSP_MPYI:
             mpyi(dsp, instr);
@@ -1160,6 +1192,15 @@ void interpret(DSP &dsp, uint16_t instr)
         case DSP_MOVSI:
             movsi(dsp, instr);
             break;
+        case DSP_MOV2_ABH_M:
+            mov2_abh_m(dsp, instr);
+            break;
+        case DSP_CLRP0:
+            clrp0(dsp, instr);
+            break;
+        case DSP_CLRP1:
+            clrp1(dsp, instr);
+            break;
         case DSP_CLRP:
             clrp(dsp, instr);
             break;
@@ -1235,9 +1276,18 @@ uint16_t do_alb_op(DSP &dsp, uint16_t a, uint16_t b, uint8_t op)
             result = temp & 0xFFFF;
         }
             break;
+        case 0x4:
+            //TST0
+            result = (a & b) != 0;
+            break;
+        case 0x5:
+            //TST1
+            result = (a & ~b) != 0;
+            break;
         case 0x6:
+        case 0x7:
         {
-            //CMPV
+            //CMPV/SUBV
             uint32_t temp = b - a;
             dsp.set_fc((temp >> 16) != 0);
             dsp.set_fm((SignExtend<16, uint32_t>(b) - SignExtend<16, uint32_t>(a)) >> 31);
@@ -1249,6 +1299,22 @@ uint16_t do_alb_op(DSP &dsp, uint16_t a, uint16_t b, uint8_t op)
     }
     dsp.set_fz(result == 0);
     return result;
+}
+
+uint64_t signextend_alm(uint16_t value, uint8_t op)
+{
+    switch (op)
+    {
+        case 0x3:
+        case 0x6:
+        case 0x7:
+            return SignExtend<16, uint64_t>(value);
+        case 0x9:
+        case 0xB:
+            return SignExtend<32, uint64_t>(value << 16);
+        default:
+            return value;
+    }
 }
 
 void do_alm_op(DSP &dsp, DSP_REG acc, uint64_t value, uint8_t op)
@@ -1274,7 +1340,6 @@ void do_alm_op(DSP &dsp, DSP_REG acc, uint64_t value, uint8_t op)
             break;
         case 0x3:
             //ADD
-            value = SignExtend<16, uint64_t>(value);
             result = dsp.get_add_sub_result(acc_value, value, false);
             dsp.saturate_acc_with_flag(acc, result);
             break;
@@ -1290,19 +1355,16 @@ void do_alm_op(DSP &dsp, DSP_REG acc, uint64_t value, uint8_t op)
             break;
         case 0x6:
             //CMP
-            value = SignExtend<16, uint64_t>(value);
             result = dsp.get_add_sub_result(acc_value, value, true);
             dsp.set_acc_flags(result);
             break;
         case 0x7:
             //SUB
-            value = SignExtend<16, uint64_t>(value);
             result = dsp.get_add_sub_result(acc_value, value, true);
             dsp.saturate_acc_with_flag(acc, result);
             break;
         case 0x9:
             //ADDH
-            value = SignExtend<32, uint64_t>(value << 16);
             result = dsp.get_add_sub_result(acc_value, value, false);
             dsp.saturate_acc_with_flag(acc, result);
             break;
@@ -1313,7 +1375,11 @@ void do_alm_op(DSP &dsp, DSP_REG acc, uint64_t value, uint8_t op)
             break;
         case 0xB:
             //SUBH
-            value = SignExtend<32, uint64_t>(value << 16);
+            result = dsp.get_add_sub_result(acc_value, value, true);
+            dsp.saturate_acc_with_flag(acc, result);
+            break;
+        case 0xC:
+            //SUBL
             result = dsp.get_add_sub_result(acc_value, value, true);
             dsp.saturate_acc_with_flag(acc, result);
             break;
@@ -1341,6 +1407,10 @@ void do_mul3_op(DSP &dsp, DSP_REG acc, uint8_t op)
         case 0x0:
             //MPY
             dsp.multiply(0, true, true);
+            break;
+        case 0x1:
+            //MPYSU
+            dsp.multiply(0, false, true);
             break;
         default:
             EmuException::die("[DSP_Intepreter] Unrecognized mul3 op $%02X", op);
@@ -1379,7 +1449,7 @@ void alm_memimm8(DSP &dsp, uint16_t instr)
 
     uint16_t value = dsp.read_from_page(imm);
 
-    do_alm_op(dsp, acc, value, op);
+    do_alm_op(dsp, acc, signextend_alm(value, op), op);
 }
 
 void alm_rn_step(DSP &dsp, uint16_t instr)
@@ -1394,7 +1464,7 @@ void alm_rn_step(DSP &dsp, uint16_t instr)
     uint16_t addr = dsp.rn_addr_and_modify(rn, step, false);
     uint16_t value = dsp.read_data_word(addr);
 
-    do_alm_op(dsp, acc, value, op);
+    do_alm_op(dsp, acc, signextend_alm(value, op), op);
 }
 
 void alm_reg(DSP &dsp, uint16_t instr)
@@ -1419,6 +1489,7 @@ void alm_reg(DSP &dsp, uint16_t instr)
             break;
         default:
             value = dsp.get_reg16(a, false);
+            value = signextend_alm(value, op);
             break;
     }
 
@@ -1433,7 +1504,7 @@ void alu_memimm16(DSP &dsp, uint16_t instr)
 
     DSP_REG acc = get_ax_reg(ax);
 
-    do_alm_op(dsp, acc, dsp.read_data_word(addr), op);
+    do_alm_op(dsp, acc, signextend_alm(dsp.read_data_word(addr), op), op);
 }
 
 void alu_memr7imm16(DSP &dsp, uint16_t instr)
@@ -1445,7 +1516,7 @@ void alu_memr7imm16(DSP &dsp, uint16_t instr)
 
     DSP_REG acc = get_ax_reg(ax);
 
-    do_alm_op(dsp, acc, imm, op);
+    do_alm_op(dsp, acc, signextend_alm(imm, op), op);
 }
 
 void alu_imm16(DSP &dsp, uint16_t instr)
@@ -1456,7 +1527,7 @@ void alu_imm16(DSP &dsp, uint16_t instr)
 
     DSP_REG acc = get_ax_reg(ax);
 
-    do_alm_op(dsp, acc, imm, op);
+    do_alm_op(dsp, acc, signextend_alm(imm, op), op);
 }
 
 void alu_imm8(DSP &dsp, uint16_t instr)
@@ -1473,7 +1544,7 @@ void alu_imm8(DSP &dsp, uint16_t instr)
     if (op == 1)
         backup = dsp.get_acc(acc) & 0xFF00;
 
-    do_alm_op(dsp, acc, imm, op);
+    do_alm_op(dsp, acc, signextend_alm(imm, op), op);
 
     if (op == 1)
     {
@@ -1493,7 +1564,7 @@ void alu_memr7imm7s(DSP &dsp, uint16_t instr)
     DSP_REG acc = get_ax_reg(ax);
 
     uint16_t value = dsp.read_data_r7s(imm);
-    do_alm_op(dsp, acc, value, op);
+    do_alm_op(dsp, acc, signextend_alm(value, op), op);
 }
 
 void or_1(DSP &dsp, uint16_t instr)
@@ -1686,15 +1757,6 @@ void app_ac_add_pa_pa(DSP &dsp, uint16_t instr)
     dsp.product_sum(1, ab, false, true, false, true);
 }
 
-void mpyi(DSP &dsp, uint16_t instr)
-{
-    uint16_t imm = instr & 0xFF;
-    imm = SignExtend<16>(imm);
-
-    dsp.set_x(0, imm);
-    dsp.multiply(0, true, true);
-}
-
 void mul_arstep_imm16(DSP &dsp, uint16_t instr)
 {
     uint8_t rn = instr & 0x7;
@@ -1733,6 +1795,29 @@ void mul_y0_reg(DSP &dsp, uint16_t instr)
     dsp.set_x(0, dsp.get_reg16(reg, false));
 
     do_mul3_op(dsp, ax, op);
+}
+
+void mul_r45_arstep(DSP &dsp, uint16_t instr)
+{
+    DSP_REG ax = get_ax_reg((instr >> 11) & 0x1);
+    uint8_t op = (instr >> 8) & 0x3;
+
+    uint16_t addr_y = dsp.rn_addr_and_modify(((instr >> 2) & 0x1) + 4, ((instr >> 5) & 0x3), false);
+    uint16_t addr_x = dsp.rn_addr_and_modify(instr & 0x3, (instr >> 3) & 0x3, false);
+
+    dsp.set_y(0, dsp.read_data_word(addr_y));
+    dsp.set_x(0, dsp.read_data_word(addr_x));
+
+    do_mul3_op(dsp, ax, op);
+}
+
+void mpyi(DSP &dsp, uint16_t instr)
+{
+    uint16_t imm = instr & 0xFF;
+    imm = SignExtend<16>(imm);
+
+    dsp.set_x(0, imm);
+    dsp.multiply(0, true, true);
 }
 
 void moda4(DSP &dsp, uint16_t instr)
@@ -1777,6 +1862,14 @@ void moda4(DSP &dsp, uint16_t instr)
                     dsp.set_fvl(true);
                 }
                 uint64_t result = SignExtend<40, uint64_t>(~value + 1);
+                dsp.saturate_acc_with_flag(acc, result);
+            }
+                break;
+            case 0xA:
+                //RND
+            {
+                uint64_t value = dsp.get_acc(acc);
+                uint64_t result = dsp.get_add_sub_result(value, 0x8000, false);
                 dsp.saturate_acc_with_flag(acc, result);
             }
                 break;
@@ -2872,6 +2965,35 @@ void movsi(DSP &dsp, uint16_t instr)
     imm = SignExtend<5>(imm);
 
     dsp.shift_reg_40(value, ab, imm);
+}
+
+void mov2_abh_m(DSP &dsp, uint16_t instr)
+{
+    DSP_REG a = get_abh_reg((instr >> 4) & 0x3);
+    DSP_REG b = get_abh_reg((instr >> 2) & 0x3);
+
+    uint16_t u = (dsp.get_saturated_acc(a, false) >> 16) & 0xFFFF;
+    uint16_t v = (dsp.get_saturated_acc(b, false) >> 16) & 0xFFFF;
+
+    uint8_t arrn = dsp.get_arrn_unit((instr >> 1) & 0x1);
+    uint8_t arstep = dsp.get_arstep(instr & 0x1);
+    uint8_t aroffset = dsp.get_aroffset(instr & 0x1);
+
+    uint16_t addr_u = dsp.rn_addr_and_modify(arrn, arstep, false);
+    uint16_t addr_v = dsp.offset_addr(arrn, addr_u, aroffset, false);
+
+    dsp.write_data_word(addr_v, v);
+    dsp.write_data_word(addr_u, u);
+}
+
+void clrp0(DSP &dsp, uint16_t instr)
+{
+    dsp.set_product(0, 0);
+}
+
+void clrp1(DSP &dsp, uint16_t instr)
+{
+    dsp.set_product(1, 0);
 }
 
 void clrp(DSP &dsp, uint16_t instr)

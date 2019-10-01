@@ -77,6 +77,8 @@ void DSP::run(int cycles)
     {
         while (cycles)
         {
+            if (pc >= 0x40000)
+                EmuException::die("[DSP] pc >= 0x40000 ($%05X)!", pc);
             for (int i = 0; i < 2; i++)
             {
                 if (timers[i].enabled)
@@ -512,6 +514,8 @@ uint16_t DSP::read_data_word(uint16_t addr)
                 return dma.src_space[dma.channel] | (dma.dest_space[dma.channel] << 4);
             case 0x1DC:
                 return 0;
+            case 0x1DE:
+                return 0;
             case 0x200:
                 return icu.int_pending;
             case 0x202:
@@ -727,6 +731,16 @@ void DSP::write_data_word(uint16_t addr, uint16_t value)
                 printf("[DSP_DMA] Write chan: $%04X\n", value);
                 dma.channel = value & 0x7;
                 break;
+            case 0x1C0:
+                printf("[DSP_DMA] Write SRC_ADDR_LOW_%d: $%04X\n", dma.channel, value);
+                dma.src_addr[dma.channel] &= ~0xFFFF;
+                dma.src_addr[dma.channel] |= value;
+                break;
+            case 0x1C2:
+                printf("[DSP_DMA] Write SRC_ADDR_HIGH_%d: $%04X\n", dma.channel, value);
+                dma.src_addr[dma.channel] &= 0xFFFF;
+                dma.src_addr[dma.channel] |= value << 16;
+                break;
             case 0x1C4:
                 printf("[DSP_DMA] Write DST_ADDR_LOW_%d: $%04X\n", dma.channel, value);
                 dma.dest_addr[dma.channel] &= ~0xFFFF;
@@ -780,6 +794,11 @@ void DSP::write_data_word(uint16_t addr, uint16_t value)
                 break;
             case 0x1DC:
                 printf("[DSP_DMA] Write 0x1DC: $%04X\n", value);
+                break;
+            case 0x1DE:
+                printf("[DSP_DMA] Write 0x1DE: $%04X\n", value);
+                if (value == 0x40C0)
+                    do_dma_transfer();
                 break;
             case 0x202:
                 printf("[DSP_ICU] Write int acknowledge: $%04X\n", value);
@@ -1185,11 +1204,11 @@ uint16_t DSP::get_reg16(DSP_REG reg, bool mov_saturate)
     }
 }
 
-uint64_t DSP::get_saturated_acc(DSP_REG reg)
+uint64_t DSP::get_saturated_acc(DSP_REG reg, bool flag)
 {
     uint64_t acc = get_acc(reg);
     if (!mod0.sat)
-        return saturate(acc);
+        return saturate(acc, flag);
     return acc;
 }
 
@@ -1385,7 +1404,7 @@ void DSP::saturate_acc_with_flag(DSP_REG acc, uint64_t value)
 {
     set_acc_flags(value);
     if (!mod0.sata)
-        value = saturate(value);
+        value = saturate(value, true);
 
     set_acc(acc, value);
 }
@@ -1395,11 +1414,12 @@ uint64_t DSP::trunc_to_40(uint64_t value)
     return value & 0xFFFFFFFFFFULL;
 }
 
-uint64_t DSP::saturate(uint64_t value)
+uint64_t DSP::saturate(uint64_t value, bool flag)
 {
     if (value != SignExtend<32>(value))
     {
-        stt0.flm = true;
+        if (flag)
+            stt0.flm = true;
         if ((value >> 39) & 0x1)
             return 0xFFFFFFFF80000000ULL;
         else
@@ -2241,7 +2261,10 @@ uint16_t DSP::offset_addr(uint8_t rn, uint16_t addr, uint8_t offset, bool dmod)
     }
     else
     {
-        EmuException::die("[DSP] MinusOne in offset_addr");
+        if (!emod)
+            return addr - 1;
+        EmuException::die("[DSP] Unimplemented case in offset_addr");
+        return addr - 1;
     }
     return addr;
 }
@@ -2380,4 +2403,11 @@ void DSP::apbp_send_cmd(int index, uint16_t value)
     apbp.cmd_ready[index] = true;
 
     assert_dsp_irq(0xE);
+}
+
+void DSP::do_dma_transfer()
+{
+    printf("[DSP] Start DMA transfer!\n");
+    //TODO: properly implement. No good way of testing right now, so we just fake the transfer this way.
+    assert_dsp_irq(0xF);
 }

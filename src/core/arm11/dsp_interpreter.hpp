@@ -44,6 +44,7 @@ enum DSP_INSTR
     DSP_MUL_ARSTEP_IMM16,
     DSP_MUL_Y0_ARSTEP,
     DSP_MUL_Y0_REG,
+    DSP_MUL_R45_ARSTEP,
 
     DSP_MPYI,
 
@@ -191,6 +192,10 @@ enum DSP_INSTR
     DSP_MOVS_REG_AB,
     DSP_MOVSI,
 
+    DSP_MOV2_ABH_M,
+
+    DSP_CLRP0,
+    DSP_CLRP1,
     DSP_CLRP,
 
     DSP_MAX_GT,
@@ -216,6 +221,7 @@ namespace DSP_Interpreter
     DSP_REG get_bx_reg(uint8_t bx);
     DSP_REG get_ab_reg(uint8_t ab);
     DSP_REG get_abe_reg(uint8_t abe);
+    DSP_REG get_abh_reg(uint8_t abh);
     DSP_REG get_abl_reg(uint8_t abl);
     DSP_REG get_ablh_reg(uint8_t ablh);
     DSP_REG get_sttmod_reg(uint8_t sttmod);
@@ -230,6 +236,8 @@ namespace DSP_Interpreter
 
     bool is_alb_modifying(uint8_t op);
     uint16_t do_alb_op(DSP& dsp, uint16_t a, uint16_t b, uint8_t op);
+
+    uint64_t signextend_alm(uint16_t value, uint8_t op);
     void do_alm_op(DSP& dsp, DSP_REG acc, uint64_t value, uint8_t op);
     void do_mul3_op(DSP& dsp, DSP_REG acc, uint8_t op);
 
@@ -267,6 +275,7 @@ namespace DSP_Interpreter
     void mul_arstep_imm16(DSP& dsp, uint16_t instr);
     void mul_y0_arstep(DSP& dsp, uint16_t instr);
     void mul_y0_reg(DSP& dsp, uint16_t instr);
+    void mul_r45_arstep(DSP& dsp, uint16_t instr);
 
     void mpyi(DSP& dsp, uint16_t instr);
 
@@ -413,6 +422,10 @@ namespace DSP_Interpreter
     void movs_reg_ab(DSP& dsp, uint16_t instr);
     void movsi(DSP& dsp, uint16_t instr);
 
+    void mov2_abh_m(DSP& dsp, uint16_t instr);
+
+    void clrp0(DSP& dsp, uint16_t instr);
+    void clrp1(DSP& dsp, uint16_t instr);
     void clrp(DSP& dsp, uint16_t instr);
 
     void max_gt(DSP& dsp, uint16_t instr);
