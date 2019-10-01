@@ -156,6 +156,15 @@ void GPU::render_fb_pixel(uint8_t *screen, int fb_index, int x, int y)
             color |= (pb << 16) | (pg << 8) | pr;
         }
             break;
+        case 4:
+        {
+            uint16_t cin = e->arm11_read16(0, start + (index * 2));
+            color = Convert4To8(cin >> 12);
+            color |= Convert4To8((cin >> 8) & 0xF) << 8;
+            color |= Convert4To8((cin >> 4) & 0xF) << 16;
+            color |= Convert4To8(cin & 0xF) << 24;
+        }
+            break;
         default:
             EmuException::die("[GPU] Unrecognized framebuffer color format %d\n", screen_fb->color_format);
     }

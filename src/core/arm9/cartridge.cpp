@@ -180,7 +180,8 @@ void Cartridge::process_spicard_cmd()
                     spi_save_addr = spi_input_buffer[1] << 16;
                     spi_save_addr |= spi_input_buffer[2] << 8;
                     spi_save_addr |= spi_input_buffer[3];
-                    memcpy(spi_output_buffer, save_data + spi_save_addr, spi_block_len);
+                    memcpy(spi_output_buffer, save_data + spi_save_addr,
+                           std::min(spi_block_len, (int)sizeof(spi_output_buffer)));
                     printf("[SPICARD] Reading from $%08X\n", spi_save_addr);
                     break;
                 case 0x05:
@@ -321,10 +322,26 @@ uint32_t Cartridge::read32_spicard(uint32_t addr)
     switch (addr)
     {
         case 0x1000D80C:
+            if (spi_block_len <= 0)
+                EmuException::die("[SPICARD] Read from FIFO when no data is present!");
             reg = *(uint32_t*)&spi_output_buffer[spi_output_pos];
             spi_output_pos += 0x4;
-            if (spi_output_pos >= 0x400)
-                EmuException::die("[SPICARD] Output pos exceeds 0x200!");
+            spi_block_len -= 4;
+            if (spi_output_pos >= sizeof(spi_output_buffer) && spi_block_len > 0)
+            {
+                spi_output_pos = 0;
+                switch (spi_cmd)
+                {
+                    case 0x3:
+                        //Read
+                        spi_save_addr += sizeof(spi_output_buffer);
+                        memcpy(spi_output_buffer, save_data + spi_save_addr,
+                               std::min(spi_block_len, (int)sizeof(spi_output_buffer)));
+                        break;
+                    default:
+                        EmuException::die("[SPICARD] Unrecognized command in FIFO read $%02X", spi_cmd);
+                }
+            }
             printf("[SPICARD] Read32 NSPI_FIFO: $%08X\n", reg);
             break;
         default:
@@ -473,8 +490,8 @@ void Cartridge::write32_spicard(uint32_t addr, uint32_t value)
             printf("[SPICARD] Write32 NSPI_FIFO: $%08X\n", value);
             *(uint32_t*)&spi_input_buffer[spi_input_pos] = value;
             spi_input_pos += 4;
-            if (spi_input_pos >= 0x400)
-                EmuException::die("[SPICARD] Input pos exceeds 0x200!");
+            if (spi_input_pos >= sizeof(spi_input_buffer))
+                EmuException::die("[SPICARD] Input pos exceeds size of input buffer!");
             break;
         default:
             printf("[SPICARD] Unrecognized write32 $%08X: $%08X\n", addr, value);
