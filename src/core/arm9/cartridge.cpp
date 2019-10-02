@@ -18,8 +18,10 @@ Cartridge::~Cartridge()
 
 void Cartridge::reset()
 {
+    if (!card.is_open())
+        cart_id = 0xFFFFFFFF;
+
     read_block_count = 0;
-    cart_id = 0x9000FEC2;
     ntr_enable = 0;
     output_pos = 0;
     output_bytes_left = 0;
@@ -39,12 +41,34 @@ void Cartridge::reset()
 
 bool Cartridge::mount(std::string file_name)
 {
-    card.open(file_name, std::ios::binary);
+    card.open(file_name, std::ios::ate | std::ios::binary);
+
+    cart_id = 0xFFFFFFFF;
 
     if (card.is_open())
     {
         if (save_data)
             delete[] save_data;
+
+        //Note: this assumes the cartridge is a 3DS cart
+        cart_id = 0x900000C2;
+
+        //We must calculate the size of the cart. HOS will refuse to read from cart sectors larger than the
+        //indicated size, and I don't want to risk any copy protection problems from using absurd sizes.
+        uint8_t size_byte = 0;
+
+        size_t size = card.tellg();
+
+        //If the cart is less than 256 MB, the size flag is simply (size in MB - 1)
+        if (size < 1024 * 1024 * 256)
+            size_byte = (size / (1024 * 1024)) - 1;
+        else
+        {
+            //Otherwise, the size byte is (0x100 - size in 256 MB units)
+            size_byte = 0x100 - (size / (1024 * 1024 * 256));
+        }
+
+        cart_id |= size_byte << 8;
 
         save_data = new uint8_t[1024 * 1024 * 8];
         memset(save_data, 0xFF, 1024 * 1024 * 8);
@@ -217,7 +241,8 @@ void Cartridge::process_spicard_cmd()
                     spi_save_addr |= spi_input_buffer[1] << 8;
                     spi_save_addr |= spi_input_buffer[2];
                     printf("[SPICARD] Reading from $%08X\n", spi_save_addr);
-                    memcpy(spi_output_buffer, save_data + spi_save_addr, spi_block_len);
+                    memcpy(spi_output_buffer, save_data + spi_save_addr,
+                           std::min(spi_block_len, (int)sizeof(spi_output_buffer)));
                     break;
                 default:
                     EmuException::die("[SPICARD] Unrecognized NEEDS_PARAMS cmd $%02X", spi_cmd);
@@ -332,7 +357,8 @@ uint32_t Cartridge::read32_spicard(uint32_t addr)
                 spi_output_pos = 0;
                 switch (spi_cmd)
                 {
-                    case 0x3:
+                    case 0x03:
+                    case 0xEB:
                         //Read
                         spi_save_addr += sizeof(spi_output_buffer);
                         memcpy(spi_output_buffer, save_data + spi_save_addr,
