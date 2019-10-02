@@ -12,6 +12,7 @@ RSA::RSA(Interrupt9* int9) : int9(int9)
 
 void RSA::reset()
 {
+    memset(&RSA_CNT, 0, sizeof(RSA_CNT));
     memset(keys, 0, sizeof(keys));
     msg_ctr = 0;
 }
@@ -206,8 +207,8 @@ void RSA::write32(uint32_t addr, uint32_t value)
         case 0x1000B000:
             printf("[RSA] Write CNT: $%08X\n", value);
             RSA_CNT.keyslot = (value >> 4) & 0x3;
-            RSA_CNT.big_endian = value & (1 << 8);
-            RSA_CNT.word_order = value & (1 << 9);
+            RSA_CNT.big_endian = (value >> 8) & 0x1;
+            RSA_CNT.word_order = (value >> 9) & 0x1;
 
             if (value & 0x1)
                 do_rsa_op();
