@@ -60,12 +60,22 @@ bool Cartridge::mount(std::string file_name)
         size_t size = card.tellg();
 
         //If the cart is less than 256 MB, the size flag is simply (size in MB - 1)
-        if (size < 1024 * 1024 * 256)
-            size_byte = (size / (1024 * 1024)) - 1;
+        //Note that we round up to the nearest given unit in case people are using trimmed dumps
+        constexpr static int MEGABYTE = 1024 * 1024;
+        if (size < MEGABYTE * 256)
+        {
+            size_byte = size / MEGABYTE;
+            if (size % MEGABYTE == 0)
+                size--;
+        }
         else
         {
             //Otherwise, the size byte is (0x100 - size in 256 MB units)
-            size_byte = 0x100 - (size / (1024 * 1024 * 256));
+            size_byte = size / (MEGABYTE * 256);
+            if (size % (MEGABYTE * 256) != 0)
+                size_byte++;
+
+            size_byte = 0x100 - size_byte;
         }
 
         cart_id |= size_byte << 8;
