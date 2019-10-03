@@ -420,7 +420,7 @@ void MPCore_PMR::write32(int core, uint32_t addr, uint32_t value)
                         for (int i = 0; i < 2; i++)
                         {
                             if (target_list & (1 << i))
-                                set_pending_irq(0, int_id, core);
+                                set_pending_irq(i, int_id, core);
                         }
                         break;
                     case 1:
