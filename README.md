@@ -39,7 +39,7 @@ NAND dumps require `essential.exefs` - get dumps from the latest version of GodM
 * Enter/Return -> START
 * Spacebar -> SELECT
 
-The touch screen can be used by clicking anywhere on the bottom screen.
+The touch screen can be used by clicking anywhere on the bottom screen with the mouse.
 
 ## Credits
 Uses https://github.com/kokke/tiny-AES-c, a public domain AES library.
