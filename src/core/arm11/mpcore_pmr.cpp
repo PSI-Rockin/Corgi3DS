@@ -416,10 +416,20 @@ void MPCore_PMR::write32(int core, uint32_t addr, uint32_t value)
                 switch (target_type)
                 {
                     case 0:
-                        if (target_list & 0x1)
-                            set_pending_irq(0, int_id, core);
-                        if (target_list & 0x2)
-                            set_pending_irq(1, int_id, core);
+                        //Send to CPUs within target list
+                        for (int i = 0; i < 2; i++)
+                        {
+                            if (target_list & (1 << i))
+                                set_pending_irq(0, int_id, core);
+                        }
+                        break;
+                    case 1:
+                        //Send to all CPUs except the sender
+                        for (int i = 0; i < 2; i++)
+                        {
+                            if (core != i)
+                                set_pending_irq(i, int_id, core);
+                        }
                         break;
                     default:
                         EmuException::die("[PMR%d] Unrecognized target type %d\n", core, target_type);
