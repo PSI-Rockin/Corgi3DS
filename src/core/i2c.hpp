@@ -48,6 +48,8 @@ class I2C
         uint8_t read_device(int id, uint8_t device);
         void write_device(int id, uint8_t device, uint8_t value);
 
+        uint8_t read_camera(int device, uint8_t reg_id);
+
         uint8_t read_mcu(uint8_t reg_id);
         void write_mcu(uint8_t reg_id, uint8_t value);
     public:

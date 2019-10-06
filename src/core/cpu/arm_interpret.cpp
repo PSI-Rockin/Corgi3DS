@@ -1087,7 +1087,7 @@ void arm_load_word(ARM_CPU &cpu, uint32_t instr)
         uint32_t word;
 
         //Split unaligned accesses into two reads to prevent issues if physical pages are not contiguous
-        if (cpu.get_id() == 9 && (address & 0x3))
+        if (cpu.get_id() < 11 && (address & 0x3))
             word = cpu.rotr32(cpu.read32(address & ~0x3), (address & 0x3) * 8, false);
         else
             word = cpu.read32(address);
@@ -1103,7 +1103,7 @@ void arm_load_word(ARM_CPU &cpu, uint32_t instr)
     else
     {
         uint32_t word;
-        if (cpu.get_id() == 9 && (address & 0x3))
+        if (cpu.get_id() < 11 && (address & 0x3))
             word = cpu.rotr32(cpu.read32(address & ~0x3), (address & 0x3) * 8, false);
         else
             word = cpu.read32(address);

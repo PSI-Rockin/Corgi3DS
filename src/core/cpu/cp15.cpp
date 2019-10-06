@@ -245,6 +245,16 @@ void CP15::mcr(int operation_mode, int CP_reg, int coprocessor_info, int coproce
                 //mmu->invalidate_tlb_by_asid(value & 0xFF);
             }
             break;
+        case 0x853:
+        case 0x863:
+        case 0x873:
+            if (id != 9)
+            {
+                printf("[CP15_%d] TLB invalidate by MVA: $%08X\n", id, value);
+
+                mmu->invalidate_tlb_by_addr(value);
+            }
+            break;
         case 0x910:
             if (id == 9)
             {

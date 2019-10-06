@@ -188,6 +188,10 @@ uint8_t I2C::read_device(int id, uint8_t device)
     uint8_t reg = 0;
     switch (dev)
     {
+        case 0x078:
+        case 0x07A:
+        case 0x178:
+            return read_camera(dev, devices[id][device].cur_reg);
         case 0x14A:
             return read_mcu(devices[id][device].cur_reg);
         default:
@@ -201,11 +205,26 @@ void I2C::write_device(int id, uint8_t device, uint8_t value)
     uint16_t dev = device | (id << 8);
     switch (dev)
     {
+        case 0x078:
+        case 0x07A:
+        case 0x178:
+            printf("[I2C_CAM] Unrecognized write register $%04X:%02X ($%02X)\n", device, devices[id][device].cur_reg, value);
+            break;
         case 0x14A:
             write_mcu(devices[id][device].cur_reg, value);
             break;
         default:
             printf("[I2C%d] Unrecognized write device $%02X ($%02X)\n", id, device, value);
+    }
+}
+
+uint8_t I2C::read_camera(int device, uint8_t reg_id)
+{
+    switch (reg_id)
+    {
+        default:
+            printf("[I2C_CAM] Unrecognized read register $%04X:%02X\n", device, reg_id);
+            return 0xFF;
     }
 }
 

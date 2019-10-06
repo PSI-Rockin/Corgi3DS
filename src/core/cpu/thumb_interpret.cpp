@@ -363,7 +363,11 @@ void thumb_load_imm(ARM_CPU &cpu, uint16_t instr)
         offset <<= 2;
         address += offset;
         //cpu.add_n32_data(address, 1);
-        uint32_t word = cpu.rotr32(cpu.read32(address & ~0x3), (address & 0x3) * 8, false);
+        uint32_t word;
+        if (cpu.get_id() < 11)
+            word = cpu.rotr32(cpu.read32(address & ~0x3), (address & 0x3) * 8, false);
+        else
+            word = cpu.read32(address);
         cpu.set_register(destination, word);
     }
 }
@@ -415,7 +419,11 @@ void thumb_load_reg(ARM_CPU &cpu, uint16_t instr)
     {
         //cpu.add_n32_data(address, 1);
         //cpu.add_internal_cycles(1);
-        uint32_t word = cpu.rotr32(cpu.read32(address & ~0x3), (address & 0x3) * 8, false);
+        uint32_t word;
+        if (cpu.get_id() < 11)
+            word = cpu.rotr32(cpu.read32(address & ~0x3), (address & 0x3) * 8, false);
+        else
+            word = cpu.read32(address);
         cpu.set_register(destination, word);
     }
 }
