@@ -182,6 +182,9 @@ void WiFi::reset()
 
     memset(RAM, 0, 0x20000);
 
+    istat = 0;
+    imask = 0;
+
     block.active = false;
     bmi_done = false;
     card_irq_mask = false;
