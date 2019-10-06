@@ -879,7 +879,7 @@ uint16_t Emulator::arm11_read16(int core, uint32_t addr)
         printf("[CSND] Unrecognized read16 $%08X\n", addr);
         return 0;
     }
-    if (addr >= 0x10120000 && addr < 0x10122000)
+    if ((addr >= 0x10102000 && addr < 0x10103000) || (addr >= 0x10120000 && addr < 0x10122000))
     {
         printf("[Y2R] Unrecognized read16 $%08X\n", addr);
         return 0;
@@ -936,7 +936,7 @@ uint32_t Emulator::arm11_read32(int core, uint32_t addr)
         printf("[CSND] Unrecognized read32 $%08X\n", addr);
         return 0;
     }
-    if (addr >= 0x10120000 && addr < 0x10122000)
+    if ((addr >= 0x10102000 && addr < 0x10103000) || (addr >= 0x10120000 && addr < 0x10122000))
     {
         printf("[Y2R] Unrecognized read32 $%08X\n", addr);
         return 0;
@@ -1089,7 +1089,7 @@ void Emulator::arm11_write16(int core, uint32_t addr, uint16_t value)
         printf("[CSND] Unrecognized write16 $%08X: $%04X\n", addr, value);
         return;
     }
-    if (addr >= 0x10120000 && addr < 0x10122000)
+    if ((addr >= 0x10102000 && addr < 0x10103000) || (addr >= 0x10120000 && addr < 0x10122000))
     {
         printf("[Y2R] Unrecognized write16 $%08X: $%04X\n", addr, value);
         return;
@@ -1171,7 +1171,7 @@ void Emulator::arm11_write32(int core, uint32_t addr, uint32_t value)
         printf("[CSND] Unrecognized write32 $%08X: $%08X\n", addr, value);
         return;
     }
-    if (addr >= 0x10120000 && addr < 0x10122000)
+    if ((addr >= 0x10102000 && addr < 0x10103000) || (addr >= 0x10120000 && addr < 0x10122000))
     {
         printf("[Y2R] Unrecognized write32 $%08X: $%08X\n", addr, value);
         return;
