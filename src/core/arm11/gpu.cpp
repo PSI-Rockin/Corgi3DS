@@ -908,10 +908,10 @@ void GPU::write_cmd_register(int reg, uint32_t param, uint8_t mask)
         case 0x282:
         case 0x283:
         case 0x284:
-            ctx.gsh.int_regs[reg - 0x2B1][0] = param & 0xFF;
-            ctx.gsh.int_regs[reg - 0x2B1][1] = (param >> 8) & 0xFF;
-            ctx.gsh.int_regs[reg - 0x2B1][2] = (param >> 16) & 0xFF;
-            ctx.gsh.int_regs[reg - 0x2B1][3] = param >> 24;
+            ctx.gsh.int_regs[reg - 0x281][0] = param & 0xFF;
+            ctx.gsh.int_regs[reg - 0x281][1] = (param >> 8) & 0xFF;
+            ctx.gsh.int_regs[reg - 0x281][2] = (param >> 16) & 0xFF;
+            ctx.gsh.int_regs[reg - 0x281][3] = param >> 24;
             break;
         case 0x289:
             ctx.gsh.total_inputs = (param & 0xF) + 1;
