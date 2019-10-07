@@ -2881,6 +2881,9 @@ void GPU::exec_shader(ShaderUnit& sh)
             case 0x24:
                 shader_call(sh, instr);
                 break;
+            case 0x25:
+                shader_callc(sh, instr);
+                break;
             case 0x26:
                 shader_callu(sh, instr);
                 break;
@@ -3346,6 +3349,43 @@ void GPU::shader_call(ShaderUnit &sh, uint32_t instr)
     sh.call_ptr++;
 
     sh.pc = dst * 4;
+}
+
+void GPU::shader_callc(ShaderUnit &sh, uint32_t instr)
+{
+    uint8_t num = instr & 0xFF;
+
+    uint16_t dst = (instr >> 10) & 0xFFF;
+    uint8_t cond = (instr >> 22) & 0x3;
+    bool ref_y = (instr >> 24) & 0x1;
+    bool ref_x = (instr >> 25) & 0x1;
+
+    bool passed;
+
+    switch (cond)
+    {
+        case 0:
+            passed = sh.cmp_regs[0] == ref_x || sh.cmp_regs[1] == ref_y;
+            break;
+        case 1:
+            passed = sh.cmp_regs[0] == ref_x && sh.cmp_regs[1] == ref_y;
+            break;
+        case 2:
+            passed = sh.cmp_regs[0] == ref_x;
+            break;
+        case 3:
+            passed = sh.cmp_regs[1] == ref_y;
+            break;
+    }
+
+    if (passed)
+    {
+        sh.call_stack[sh.call_ptr] = sh.pc;
+        sh.call_cmp_stack[sh.call_ptr] = (dst + num) * 4;
+        sh.call_ptr++;
+
+        sh.pc = dst * 4;
+    }
 }
 
 void GPU::shader_callu(ShaderUnit &sh, uint32_t instr)

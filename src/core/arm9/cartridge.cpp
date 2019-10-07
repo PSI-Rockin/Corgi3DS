@@ -76,6 +76,11 @@ bool Cartridge::mount(std::string file_name)
                 size_byte++;
 
             size_byte = 0x100 - size_byte;
+
+            //For some reason, 1 GB cartridges use 0xFA instead of 0xFC
+            //They seem to be the only carts that are the exception to the above formula
+            if (size_byte == 0xFC)
+                size_byte = 0xFA;
         }
 
         cart_id |= size_byte << 8;
