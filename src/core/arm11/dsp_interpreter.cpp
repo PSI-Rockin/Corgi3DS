@@ -100,6 +100,9 @@ DSP_INSTR decode(uint16_t instr)
     if ((instr & ~0x000F) == 0x5DC0)
         return DSP_APP_ZR;
 
+    if ((instr & ~0x000C) == 0x4590)
+        return DSP_APP_AC_ADD_PP_PP;
+
     if ((instr & ~0x000C) == 0x4592)
         return DSP_APP_AC_ADD_PP_PA;
 
@@ -840,6 +843,9 @@ void interpret(DSP &dsp, uint16_t instr)
             break;
         case DSP_APP_ZR:
             app_zr(dsp, instr);
+            break;
+        case DSP_APP_AC_ADD_PP_PP:
+            app_ac_add_pp_pp(dsp, instr);
             break;
         case DSP_APP_AC_ADD_PP_PA:
             app_ac_add_pp_pa(dsp, instr);
@@ -1764,6 +1770,13 @@ void app_zr(DSP &dsp, uint16_t instr)
     bool sub = (instr >> 1) & 0x1;
     bool p1_align = instr & 0x1;
     dsp.product_sum(0, ab, false, false, sub, p1_align);
+}
+
+void app_ac_add_pp_pp(DSP &dsp, uint16_t instr)
+{
+    DSP_REG ab = get_ab_reg((instr >> 2) & 0x3);
+
+    dsp.product_sum(1, ab, false, false, false, false);
 }
 
 void app_ac_add_pp_pa(DSP &dsp, uint16_t instr)

@@ -39,6 +39,7 @@ enum DSP_INSTR
     DSP_RST_STTMOD,
 
     DSP_APP_ZR,
+    DSP_APP_AC_ADD_PP_PP,
     DSP_APP_AC_ADD_PP_PA,
     DSP_APP_AC_ADD_PA_PA,
 
@@ -272,6 +273,7 @@ namespace DSP_Interpreter
     void rst_sttmod(DSP& dsp, uint16_t instr);
 
     void app_zr(DSP& dsp, uint16_t instr);
+    void app_ac_add_pp_pp(DSP& dsp, uint16_t instr);
     void app_ac_add_pp_pa(DSP& dsp, uint16_t instr);
     void app_ac_add_pa_pa(DSP& dsp, uint16_t instr);
 
