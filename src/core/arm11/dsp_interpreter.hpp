@@ -29,6 +29,7 @@ enum DSP_INSTR
 
     DSP_ADD_AB_BX,
     DSP_ADD_BX_AX,
+    DSP_ADD_P1_AX,
     DSP_ADD_PX_BX,
 
     DSP_SUB_AB_BX,
@@ -261,6 +262,7 @@ namespace DSP_Interpreter
 
     void add_ab_bx(DSP& dsp, uint16_t instr);
     void add_bx_ax(DSP& dsp, uint16_t instr);
+    void add_p1_ax(DSP& dsp, uint16_t instr);
     void add_px_bx(DSP& dsp, uint16_t instr);
 
     void sub_ab_bx(DSP& dsp, uint16_t instr);

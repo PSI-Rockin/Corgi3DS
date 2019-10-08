@@ -79,6 +79,9 @@ DSP_INSTR decode(uint16_t instr)
     if ((instr & ~0x0003) == 0x5DF0)
         return DSP_ADD_BX_AX;
 
+    if ((instr & ~0x0001) == 0xD782)
+        return DSP_ADD_P1_AX;
+
     if ((instr & ~0x0003) == 0x5DF8)
         return DSP_ADD_PX_BX;
 
@@ -816,6 +819,9 @@ void interpret(DSP &dsp, uint16_t instr)
             break;
         case DSP_ADD_BX_AX:
             add_bx_ax(dsp, instr);
+            break;
+        case DSP_ADD_P1_AX:
+            add_p1_ax(dsp, instr);
             break;
         case DSP_ADD_PX_BX:
             add_px_bx(dsp, instr);
@@ -1680,6 +1686,17 @@ void add_bx_ax(DSP &dsp, uint16_t instr)
 
     uint64_t a = dsp.get_acc(bx);
     uint64_t b = dsp.get_acc(ax);
+
+    uint64_t result = dsp.get_add_sub_result(a, b, false);
+    dsp.saturate_acc_with_flag(ax, result);
+}
+
+void add_p1_ax(DSP &dsp, uint16_t instr)
+{
+    DSP_REG ax = get_ax_reg(instr & 0x1);
+
+    uint64_t b = dsp.get_product(1);
+    uint64_t a = dsp.get_acc(ax);
 
     uint64_t result = dsp.get_add_sub_result(a, b, false);
     dsp.saturate_acc_with_flag(ax, result);
