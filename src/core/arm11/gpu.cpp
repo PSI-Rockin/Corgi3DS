@@ -134,21 +134,25 @@ void GPU::render_fb_pixel(uint8_t *screen, int fb_index, int x, int y)
     else
         start = screen_fb->left_addr_a;
 
-    int index = x + (y * 240);
+    uint32_t screen_pos = (x + (y * 240)) * 4;
+    y *= screen_fb->stride;
     uint32_t color = 0xFF000000;
     switch (screen_fb->color_format)
     {
         case 0:
-            color = bswp32(e->arm11_read32(0, start + (index * 4)));
+            x *= 4;
+            color = bswp32(e->arm11_read32(0, start + x + y));
             break;
         case 1:
-            color |= e->arm11_read8(0, start + (index * 3)) << 16;
-            color |= e->arm11_read8(0, start + (index * 3) + 1) << 8;
-            color |= e->arm11_read8(0, start + (index * 3) + 2);
+            x *= 3;
+            color |= e->arm11_read8(0, start + x + y) << 16;
+            color |= e->arm11_read8(0, start + x + y + 1) << 8;
+            color |= e->arm11_read8(0, start + x + y + 2);
             break;
         case 2:
         {
-            uint16_t cin = e->arm11_read16(0, start + (index * 2));
+            x *= 2;
+            uint16_t cin = e->arm11_read16(0, start + x + y);
             uint32_t pr = Convert5To8((cin >> 11) & 0x1F); //byte-aligned pixel red
             uint32_t pb = Convert5To8((cin >>  0) & 0x1F); //byte-aligned pixel blue
             uint32_t pg = Convert6To8((cin >>  5) & 0x3F); //byte-aligned pixel green
@@ -158,7 +162,8 @@ void GPU::render_fb_pixel(uint8_t *screen, int fb_index, int x, int y)
             break;
         case 4:
         {
-            uint16_t cin = e->arm11_read16(0, start + (index * 2));
+            x *= 2;
+            uint16_t cin = e->arm11_read16(0, start + x + y);
             color = Convert4To8(cin >> 12);
             color |= Convert4To8((cin >> 8) & 0xF) << 8;
             color |= Convert4To8((cin >> 4) & 0xF) << 16;
@@ -168,7 +173,7 @@ void GPU::render_fb_pixel(uint8_t *screen, int fb_index, int x, int y)
         default:
             EmuException::die("[GPU] Unrecognized framebuffer color format %d\n", screen_fb->color_format);
     }
-    *(uint32_t*)&screen[(index * 4)] = color;
+    *(uint32_t*)&screen[screen_pos] = color;
 }
 
 uint32_t GPU::get_4bit_swizzled_addr(uint32_t base, uint32_t width, uint32_t x, uint32_t y)
@@ -2222,6 +2227,11 @@ void GPU::get_tex0(RGBA_Color &tex_color, Vertex &vtx)
         case 0:
             tex_lookup(0, 0, tex_color, vtx);
             break;
+        case 5:
+            //Disabled texture
+            //TODO: Should this return the previously rendered color?
+            tex_color = {0, 0, 0, 0};
+            break;
         default:
             EmuException::die("[GPU] Unrecognized tex0 type %d", ctx.tex0_type);
     }
@@ -3781,6 +3791,8 @@ uint32_t GPU::read32_fb(int index, uint32_t addr)
             return fb->color_format;
         case 0x78:
             return fb->buffer_select;
+        case 0x90:
+            return fb->stride;
         case 0x94:
             return fb->right_addr_a;
         case 0x98:
@@ -3812,6 +3824,10 @@ void GPU::write32_fb(int index, uint32_t addr, uint32_t value)
         case 0x78:
             printf("[GPU] Write fb%d buffer select: $%08X\n", index, value);
             fb->buffer_select = value & 0x1;
+            return;
+        case 0x90:
+            printf("[GPU] Write fb%d stride: $%08X\n", index, value);
+            fb->stride = value;
             return;
         case 0x94:
             printf("[GPU] Write fb%d right addr A: $%08X\n", index, value);
