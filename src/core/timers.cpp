@@ -65,7 +65,7 @@ void Timers::run(int cycles)
 void Timers::handle_overflow(int index)
 {
     arm9_timers[index].counter -= 0x10000;
-    printf("[Timer9] Overflow on timer %d!\n", index);
+    //printf("[Timer9] Overflow on timer %d!\n", index);
     if (arm9_timers[index].overflow_irq)
         int9->assert_irq(8 + index);
 

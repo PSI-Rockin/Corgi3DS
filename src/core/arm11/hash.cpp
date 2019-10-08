@@ -1,6 +1,8 @@
 #include "../common/common.hpp"
 #include "hash.hpp"
 
+#define printf(fmt,...)(0)
+
 HASH::HASH()
 {
 

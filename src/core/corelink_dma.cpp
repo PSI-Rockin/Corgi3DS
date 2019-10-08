@@ -2,12 +2,42 @@
 #include "common/common.hpp"
 #include "corelink_dma.hpp"
 
-//#define printf(fmt, ...)(0)
+#define printf(fmt, ...)(0)
+
+void Corelink_Chan::push8(uint8_t value)
+{
+    fifo.push(value);
+}
+
+void Corelink_Chan::push32(uint32_t value)
+{
+    push8(value & 0xFF);
+    push8((value >> 8) & 0xFF);
+    push8((value >> 16) & 0xFF);
+    push8(value >> 24);
+}
+
+uint8_t Corelink_Chan::pop8()
+{
+    uint8_t value = fifo.front();
+    fifo.pop();
+    return value;
+}
+
+uint32_t Corelink_Chan::pop32()
+{
+    uint32_t value = pop8();
+    value |= pop8() << 8;
+    value |= pop8() << 16;
+    value |= pop8() << 24;
+    return value;
+}
 
 Corelink_DMA::Corelink_DMA()
 {
     mem_read8 = nullptr;
     mem_read32 = nullptr;
+    mem_write8 = nullptr;
     mem_write32 = nullptr;
     send_interrupt = nullptr;
 }
@@ -20,7 +50,7 @@ void Corelink_DMA::reset()
         dma[i].state = Corelink_Chan::Status::STOP;
 
         //Empty the FIFO
-        std::queue<uint32_t> empty;
+        std::queue<uint8_t> empty;
         dma[i].fifo.swap(empty);
     }
 
@@ -73,6 +103,11 @@ void Corelink_DMA::set_mem_read8_func(std::function<uint8_t (uint32_t)> func)
 void Corelink_DMA::set_mem_read32_func(std::function<uint32_t (uint32_t)> func)
 {
     mem_read32 = func;
+}
+
+void Corelink_DMA::set_mem_write8_func(std::function<void (uint32_t, uint8_t)> func)
+{
+    mem_write8 = func;
 }
 
 void Corelink_DMA::set_mem_write32_func(std::function<void (uint32_t, uint32_t)> func)
@@ -337,15 +372,23 @@ void Corelink_DMA::instr_ld(int chan, uint8_t modifier)
     int load_size = dma[chan].ctrl.src_burst_size;
     load_size *= dma[chan].ctrl.src_burst_len;
 
-    if (load_size & 0x3)
-        EmuException::die("[Corelink] Load size not word aligned for LD");
-
     int multiplier = (int)dma[chan].ctrl.inc_src;
     uint32_t addr = dma[chan].source_addr;
-    for (int i = 0; i < load_size; i += 4)
+    if (load_size & 0x3)
     {
-        uint32_t word = mem_read32(addr + (multiplier * i));
-        dma[chan].fifo.push(word);
+        for (int i = 0; i < load_size; i++)
+        {
+            uint8_t byte = mem_read8(addr + (multiplier * i));
+            dma[chan].push8(byte);
+        }
+    }
+    else
+    {
+        for (int i = 0; i < load_size; i += 4)
+        {
+            uint32_t word = mem_read32(addr + (multiplier * i));
+            dma[chan].push32(word);
+        }
     }
 
     dma[chan].source_addr += (load_size * multiplier);
@@ -362,17 +405,26 @@ void Corelink_DMA::instr_st(int chan, uint8_t modifier)
     int store_size = dma[chan].ctrl.dest_burst_size;
     store_size *= dma[chan].ctrl.dest_burst_len;
 
-    if (store_size & 0x3)
-        EmuException::die("[Corelink] Store size not word aligned for ST");
-
     int multiplier = (int)dma[chan].ctrl.inc_dest;
     uint32_t addr = dma[chan].dest_addr;
-    for (int i = 0; i < store_size; i += 4)
+
+    if (store_size & 0x3)
     {
-        uint32_t word = dma[chan].fifo.front();
-        mem_write32(addr + (multiplier * i), word);
-        dma[chan].fifo.pop();
+        for (int i = 0; i < store_size; i++)
+        {
+            uint8_t byte = dma[chan].pop8();
+            mem_write8(addr + (multiplier * i), byte);
+        }
     }
+    else
+    {
+        for (int i = 0; i < store_size; i += 4)
+        {
+            uint32_t word = dma[chan].pop32();
+            mem_write32(addr + (multiplier * i), word);
+        }
+    }
+
 
     dma[chan].dest_addr += (store_size * multiplier);
 }
@@ -406,8 +458,7 @@ void Corelink_DMA::instr_ldp(int chan, bool burst)
     for (int i = 0; i < load_size; i += 4)
     {
         uint32_t word = mem_read32(addr + (i * multiplier));
-        //printf("[Corelink] Load $%08X: $%08X\n", addr + (i * multiplier), word);
-        dma[chan].fifo.push(word);
+        dma[chan].push32(word);
     }
     dma[chan].source_addr += (load_size * multiplier);
 }
@@ -430,9 +481,8 @@ void Corelink_DMA::instr_stp(int chan, bool burst)
     uint32_t addr = dma[chan].dest_addr;
     for (int i = 0; i < store_size; i += 4)
     {
-        uint32_t word = dma[chan].fifo.front();
+        uint32_t word = dma[chan].pop32();
         mem_write32(addr + (multiplier * i), word);
-        dma[chan].fifo.pop();
     }
 
     dma[chan].dest_addr += (store_size * multiplier);

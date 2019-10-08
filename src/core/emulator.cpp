@@ -99,6 +99,7 @@ void Emulator::reset(bool cold_boot)
     cdma.reset();
     cdma.set_mem_read8_func([this] (uint32_t addr) -> uint8_t {return arm11_read8(0, addr);});
     cdma.set_mem_read32_func(cdma_read32);
+    cdma.set_mem_write8_func([this] (uint32_t addr, uint8_t value) {arm11_write8(0, addr, value);});
     cdma.set_mem_write32_func(cdma_write32);
     cdma.set_send_interrupt([this] (int chan) {mpcore_pmr.assert_hw_irq(0x30 + chan);});
 

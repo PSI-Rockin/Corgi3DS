@@ -47,7 +47,13 @@ struct Corelink_Chan
 
     int peripheral;
 
-    std::queue<uint32_t> fifo;
+    std::queue<uint8_t> fifo;
+
+    void push8(uint8_t value);
+    void push32(uint32_t value);
+
+    uint8_t pop8();
+    uint32_t pop32();
 };
 
 class Corelink_DMA
@@ -55,6 +61,7 @@ class Corelink_DMA
     private:
         std::function<uint8_t(uint32_t)> mem_read8;
         std::function<uint32_t(uint32_t)> mem_read32;
+        std::function<void(uint32_t, uint8_t)> mem_write8;
         std::function<void(uint32_t, uint32_t)> mem_write32;
         std::function<void(int)> send_interrupt;
 
@@ -98,6 +105,7 @@ class Corelink_DMA
 
         void set_mem_read8_func(std::function<uint8_t(uint32_t)> func);
         void set_mem_read32_func(std::function<uint32_t(uint32_t)> func);
+        void set_mem_write8_func(std::function<void(uint32_t, uint8_t)> func);
         void set_mem_write32_func(std::function<void(uint32_t, uint32_t)> func);
         void set_send_interrupt(std::function<void(int)> func);
 

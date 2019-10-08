@@ -311,7 +311,6 @@ uint32_t AES::read32(uint32_t addr)
             reg |= AES_CNT.mode << 27;
             reg |= AES_CNT.irq_enable << 30;
             reg |= AES_CNT.busy << 31;
-            printf("[AES] Read CNT: $%08X\n", reg);
             break;
         case 0x1000900C:
             if (output_fifo.size())

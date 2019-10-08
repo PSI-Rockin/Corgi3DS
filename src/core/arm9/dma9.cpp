@@ -20,6 +20,7 @@ void DMA9::reset()
 
     xdma.set_mem_read8_func([this](uint32_t addr) -> uint8_t{return e->arm9_read8(addr);});
     xdma.set_mem_read32_func([this](uint32_t addr) -> uint32_t{return e->arm9_read32(addr);});
+    xdma.set_mem_write8_func([this](uint32_t addr, uint8_t value) {e->arm9_write8(addr, value);});
     xdma.set_mem_write32_func([this](uint32_t addr, uint32_t value) {e->arm9_write32(addr, value);});
     xdma.set_send_interrupt([this](int chan) {int9->assert_irq(28);});
 }

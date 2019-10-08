@@ -246,9 +246,9 @@ uint8_t I2C::read_mcu(uint8_t reg_id)
     switch (reg_id)
     {
         case 0x00:
-            return 0x04; //Version high
+            return 0xFF; //Version high
         case 0x01:
-            return 0x59; //Version low
+            return 0xFF; //Version low
         case 0x0B:
             return 100; //battery percent
         case 0x0F:
