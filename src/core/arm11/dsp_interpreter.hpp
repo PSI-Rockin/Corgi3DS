@@ -197,6 +197,10 @@ enum DSP_INSTR
 
     DSP_MOV2_ABH_M,
 
+    DSP_EXCHANGE_JAI,
+
+    DSP_LIM,
+
     DSP_CLRP0,
     DSP_CLRP1,
     DSP_CLRP,
@@ -221,6 +225,7 @@ namespace DSP_Interpreter
     DSP_REG get_mov_from_p_reg(uint8_t reg);
     DSP_REG get_ax_reg(uint8_t ax);
     DSP_REG get_axl_reg(uint8_t axl);
+    DSP_REG get_axh_reg(uint8_t axh);
     DSP_REG get_bx_reg(uint8_t bx);
     DSP_REG get_ab_reg(uint8_t ab);
     DSP_REG get_abe_reg(uint8_t abe);
@@ -429,6 +434,10 @@ namespace DSP_Interpreter
     void movsi(DSP& dsp, uint16_t instr);
 
     void mov2_abh_m(DSP& dsp, uint16_t instr);
+
+    void exchange_jai(DSP& dsp, uint16_t instr);
+
+    void lim(DSP& dsp, uint16_t instr);
 
     void clrp0(DSP& dsp, uint16_t instr);
     void clrp1(DSP& dsp, uint16_t instr);

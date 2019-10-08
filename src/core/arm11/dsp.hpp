@@ -249,7 +249,6 @@ class DSP
         uint16_t get_arp(int index);
         uint32_t convert_addr(uint16_t addr);
         uint64_t trunc_to_40(uint64_t value);
-        uint64_t saturate(uint64_t value, bool flag = true);
         void set_ar(int index, uint16_t value);
         void set_arp(int index, uint16_t value);
 
@@ -299,6 +298,7 @@ class DSP
         uint16_t get_sv();
         uint16_t get_reg16(DSP_REG reg, bool mov_saturate);
         uint64_t get_saturated_acc(DSP_REG reg, bool flag = true);
+        uint64_t saturate(uint64_t value, bool flag = true);
         uint16_t get_rn(int index);
         uint16_t get_x(int index);
         uint16_t get_y(int index);

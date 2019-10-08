@@ -478,6 +478,12 @@ DSP_INSTR decode(uint16_t instr)
     if ((instr & ~0x003F) == 0x9D40)
         return DSP_MOV2_ABH_M;
 
+    if ((instr & ~0x007F) == 0x4900)
+        return DSP_EXCHANGE_JAI;
+
+    if ((instr & ~0x0030) == 0x49C0)
+        return DSP_LIM;
+
     if (instr == 0x5DFE)
         return DSP_CLRP0;
 
@@ -603,6 +609,15 @@ DSP_REG get_axl_reg(uint8_t axl)
         return DSP_REG_A0l;
     else if (axl == 1)
         return DSP_REG_A1l;
+    return DSP_REG_UNK;
+}
+
+DSP_REG get_axh_reg(uint8_t axh)
+{
+    if (axh == 0)
+        return DSP_REG_A0h;
+    else if (axh == 1)
+        return DSP_REG_A1h;
     return DSP_REG_UNK;
 }
 
@@ -1212,6 +1227,12 @@ void interpret(DSP &dsp, uint16_t instr)
             break;
         case DSP_MOV2_ABH_M:
             mov2_abh_m(dsp, instr);
+            break;
+        case DSP_EXCHANGE_JAI:
+            exchange_jai(dsp, instr);
+            break;
+        case DSP_LIM:
+            lim(dsp, instr);
             break;
         case DSP_CLRP0:
             clrp0(dsp, instr);
@@ -3029,6 +3050,37 @@ void mov2_abh_m(DSP &dsp, uint16_t instr)
 
     dsp.write_data_word(addr_v, v);
     dsp.write_data_word(addr_u, u);
+}
+
+void exchange_jai(DSP &dsp, uint16_t instr)
+{
+    DSP_REG acc = get_axh_reg((instr >> 6) & 0x1);
+    uint8_t ui = dsp.get_arprni((instr >> 4) & 0x3);
+    uint8_t uj = dsp.get_arprnj((instr >> 4) & 0x3);
+
+    uint8_t stepi = dsp.get_arpstepi(instr & 0x3);
+    uint8_t stepj = dsp.get_arpstepj((instr >> 2) & 0x3);
+
+    uint16_t i = dsp.rn_addr_and_modify(ui, stepi, false);
+    uint16_t j = dsp.rn_addr_and_modify(uj, stepj, false);
+
+    uint64_t value = dsp.get_acc(acc);
+
+    dsp.write_data_word(i, (value >> 16) & 0xFFFF);
+
+    value = SignExtend<32, uint64_t>((uint64_t)dsp.read_data_word(j) << 16);
+    dsp.set_acc(acc, value);
+}
+
+void lim(DSP &dsp, uint16_t instr)
+{
+    DSP_REG a = get_ax_reg((instr >> 5) & 0x1);
+    DSP_REG b = get_ax_reg((instr >> 4) & 0x1);
+
+    //We call saturate directly because this instruction is unaffected by the SAT/SATA flags
+    uint64_t value = dsp.saturate(dsp.get_acc(a));
+
+    dsp.set_acc_and_flag(b, value);
 }
 
 void clrp0(DSP &dsp, uint16_t instr)
