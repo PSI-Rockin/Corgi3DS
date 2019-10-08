@@ -436,6 +436,9 @@ DSP_INSTR decode(uint16_t instr)
     if ((instr & ~0x0003) == 0x8FD4)
         return DSP_MOV_AB_P0;
 
+    if ((instr & ~0x0003) == 0x8FD8)
+        return DSP_MOV_P1_AB;
+
     if ((instr & ~0x030E) == 0x88D0)
         return DSP_MOV2_PX_ARSTEP;
 
@@ -1161,6 +1164,9 @@ void interpret(DSP &dsp, uint16_t instr)
             break;
         case DSP_MOV_AB_P0:
             mov_ab_p0(dsp, instr);
+            break;
+        case DSP_MOV_P1_AB:
+            mov_p1_ab(dsp, instr);
             break;
         case DSP_MOV2_PX_ARSTEP:
             mov2_px_arstep(dsp, instr);
@@ -2832,6 +2838,15 @@ void mov_ab_p0(DSP &dsp, uint16_t instr)
     uint32_t value = dsp.get_saturated_acc(ab) & 0xFFFFFFFF;
 
     dsp.set_product(0, value);
+}
+
+void mov_p1_ab(DSP &dsp, uint16_t instr)
+{
+    DSP_REG ab = get_ab_reg(instr & 0x3);
+
+    uint64_t value = dsp.get_product(1);
+
+    dsp.saturate_acc_with_flag(ab, value);
 }
 
 void mov2_px_arstep(DSP &dsp, uint16_t instr)

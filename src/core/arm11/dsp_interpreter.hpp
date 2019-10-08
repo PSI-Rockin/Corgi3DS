@@ -178,6 +178,7 @@ enum DSP_INSTR
     DSP_MOV_AX_PC,
 
     DSP_MOV_AB_P0,
+    DSP_MOV_P1_AB,
 
     DSP_MOV2_PX_ARSTEP,
     DSP_MOV2_ARSTEP_PX,
@@ -408,6 +409,7 @@ namespace DSP_Interpreter
     void mov_ax_pc(DSP& dsp, uint16_t instr);
 
     void mov_ab_p0(DSP& dsp, uint16_t instr);
+    void mov_p1_ab(DSP& dsp, uint16_t instr);
 
     void mov2_px_arstep(DSP& dsp, uint16_t instr);
     void mov2_arstep_px(DSP& dsp, uint16_t instr);
