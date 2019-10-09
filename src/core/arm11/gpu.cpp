@@ -508,7 +508,7 @@ void GPU::write_cmd_register(int reg, uint32_t param, uint8_t mask)
 
     param = ctx.regs[reg];
 
-    //printf("[GPU] Write command $%04X ($%08X)\n", reg, param);
+    printf("[GPU] Write command $%04X ($%08X)\n", reg, param);
 
     //Texture combiner regs
     if ((reg >= 0x0C0 && reg < 0x0E0) || (reg >= 0x0F0 && reg < 0x0FD))
