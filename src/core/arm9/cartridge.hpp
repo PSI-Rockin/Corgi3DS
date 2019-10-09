@@ -34,6 +34,7 @@ class Cartridge
     private:
         DMA9* dma9;
         Interrupt9* int9;
+        std::string save_file_name;
         std::ifstream card;
 
         uint16_t ntr_enable;
@@ -43,6 +44,7 @@ class Cartridge
         uint32_t ctr_secctrl;
 
         uint32_t cart_id;
+        uint32_t save_id;
         uint8_t cmd_buffer[16];
 
         uint8_t output_buffer[0x2000];
@@ -53,6 +55,8 @@ class Cartridge
         uint32_t read_block_count;
 
         uint8_t* save_data;
+        bool save_dirty;
+        uint32_t save_size;
         uint32_t spi_save_addr;
         SPICARD_STATE spi_state;
         uint8_t spi_input_buffer[0x400];
@@ -70,6 +74,7 @@ class Cartridge
         ~Cartridge();
 
         void reset();
+        void save_check();
 
         bool mount(std::string file_name);
 
