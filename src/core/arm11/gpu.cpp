@@ -1816,6 +1816,16 @@ void GPU::rasterize_tri(Vertex &v0, Vertex &v1, Vertex &v2)
                         frame |= e->arm11_read8(0, frame_addr) << 16;
                         frame |= 0xFF << 24;
                         break;
+                    case 2:
+                    {
+                        frame_addr = get_swizzled_tile_addr(ctx.color_buffer_base, ctx.frame_width, x >> 4, y >> 4, 2);
+                        uint16_t temp = e->arm11_read16(0, frame_addr);
+                        frame = Convert5To8(temp >> 11);
+                        frame |= Convert5To8((temp >> 6) & 0x1F) << 8;
+                        frame |= Convert5To8((temp >> 1) & 0x1F) << 16;
+                        frame |= Convert1To8(temp & 0x1) << 24;
+                    }
+                        break;
                     case 3:
                     {
                         frame_addr = get_swizzled_tile_addr(ctx.color_buffer_base, ctx.frame_width, x >> 4, y >> 4, 2);
@@ -1868,6 +1878,13 @@ void GPU::rasterize_tri(Vertex &v0, Vertex &v1, Vertex &v2)
                         e->arm11_write8(0, frame_addr + 2, source_color.r);
                         e->arm11_write8(0, frame_addr + 1, source_color.g);
                         e->arm11_write8(0, frame_addr, source_color.b);
+                        break;
+                    case 2:
+                        final_color = Convert8To5(source_color.r) << 11;
+                        final_color |= Convert8To5(source_color.g) << 6;
+                        final_color |= Convert8To5(source_color.b) << 1;
+                        final_color |= Convert8To1(source_color.a);
+                        e->arm11_write16(0, frame_addr, final_color);
                         break;
                     case 3:
                         final_color = Convert8To5(source_color.r) << 11;
