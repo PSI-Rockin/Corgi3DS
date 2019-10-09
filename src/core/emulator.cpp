@@ -161,6 +161,7 @@ void Emulator::run()
     //VBLANK start and end interrupts
     scheduler.add_event([this](uint64_t param) {mpcore_pmr.assert_hw_irq(0x2A); gpu.render_frame();}, 4000000);
     scheduler.add_event([this](uint64_t param) {mpcore_pmr.assert_hw_irq(0x2B);}, 4400000);
+    cartridge.save_check();
     while (cycles < 4400000)
     {
         scheduler.calculate_cycles_to_run();

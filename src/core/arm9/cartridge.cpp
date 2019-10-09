@@ -19,7 +19,10 @@ Cartridge::~Cartridge()
 void Cartridge::reset()
 {
     if (!card.is_open())
+    {
         cart_id = 0xFFFFFFFF;
+        save_id = 0xFFFFFFFF;
+    }
 
     read_block_count = 0;
     ntr_enable = 0;
@@ -36,7 +39,20 @@ void Cartridge::reset()
     spi_output_pos = 0;
     spi_block_len = 0;
 
+    save_dirty = false;
+
     spi_state = SPICARD_STATE::IDLE;
+}
+
+void Cartridge::save_check()
+{
+    if (card_inserted() && save_dirty)
+    {
+        printf("Save check!");
+        std::ofstream save_file(save_file_name, std::ios::binary);
+        save_file.write((char*)save_data, save_size);
+        save_file.close();
+    }
 }
 
 bool Cartridge::mount(std::string file_name)
@@ -44,11 +60,59 @@ bool Cartridge::mount(std::string file_name)
     card.open(file_name, std::ios::ate | std::ios::binary);
 
     cart_id = 0xFFFFFFFF;
+    save_id = 0xFFFFFFFF;
 
     if (card.is_open())
     {
         if (save_data)
             delete[] save_data;
+
+        //Find the start of the extension of the card file and generate our save file name from the rest.
+        unsigned int extension_start = file_name.length() - 1;
+        while (file_name[extension_start] != '.')
+            extension_start--;
+
+        save_file_name = file_name.substr(0, extension_start) + ".sav";
+        printf("Save name: %s\n", save_file_name.c_str());
+
+        //Attempt to load a save, if possible
+        save_data = new uint8_t[1024 * 1024 * 8];
+        memset(save_data, 0xFF, 1024 * 1024 * 8);
+
+        //Byte 0 = capacity (0x11 = 128 KB, 0x13 = 512 KB, 0x17 = 8 MB. Process9 rejects all others)
+        //Byte 1 = device type (0x22 = flash?)
+        //Byte 2 = manufacturer (0xC2 = Macronix)
+        save_id = 0x0022C2;
+        std::ifstream save_file(save_file_name, std::ios::ate | std::ios::binary);
+        if (save_file.is_open())
+        {
+            //Save found. First we check the size.
+            save_size = save_file.tellg();
+
+            if (save_size == 1024 * 128)
+                save_id |= 0x11 << 16;
+            else if (save_size == 1024 * 512)
+                save_id |= 0x13 << 16;
+            else if (save_size == 1024 * 1024 * 8)
+                save_id |= 0x17 << 16;
+            else
+                printf("[SPICARD] WARNING: Save size is not 128 KB, 512 KB, or 8 MB and thus will not be loaded");
+
+            if (save_id & 0x00FF0000)
+            {
+                save_file.seekg(0);
+                save_file.read((char*)save_data, save_size);
+            }
+
+            save_file.close();
+        }
+        else
+        {
+            //TODO: The cartridge exheader contains the save size, but it is encrypted.
+            //Until we figure out a way to decrypt it, we'll just use a hardcoded size.
+            save_size = 1024 * 128;
+            save_id = 0x1122C2;
+        }
 
         //Note: this assumes the cartridge is a 3DS cart
         cart_id = 0x900000C2;
@@ -84,9 +148,6 @@ bool Cartridge::mount(std::string file_name)
         }
 
         cart_id |= size_byte << 8;
-
-        save_data = new uint8_t[1024 * 1024 * 8];
-        memset(save_data, 0xFF, 1024 * 1024 * 8);
         return true;
     }
     return false;
@@ -233,12 +294,9 @@ void Cartridge::process_spicard_cmd()
                     //Enable writes
                     break;
                 case 0x9F:
-                    //Read card ID
-                    //Byte 0 = capacity (0x11 = 128 KB, 0x13 = 512 KB, 0x17 = 8 MB. Process9 rejects all others)
-                    //Byte 1 = device type
-                    //Byte 2 = manufacturer (0xC2 = Macronix)
+                    //Read save chip ID
                     spi_state = SPICARD_STATE::SELECTED;
-                    *(uint32_t*)&spi_output_buffer[0] = 0x1122C2;
+                    *(uint32_t*)&spi_output_buffer[0] = save_id;
                     break;
                 case 0xEB:
                     spi_state = SPICARD_STATE::NEEDS_PARAMS;
@@ -512,10 +570,12 @@ void Cartridge::write32_spicard(uint32_t addr, uint32_t value)
                 case SPICARD_STATE::WRITE_READY:
                     for (int i = 0; i < spi_block_len; i++)
                         save_data[spi_save_addr + i] = spi_input_buffer[i];
+                    save_dirty = true;
                     break;
                 case SPICARD_STATE::PROGRAM_READY:
                     for (int i = 0; i < spi_block_len; i++)
                         save_data[spi_save_addr + i] &= spi_input_buffer[i];
+                    save_dirty = true;
                     break;
                 default:
                     //Do nothing
