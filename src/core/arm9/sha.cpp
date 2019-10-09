@@ -62,7 +62,7 @@ uint32_t SHA::read32(uint32_t addr)
             reg |= eng.SHA_CNT.mode << 4;
             reg |= eng.SHA_CNT.fifo_enable << 9;
             reg |= eng.SHA_CNT.out_dma_enable << 10;
-            printf("[SHA] Read32 SHA_CNT: $%08X\n", reg);
+            //printf("[SHA] Read32 SHA_CNT: $%08X\n", reg);
             break;
         case 0x1000A004:
             reg = eng.message_len * 4;

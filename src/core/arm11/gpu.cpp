@@ -102,6 +102,9 @@ void GPU::reset(uint8_t* vram)
     memset(top_screen, 0, 240 * 400 * 4);
     memset(bottom_screen, 0, 240 * 320 * 4);
 
+    framebuffers[0].screenfill_enabled = true;
+    framebuffers[1].screenfill_enabled = true;
+
     framebuffers[0].left_addr_a = 0x18000000;
     framebuffers[1].left_addr_a = 0x18000000;
 
@@ -114,13 +117,23 @@ void GPU::render_frame()
     for (int y = 0; y < 400; y++)
     {
         for (int x = 0; x < 240; x++)
-            render_fb_pixel(top_screen, 0, x, y);
+        {
+            if (!framebuffers[0].screenfill_enabled)
+                render_fb_pixel(top_screen, 0, x, y);
+            else
+                *(uint32_t*)&top_screen[(x + (y * 240)) * 4] = 0xFF000000 | framebuffers[0].screenfill_color;
+        }
     }
 
     for (int y = 0; y < 320; y++)
     {
         for (int x = 0; x < 240; x++)
-            render_fb_pixel(bottom_screen, 1, x, y);
+        {
+            if (!framebuffers[1].screenfill_enabled)
+                render_fb_pixel(bottom_screen, 1, x, y);
+            else
+                *(uint32_t*)&bottom_screen[(x + (y * 240)) * 4] = 0xFF000000 | framebuffers[1].screenfill_color;
+        }
     }
 }
 
@@ -495,7 +508,7 @@ void GPU::write_cmd_register(int reg, uint32_t param, uint8_t mask)
 
     param = ctx.regs[reg];
 
-    printf("[GPU] Write command $%04X ($%08X)\n", reg, param);
+    //printf("[GPU] Write command $%04X ($%08X)\n", reg, param);
 
     //Texture combiner regs
     if ((reg >= 0x0C0 && reg < 0x0E0) || (reg >= 0x0F0 && reg < 0x0FD))
@@ -1021,7 +1034,7 @@ void GPU::input_float_uniform(ShaderUnit &sh, uint32_t param)
 
 void GPU::draw_vtx_array(bool is_indexed)
 {
-    printf("[GPU] DRAW_ARRAY_ELEMENTS\n");
+    printf("[GPU] DRAW_VTX_ARRAY (indexed: %d)\n", is_indexed);
     uint32_t index_base = ctx.vtx_buffer_base + ctx.index_buffer_offs;
     uint32_t index_offs = 0;
 
@@ -1045,8 +1058,6 @@ void GPU::draw_vtx_array(bool is_indexed)
         }
         else
             index = i + ctx.vtx_offset;
-
-        printf("Index: %d\n", index);
 
         //Initialize variable input attributes
         int attr = 0;
@@ -1458,8 +1469,6 @@ void GPU::rasterize_tri(Vertex &v0, Vertex &v1, Vertex &v2)
     //The triangle rasterization code uses an approach with barycentric coordinates
     //Clear explanation can be read below:
     //https://fgiesen.wordpress.com/2013/02/06/the-barycentric-conspirac/
-
-    printf("[GPU] Rasterizing triangle\n");
 
     //Check if texture combiners are unused - this lets us save time by not looping through all six of them
     ctx.texcomb_start = 0;
@@ -3850,4 +3859,11 @@ uint8_t* GPU::get_top_buffer()
 uint8_t* GPU::get_bottom_buffer()
 {
     return bottom_screen;
+}
+
+void GPU::set_screenfill(int index, uint32_t value)
+{
+    printf("[GPU] Set screenfill%d: $%08X\n", index, value);
+    framebuffers[index].screenfill_color = value & 0xFFFFFF;
+    framebuffers[index].screenfill_enabled = (value >> 24) & 0x1;
 }

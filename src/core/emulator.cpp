@@ -1184,6 +1184,16 @@ void Emulator::arm11_write32(int core, uint32_t addr, uint32_t value)
     }
     if (addr >= 0x10202000 && addr < 0x10203000)
     {
+        if (addr == 0x10202204)
+        {
+            gpu.set_screenfill(0, value);
+            return;
+        }
+        else if (addr == 0x10202A04)
+        {
+            gpu.set_screenfill(1, value);
+            return;
+        }
         printf("[LCD] Unrecognized write32 $%08X: $%08X\n", addr, value);
         return;
     }

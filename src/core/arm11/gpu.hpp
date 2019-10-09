@@ -17,6 +17,9 @@ struct FrameBuffer
 
     uint8_t color_format;
     bool buffer_select;
+
+    uint32_t screenfill_color;
+    bool screenfill_enabled;
 };
 
 struct MemoryFill
@@ -393,6 +396,8 @@ class GPU
 
         uint32_t read32(uint32_t addr);
         void write32(uint32_t addr, uint32_t value);
+
+        void set_screenfill(int index, uint32_t value);
 
         uint8_t* get_top_buffer();
         uint8_t* get_bottom_buffer();
