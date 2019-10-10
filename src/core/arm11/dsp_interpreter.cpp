@@ -1447,12 +1447,18 @@ void do_alm_op(DSP &dsp, DSP_REG acc, uint64_t value, uint8_t op)
 
 void do_mul3_op(DSP &dsp, DSP_REG acc, uint8_t op)
 {
+    //Accumulate operation
     if (op >= 0x2)
     {
         uint64_t value = dsp.get_acc(acc);
         uint64_t product = dsp.get_product(0);
 
-        //TODO: MAA/MAASU special case
+        //Special case for MAA/MAASU
+        if (op == 0x4 || op == 0x7)
+        {
+            product >>= 16;
+            product = SignExtend<24>(product);
+        }
 
         uint64_t result = dsp.get_add_sub_result(value, product, false);
         dsp.saturate_acc_with_flag(acc, result);
@@ -1462,12 +1468,23 @@ void do_mul3_op(DSP &dsp, DSP_REG acc, uint8_t op)
     {
         case 0x0:
         case 0x2:
-            //MPY/MAC
+        case 0x4:
+            //MPY/MAC/MAA
             dsp.multiply(0, true, true);
             break;
         case 0x1:
-            //MPYSU
+        case 0x6:
+        case 0x7:
+            //MPYSU/MACSU/MAASU
             dsp.multiply(0, false, true);
+            break;
+        case 0x3:
+            //MACUS
+            dsp.multiply(0, true, false);
+            break;
+        case 0x5:
+            //MACUU
+            dsp.multiply(0, false, false);
             break;
         default:
             EmuException::die("[DSP_Intepreter] Unrecognized mul3 op $%02X", op);
