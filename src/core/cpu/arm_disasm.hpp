@@ -49,6 +49,7 @@ enum ARM_INSTR
     ARM_SEL,
     ARM_UADD8,
     ARM_UQSUB8,
+    ARM_QSUB8,
 
     ARM_LOAD_EX_BYTE,
     ARM_STORE_EX_BYTE,

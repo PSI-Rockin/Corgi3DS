@@ -112,6 +112,9 @@ void interpret_arm(ARM_CPU &cpu, uint32_t instr)
         case ARM_UADD8:
             arm_uadd8(cpu, instr);
             break;
+        case ARM_QSUB8:
+            arm_qsub8(cpu, instr);
+            break;
         case ARM_UQSUB8:
             arm_uqsub8(cpu, instr);
             break;
@@ -934,6 +937,34 @@ void arm_uadd8(ARM_CPU &cpu, uint32_t instr)
         uint16_t res = op1 + op2;
         cpsr->ge[i] = (res > 0xFF);
         dest_word |= (res & 0xFF) << (i * 8);
+    }
+
+    cpu.set_register(dest, dest_word);
+}
+
+void arm_qsub8(ARM_CPU &cpu, uint32_t instr)
+{
+    int reg1 = (instr >> 16) & 0xF;
+    int dest = (instr >> 12) & 0xF;
+    int reg2 = instr & 0xF;
+
+    int source1 = cpu.get_register(reg1);
+    int source2 = cpu.get_register(reg2);
+
+    uint32_t dest_word = 0;
+    int result;
+
+    for (int i = 0; i < 4; i++)
+    {
+        result = source1 & 0xFF;
+        result -= source2 & 0xFF;
+        if (result > 0x7F)
+            result = 0x7F;
+        if (result < -0x80)
+            result = -0x80;
+        dest_word |= (result & 0xFF) << (i * 8);
+        source1 >>= 8;
+        source2 >>= 8;
     }
 
     cpu.set_register(dest, dest_word);
