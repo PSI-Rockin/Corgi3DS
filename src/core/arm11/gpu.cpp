@@ -811,6 +811,9 @@ void GPU::write_cmd_register(int reg, uint32_t param, uint8_t mask)
             ctx.blend_alpha_src_func = (param >> 24) & 0xF;
             ctx.blend_alpha_dst_func = param >> 28;
             break;
+        case 0x102:
+            ctx.logic_op = param & 0xF;
+            break;
         case 0x103:
             ctx.blend_color.r = param & 0xFF;
             ctx.blend_color.g = (param >> 8) & 0xFF;
@@ -2578,210 +2581,323 @@ void GPU::combine_textures(RGBA_Color &source, Vertex& vtx)
 
 void GPU::blend_fragment(RGBA_Color &source, RGBA_Color &frame)
 {
-    RGBA_Color temp_source = source;
-    RGBA_Color dest = frame;
     switch (ctx.fragment_op)
     {
         case 0:
             //Regular blending
             if (ctx.blend_mode == 0)
-                EmuException::die("[GPU] Logical blending not implemented");
-
-            switch (ctx.blend_rgb_src_func)
-            {
-                case 0x0:
-                    //Zero
-                    source.r = 0;
-                    source.g = 0;
-                    source.b = 0;
-                    break;
-                case 0x1:
-                    //One
-                    source.r *= 255;
-                    source.g *= 255;
-                    source.b *= 255;
-                    break;
-                case 0x2:
-                    //Source color
-                    source.r *= temp_source.r;
-                    source.g *= temp_source.g;
-                    source.b *= temp_source.b;
-                    break;
-                case 0x4:
-                    //Dest color
-                    source.r *= dest.r;
-                    source.g *= dest.g;
-                    source.b *= dest.b;
-                    break;
-                case 0x6:
-                    //Source alpha
-                    source.r *= temp_source.a;
-                    source.g *= temp_source.a;
-                    source.b *= temp_source.a;
-                    break;
-                case 0x9:
-                    //One minus dest alpha
-                    source.r *= 255 - dest.a;
-                    source.g *= 255 - dest.a;
-                    source.b *= 255 - dest.a;
-                    break;
-                default:
-                    EmuException::die("[GPU] Unrecognized blend RGB src function $%02X",
-                                      ctx.blend_rgb_src_func);
-            }
-
-            switch (ctx.blend_alpha_src_func)
-            {
-                case 0x0:
-                    source.a = 0;
-                    break;
-                case 0x1:
-                    source.a *= 255;
-                    break;
-                case 0x2:
-                    source.a *= temp_source.a;
-                    break;
-                case 0x4:
-                    source.a *= dest.a;
-                    break;
-                case 0x6:
-                    source.a *= temp_source.a;
-                    break;
-                case 0x9:
-                    source.a *= 255 - dest.a;
-                    break;
-                default:
-                    EmuException::die("[GPU] Unrecognized blend alpha src function $%02X",
-                                      ctx.blend_alpha_src_func);
-            }
-
-            switch (ctx.blend_rgb_dst_func)
-            {
-                case 0x0:
-                    frame.r = 0;
-                    frame.g = 0;
-                    frame.b = 0;
-                    break;
-                case 0x1:
-                    frame.r *= 255;
-                    frame.g *= 255;
-                    frame.b *= 255;
-                    break;
-                case 0x2:
-                    frame.r *= temp_source.r;
-                    frame.g *= temp_source.g;
-                    frame.b *= temp_source.b;
-                    break;
-                case 0x6:
-                    frame.r *= temp_source.a;
-                    frame.g *= temp_source.a;
-                    frame.b *= temp_source.a;
-                    break;
-                case 0x7:
-                    frame.r *= 255 - temp_source.a;
-                    frame.g *= 255 - temp_source.a;
-                    frame.b *= 255 - temp_source.a;
-                    break;
-                case 0x8:
-                    frame.r *= dest.a;
-                    frame.g *= dest.a;
-                    frame.b *= dest.a;
-                    break;
-                case 0xC:
-                    frame.r *= ctx.blend_color.a;
-                    frame.g *= ctx.blend_color.a;
-                    frame.b *= ctx.blend_color.a;
-                    break;
-                default:
-                    EmuException::die("[GPU] Unrecognized blend rgb dest function $%02X",
-                                      ctx.blend_rgb_dst_func);
-            }
-
-            switch (ctx.blend_alpha_dst_func)
-            {
-                case 0x0:
-                    frame.a = 0;
-                    break;
-                case 0x1:
-                    frame.a *= 255;
-                    break;
-                case 0x2:
-                    frame.a *= temp_source.a;
-                    break;
-                case 0x6:
-                    frame.a *= temp_source.a;
-                    break;
-                case 0x7:
-                    frame.a *= 255 - temp_source.a;
-                    break;
-                case 0x8:
-                    frame.a *= dest.a;
-                    break;
-                case 0xC:
-                    frame.a *= ctx.blend_color.a;
-                    break;
-                default:
-                    EmuException::die("[GPU] Unrecognized blend alpha dest function $%02X",
-                                      ctx.blend_alpha_dst_func);
-            }
-
-            switch (ctx.blend_rgb_equation)
-            {
-                case 0:
-                case 5:
-                case 6:
-                case 7:
-                    source.r = (source.r + frame.r) / 255;
-                    source.g = (source.g + frame.g) / 255;
-                    source.b = (source.b + frame.b) / 255;
-                    break;
-                case 1:
-                    source.r = (source.r - frame.r) / 255;
-                    source.g = (source.g - frame.g) / 255;
-                    source.b = (source.b - frame.b) / 255;
-                    break;
-                case 2:
-                    source.r = (frame.r - source.r) / 255;
-                    source.g = (frame.g - source.g) / 255;
-                    source.b = (frame.b - source.b) / 255;
-                    break;
-                default:
-                    EmuException::die("[GPU] Unrecognized blend RGB equation %d",
-                                      ctx.blend_rgb_equation);
-            }
-
-            switch (ctx.blend_alpha_equation)
-            {
-                case 0:
-                case 5:
-                case 6:
-                case 7:
-                    source.a = (source.a + frame.a) / 255;
-                    break;
-                case 1:
-                    source.a = (source.a - frame.a) / 255;
-                    break;
-                case 2:
-                    source.a = (frame.a - source.a) / 255;
-                    break;
-                default:
-                    EmuException::die("[GPU] Unrecognized blend alpha equation %d",
-                                      ctx.blend_alpha_equation);
-            }
-
-            //Clamp final color to 0-0xFF range
-            source.r = std::min(0xFF, source.r);
-            source.g = std::min(0xFF, source.g);
-            source.b = std::min(0xFF, source.b);
-            source.a = std::min(0xFF, source.a);
-
-            source.r = std::max(0, source.r);
-            source.g = std::max(0, source.g);
-            source.b = std::max(0, source.b);
-            source.a = std::max(0, source.a);
+                do_logic_op(source, frame);
+            else
+                do_alpha_blending(source, frame);
             break;
         default:
             EmuException::die("[GPU] Unrecognized fragment operation %d", ctx.fragment_op);
+    }
+}
+
+void GPU::do_alpha_blending(RGBA_Color &source, RGBA_Color &frame)
+{
+    RGBA_Color temp_source = source;
+    RGBA_Color dest = frame;
+    switch (ctx.blend_rgb_src_func)
+    {
+        case 0x0:
+            //Zero
+            source.r = 0;
+            source.g = 0;
+            source.b = 0;
+            break;
+        case 0x1:
+            //One
+            source.r *= 255;
+            source.g *= 255;
+            source.b *= 255;
+            break;
+        case 0x2:
+            //Source color
+            source.r *= temp_source.r;
+            source.g *= temp_source.g;
+            source.b *= temp_source.b;
+            break;
+        case 0x4:
+            //Dest color
+            source.r *= dest.r;
+            source.g *= dest.g;
+            source.b *= dest.b;
+            break;
+        case 0x6:
+            //Source alpha
+            source.r *= temp_source.a;
+            source.g *= temp_source.a;
+            source.b *= temp_source.a;
+            break;
+        case 0x9:
+            //One minus dest alpha
+            source.r *= 255 - dest.a;
+            source.g *= 255 - dest.a;
+            source.b *= 255 - dest.a;
+            break;
+        default:
+            EmuException::die("[GPU] Unrecognized blend RGB src function $%02X",
+                              ctx.blend_rgb_src_func);
+    }
+
+    switch (ctx.blend_alpha_src_func)
+    {
+        case 0x0:
+            source.a = 0;
+            break;
+        case 0x1:
+            source.a *= 255;
+            break;
+        case 0x2:
+            source.a *= temp_source.a;
+            break;
+        case 0x4:
+            source.a *= dest.a;
+            break;
+        case 0x6:
+            source.a *= temp_source.a;
+            break;
+        case 0x9:
+            source.a *= 255 - dest.a;
+            break;
+        default:
+            EmuException::die("[GPU] Unrecognized blend alpha src function $%02X",
+                              ctx.blend_alpha_src_func);
+    }
+
+    switch (ctx.blend_rgb_dst_func)
+    {
+        case 0x0:
+            frame.r = 0;
+            frame.g = 0;
+            frame.b = 0;
+            break;
+        case 0x1:
+            frame.r *= 255;
+            frame.g *= 255;
+            frame.b *= 255;
+            break;
+        case 0x2:
+            frame.r *= temp_source.r;
+            frame.g *= temp_source.g;
+            frame.b *= temp_source.b;
+            break;
+        case 0x6:
+            frame.r *= temp_source.a;
+            frame.g *= temp_source.a;
+            frame.b *= temp_source.a;
+            break;
+        case 0x7:
+            frame.r *= 255 - temp_source.a;
+            frame.g *= 255 - temp_source.a;
+            frame.b *= 255 - temp_source.a;
+            break;
+        case 0x8:
+            frame.r *= dest.a;
+            frame.g *= dest.a;
+            frame.b *= dest.a;
+            break;
+        case 0xC:
+            frame.r *= ctx.blend_color.a;
+            frame.g *= ctx.blend_color.a;
+            frame.b *= ctx.blend_color.a;
+            break;
+        default:
+            EmuException::die("[GPU] Unrecognized blend rgb dest function $%02X",
+                              ctx.blend_rgb_dst_func);
+    }
+
+    switch (ctx.blend_alpha_dst_func)
+    {
+        case 0x0:
+            frame.a = 0;
+            break;
+        case 0x1:
+            frame.a *= 255;
+            break;
+        case 0x2:
+            frame.a *= temp_source.a;
+            break;
+        case 0x6:
+            frame.a *= temp_source.a;
+            break;
+        case 0x7:
+            frame.a *= 255 - temp_source.a;
+            break;
+        case 0x8:
+            frame.a *= dest.a;
+            break;
+        case 0xC:
+            frame.a *= ctx.blend_color.a;
+            break;
+        default:
+            EmuException::die("[GPU] Unrecognized blend alpha dest function $%02X",
+                              ctx.blend_alpha_dst_func);
+    }
+
+    switch (ctx.blend_rgb_equation)
+    {
+        case 0:
+        case 5:
+        case 6:
+        case 7:
+            source.r = (source.r + frame.r) / 255;
+            source.g = (source.g + frame.g) / 255;
+            source.b = (source.b + frame.b) / 255;
+            break;
+        case 1:
+            source.r = (source.r - frame.r) / 255;
+            source.g = (source.g - frame.g) / 255;
+            source.b = (source.b - frame.b) / 255;
+            break;
+        case 2:
+            source.r = (frame.r - source.r) / 255;
+            source.g = (frame.g - source.g) / 255;
+            source.b = (frame.b - source.b) / 255;
+            break;
+        default:
+            EmuException::die("[GPU] Unrecognized blend RGB equation %d",
+                              ctx.blend_rgb_equation);
+    }
+
+    switch (ctx.blend_alpha_equation)
+    {
+        case 0:
+        case 5:
+        case 6:
+        case 7:
+            source.a = (source.a + frame.a) / 255;
+            break;
+        case 1:
+            source.a = (source.a - frame.a) / 255;
+            break;
+        case 2:
+            source.a = (frame.a - source.a) / 255;
+            break;
+        default:
+            EmuException::die("[GPU] Unrecognized blend alpha equation %d",
+                              ctx.blend_alpha_equation);
+    }
+
+    //Clamp final color to 0-0xFF range
+    source.r = std::min(0xFF, source.r);
+    source.g = std::min(0xFF, source.g);
+    source.b = std::min(0xFF, source.b);
+    source.a = std::min(0xFF, source.a);
+
+    source.r = std::max(0, source.r);
+    source.g = std::max(0, source.g);
+    source.b = std::max(0, source.b);
+    source.a = std::max(0, source.a);
+}
+
+void GPU::do_logic_op(RGBA_Color &source, RGBA_Color &frame)
+{
+    switch (ctx.logic_op)
+    {
+        case 0:
+            //Clear
+            source = {0, 0, 0, 0};
+            break;
+        case 1:
+            //AND
+            source.r &= frame.r;
+            source.g &= frame.g;
+            source.b &= frame.b;
+            source.a &= frame.a;
+            break;
+        case 2:
+            //AND Reverse
+            source.r &= ~frame.r;
+            source.g &= ~frame.g;
+            source.b &= ~frame.b;
+            source.a &= ~frame.a;
+            break;
+        case 3:
+            //Copy - leave source as-is
+            break;
+        case 4:
+            //Set
+            source = {255, 255, 255, 255};
+            break;
+        case 5:
+            //Inverted copy
+            source.r = ~source.r;
+            source.g = ~source.g;
+            source.b = ~source.b;
+            source.a = ~source.a;
+            break;
+        case 6:
+            //Noop
+            source = frame;
+            break;
+        case 7:
+            //Invert
+            source.r = ~frame.r;
+            source.g = ~frame.g;
+            source.b = ~frame.b;
+            source.a = ~frame.a;
+            break;
+        case 8:
+            //NAND
+            source.r = ~(source.r & frame.r);
+            source.g = ~(source.g & frame.g);
+            source.b = ~(source.b & frame.b);
+            source.a = ~(source.a & frame.a);
+            break;
+        case 9:
+            //OR
+            source.r |= frame.r;
+            source.g |= frame.g;
+            source.b |= frame.b;
+            source.a |= frame.a;
+            break;
+        case 10:
+            //NOR
+            source.r = ~(source.r | frame.r);
+            source.g = ~(source.g | frame.g);
+            source.b = ~(source.b | frame.b);
+            source.a = ~(source.a | frame.a);
+            break;
+        case 11:
+            //XOR
+            source.r ^= frame.r;
+            source.g ^= frame.g;
+            source.b ^= frame.b;
+            source.a ^= frame.a;
+            break;
+        case 12:
+            //XNOR
+            source.r = ~(source.r ^ frame.r);
+            source.g = ~(source.g ^ frame.g);
+            source.b = ~(source.b ^ frame.b);
+            source.a = ~(source.a ^ frame.a);
+            break;
+        case 13:
+            //Inverted AND
+            source.r = ~source.r & frame.r;
+            source.g = ~source.g & frame.g;
+            source.b = ~source.b & frame.b;
+            source.a = ~source.a & frame.a;
+            break;
+        case 14:
+            //OR Reverse
+            source.r |= ~frame.r;
+            source.g |= ~frame.g;
+            source.b |= ~frame.b;
+            source.a |= ~frame.a;
+            break;
+        case 15:
+            //Inverted OR
+            source.r = ~source.r | frame.r;
+            source.g = ~source.g | frame.g;
+            source.b = ~source.b | frame.b;
+            source.a = ~source.a | frame.a;
+            break;
+        default:
+            EmuException::die("[GPU] Unrecognized logic op $%02X", ctx.logic_op);
     }
 }
 
@@ -2881,6 +2997,9 @@ void GPU::exec_shader(ShaderUnit& sh)
                 break;
             case 0x02:
                 shader_dp4(sh, instr);
+                break;
+            case 0x03:
+                shader_dph(sh, instr);
                 break;
             case 0x08:
                 shader_mul(sh, instr);
@@ -3189,6 +3308,37 @@ void GPU::shader_dp4(ShaderUnit &sh, uint32_t instr)
 
     src[0] = swizzle_sh_src(get_src(sh, src1), op_desc, 1);
     src[1] = swizzle_sh_src(get_src(sh, src2), op_desc, 2);
+
+    float24 dot_product = dp4(src[0], src[1]);
+
+    for (int i = 0; i < 4; i++)
+    {
+        if (dest_mask & (1 << i))
+            set_sh_dest(sh, dest, dot_product, 3 - i);
+    }
+}
+
+void GPU::shader_dph(ShaderUnit &sh, uint32_t instr)
+{
+    uint32_t op_desc = sh.op_desc[instr & 0x7F];
+
+    uint8_t src2 = (instr >> 7) & 0x1F;
+    uint8_t src1 = (instr >> 12) & 0x7F;
+    uint8_t idx1 = (instr >> 19) & 0x3;
+    uint8_t dest = (instr >> 21) & 0x1F;
+
+    idx1 = get_idx1(sh, idx1, src1);
+
+    src1 += idx1;
+
+    uint8_t dest_mask = op_desc & 0xF;
+
+    Vec4<float24> src[2];
+
+    src[0] = swizzle_sh_src(get_src(sh, src1), op_desc, 1);
+    src[1] = swizzle_sh_src(get_src(sh, src2), op_desc, 2);
+
+    src[0][3] = float24::FromFloat32(1.0);
 
     float24 dot_product = dp4(src[0], src[1]);
 

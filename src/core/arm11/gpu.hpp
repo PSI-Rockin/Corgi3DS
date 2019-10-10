@@ -214,6 +214,8 @@ struct GPU_Context
     uint8_t blend_alpha_src_func;
     uint8_t blend_alpha_dst_func;
 
+    uint8_t logic_op;
+
     bool alpha_test_enabled;
     uint8_t alpha_test_func;
     uint8_t alpha_test_ref;
@@ -350,6 +352,8 @@ class GPU
         void combine_textures(RGBA_Color& source, Vertex& vtx);
 
         void blend_fragment(RGBA_Color& source, RGBA_Color& frame);
+        void do_alpha_blending(RGBA_Color& source, RGBA_Color& frame);
+        void do_logic_op(RGBA_Color& source, RGBA_Color& frame);
         void update_stencil(uint32_t addr, uint8_t old, uint8_t ref, uint8_t func);
 
         //Shader ops
@@ -363,6 +367,7 @@ class GPU
         void shader_add(ShaderUnit& sh, uint32_t instr);
         void shader_dp3(ShaderUnit& sh, uint32_t instr);
         void shader_dp4(ShaderUnit& sh, uint32_t instr);
+        void shader_dph(ShaderUnit& sh, uint32_t instr);
         void shader_mul(ShaderUnit& sh, uint32_t instr);
         void shader_max(ShaderUnit& sh, uint32_t instr);
         void shader_rcp(ShaderUnit& sh, uint32_t instr);
