@@ -47,6 +47,7 @@ enum DSP_INSTR
     DSP_MUL_Y0_ARSTEP,
     DSP_MUL_Y0_REG,
     DSP_MUL_R45_ARSTEP,
+    DSP_MUL_Y0_MEMIMM8,
 
     DSP_MPYI,
 
@@ -286,6 +287,7 @@ namespace DSP_Interpreter
     void mul_y0_arstep(DSP& dsp, uint16_t instr);
     void mul_y0_reg(DSP& dsp, uint16_t instr);
     void mul_r45_arstep(DSP& dsp, uint16_t instr);
+    void mul_y0_memimm8(DSP& dsp, uint16_t instr);
 
     void mpyi(DSP& dsp, uint16_t instr);
 

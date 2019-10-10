@@ -121,6 +121,9 @@ DSP_INSTR decode(uint16_t instr)
     if ((instr & ~0x0F7F) == 0xD000)
         return DSP_MUL_R45_ARSTEP;
 
+    if ((instr & ~0x0EFF) == 0xE000)
+        return DSP_MUL_Y0_MEMIMM8;
+
     if ((instr & ~0x00FF) == 0x0800)
         return DSP_MPYI;
 
@@ -879,6 +882,9 @@ void interpret(DSP &dsp, uint16_t instr)
             break;
         case DSP_MUL_R45_ARSTEP:
             mul_r45_arstep(dsp, instr);
+            break;
+        case DSP_MUL_Y0_MEMIMM8:
+            mul_y0_memimm8(dsp, instr);
             break;
         case DSP_MPYI:
             mpyi(dsp, instr);
@@ -1819,7 +1825,7 @@ void mul_arstep_imm16(DSP &dsp, uint16_t instr)
     uint8_t rn = instr & 0x7;
     uint8_t arstep = (instr >> 3) & 0x3;
     DSP_REG ax = get_ax_reg((instr >> 11) & 0x1);
-    uint8_t op = (instr >> 8) & 0x3;
+    uint8_t op = (instr >> 8) & 0x7;
 
     uint16_t addr = dsp.rn_addr_and_modify(rn, arstep, false);
 
@@ -1834,7 +1840,7 @@ void mul_y0_arstep(DSP &dsp, uint16_t instr)
     uint8_t rn = instr & 0x7;
     uint8_t arstep = (instr >> 3) & 0x3;
     DSP_REG ax = get_ax_reg((instr >> 11) & 0x1);
-    uint8_t op = (instr >> 8) & 0x3;
+    uint8_t op = (instr >> 8) & 0x7;
 
     uint16_t addr = dsp.rn_addr_and_modify(rn, arstep, false);
 
@@ -1847,7 +1853,7 @@ void mul_y0_reg(DSP &dsp, uint16_t instr)
 {
     DSP_REG reg = get_register(instr & 0x1F);
     DSP_REG ax = get_ax_reg((instr >> 11) & 0x1);
-    uint8_t op = (instr >> 8) & 0x3;
+    uint8_t op = (instr >> 8) & 0x7;
 
     dsp.set_x(0, dsp.get_reg16(reg, false));
 
@@ -1857,7 +1863,7 @@ void mul_y0_reg(DSP &dsp, uint16_t instr)
 void mul_r45_arstep(DSP &dsp, uint16_t instr)
 {
     DSP_REG ax = get_ax_reg((instr >> 11) & 0x1);
-    uint8_t op = (instr >> 8) & 0x3;
+    uint8_t op = (instr >> 8) & 0x7;
 
     uint16_t addr_y = dsp.rn_addr_and_modify(((instr >> 2) & 0x1) + 4, ((instr >> 5) & 0x3), false);
     uint16_t addr_x = dsp.rn_addr_and_modify(instr & 0x3, (instr >> 3) & 0x3, false);
@@ -1866,6 +1872,19 @@ void mul_r45_arstep(DSP &dsp, uint16_t instr)
     dsp.set_x(0, dsp.read_data_word(addr_x));
 
     do_mul3_op(dsp, ax, op);
+}
+
+void mul_y0_memimm8(DSP &dsp, uint16_t instr)
+{
+    DSP_REG ax = get_ax_reg((instr >> 11) & 0x1);
+    uint8_t op = (instr >> 9) & 0x3;
+    uint8_t memimm = instr & 0xFF;
+
+    uint16_t value = dsp.read_from_page(memimm);
+
+    dsp.set_x(0, value);
+
+    do_mul3_op(dsp, ax, op << 1);
 }
 
 void mpyi(DSP &dsp, uint16_t instr)
