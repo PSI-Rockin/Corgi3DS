@@ -1919,7 +1919,7 @@ void GPU::tex_lookup(int index, int coord_index, RGBA_Color &tex_color, Vertex &
     tex_color.a = 0;
 
     //TODO: A NULL/disabled texture should return the most recently rendered fragment color
-    if (!ctx.tex_enable[index])
+    if (!ctx.tex_enable[index] || !ctx.tex_addr[index])
         return;
 
     int height = ctx.tex_height[index];
