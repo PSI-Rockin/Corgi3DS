@@ -1447,10 +1447,22 @@ void do_alm_op(DSP &dsp, DSP_REG acc, uint64_t value, uint8_t op)
 
 void do_mul3_op(DSP &dsp, DSP_REG acc, uint8_t op)
 {
+    if (op >= 0x2)
+    {
+        uint64_t value = dsp.get_acc(acc);
+        uint64_t product = dsp.get_product(0);
+
+        //TODO: MAA/MAASU special case
+
+        uint64_t result = dsp.get_add_sub_result(value, product, false);
+        dsp.saturate_acc_with_flag(acc, result);
+    }
+
     switch (op)
     {
         case 0x0:
-            //MPY
+        case 0x2:
+            //MPY/MAC
             dsp.multiply(0, true, true);
             break;
         case 0x1:
