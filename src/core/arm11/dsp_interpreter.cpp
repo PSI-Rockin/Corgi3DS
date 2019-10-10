@@ -1494,6 +1494,7 @@ void do_mul3_op(DSP &dsp, DSP_REG acc, uint8_t op)
 void swap(DSP &dsp, uint16_t instr)
 {
     DSP_REG s0, d0, s1, d1;
+    uint64_t u, v;
     int type = instr & 0xF;
     switch (type)
     {
@@ -1502,13 +1503,50 @@ void swap(DSP &dsp, uint16_t instr)
             s0 = d1 = DSP_REG_A0;
             s1 = d0 = DSP_REG_B0;
             break;
+        case 0x1:
+            //A0B1
+            s0 = d1 = DSP_REG_A0;
+            s1 = d0 = DSP_REG_B1;
+            break;
+        case 0x2:
+            //A1B0
+            s0 = d1 = DSP_REG_A1;
+            s1 = d0 = DSP_REG_B0;
+            break;
+        case 0x3:
+            //A1B1
+            s0 = d1 = DSP_REG_A1;
+            s1 = d0 = DSP_REG_B1;
+            break;
+        case 0x4:
+            //A0B0A1B1
+            u = dsp.get_acc(DSP_REG_A1);
+            v = dsp.get_acc(DSP_REG_B1);
+
+            dsp.saturate_acc_with_flag(DSP_REG_A1, v);
+            dsp.saturate_acc_with_flag(DSP_REG_B1, u);
+
+            s0 = d1 = DSP_REG_A0;
+            s1 = d0 = DSP_REG_B0;
+            break;
+        case 0x5:
+            //A0B1A1B0
+            u = dsp.get_acc(DSP_REG_A1);
+            v = dsp.get_acc(DSP_REG_B0);
+
+            dsp.saturate_acc_with_flag(DSP_REG_A1, v);
+            dsp.saturate_acc_with_flag(DSP_REG_B0, u);
+
+            s0 = d1 = DSP_REG_A0;
+            s1 = d0 = DSP_REG_B1;
+            break;
         default:
             s0 = d0 = s1 = d1 = DSP_REG_UNK;
             EmuException::die("[DSP_Interpreter] Unrecognized swap op $%02X", type);
     }
 
-    uint64_t u = dsp.get_acc(s0);
-    uint64_t v = dsp.get_acc(s1);
+    u = dsp.get_acc(s0);
+    v = dsp.get_acc(s1);
     dsp.saturate_acc_with_flag(d0, u);
     dsp.saturate_acc_with_flag(d1, v);
 }
