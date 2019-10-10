@@ -2902,6 +2902,9 @@ void GPU::exec_shader(ShaderUnit& sh)
             case 0x13:
                 shader_mov(sh, instr);
                 break;
+            case 0x1B:
+                shader_slti(sh, instr);
+                break;
             case 0x20:
                 shader_break(sh, instr);
                 break;
@@ -3337,6 +3340,41 @@ void GPU::shader_mov(ShaderUnit& sh, uint32_t instr)
     }
 }
 
+void GPU::shader_slti(ShaderUnit &sh, uint32_t instr)
+{
+    uint32_t op_desc = sh.op_desc[instr & 0x7F];
+
+    uint8_t src2 = (instr >> 7) & 0x7F;
+    uint8_t src1 = (instr >> 14) & 0x1F;
+    uint8_t idx2 = (instr >> 19) & 0x3;
+    uint8_t dest = (instr >> 21) & 0x1F;
+
+    idx2 = get_idx1(sh, idx2, src2);
+
+    src2 += idx2;
+
+    uint8_t dest_mask = op_desc & 0xF;
+
+    Vec4<float24> src[2];
+
+    src[0] = swizzle_sh_src(get_src(sh, src1), op_desc, 1);
+    src[1] = swizzle_sh_src(get_src(sh, src2), op_desc, 2);
+
+    for (int i = 0; i < 4; i++)
+    {
+        if (dest_mask & (1 << i))
+        {
+            float24 value;
+            if (src[0][3 - i].ToFloat32() < src[1][3 - i].ToFloat32())
+                value = float24::FromFloat32(1.0);
+            else
+                value = float24::Zero();
+
+            set_sh_dest(sh, dest, value, 3 - i);
+        }
+    }
+}
+
 void GPU::shader_break(ShaderUnit &sh, uint32_t instr)
 {
     sh.pc = sh.loop_stack[sh.loop_ptr - 1];
@@ -3589,8 +3627,8 @@ void GPU::shader_cmp(ShaderUnit &sh, uint32_t instr)
     src[1] = swizzle_sh_src(get_src(sh, src2), op_desc, 2);
 
     uint8_t cmp_ops[2];
-    cmp_ops[0] = (instr >> 21) & 0x7;
-    cmp_ops[1] = (instr >> 24) & 0x7;
+    cmp_ops[0] = (instr >> 24) & 0x7;
+    cmp_ops[1] = (instr >> 21) & 0x7;
 
     for (int i = 0; i < 2; i++)
     {
