@@ -68,7 +68,7 @@ class EMMC
         uint32_t transfer_size;
         uint32_t transfer_pos;
         uint32_t transfer_blocks;
-        uint32_t transfer_start_addr;
+        uint64_t transfer_start_addr;
         bool block_transfer;
 
         void send_cmd(int command);

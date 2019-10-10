@@ -367,10 +367,6 @@ void EMMC::send_cmd(int command)
             command_end();
             break;
         case 18:
-            if (nand_selected())
-                cur_transfer_drive = &nand;
-            else
-                cur_transfer_drive = &sd;
             transfer_start_addr = argument;
             state = MMC_Transfer;
             response[0] = get_r1_reply();
@@ -379,13 +375,16 @@ void EMMC::send_cmd(int command)
             transfer_blocks = data_blocks;
             transfer_size = data_block_len;
             block_transfer = true;
-            printf("[EMMC] Read multiple blocks (start: $%08X blocks: $%08X)\n", argument, data_blocks);
-            printf("Reading from %s\n", (nand_selected()) ? "NAND" : "SD");
 
-            if (argument >= 0x0DD80000 && argument < 0x0DD80000 + 0x64C00)
+            if (nand_selected())
+                cur_transfer_drive = &nand;
+            else
             {
-                printf("Read from title.db: $%08X\n", argument - 0x0DD80000);
+                cur_transfer_drive = &sd;
+                transfer_start_addr *= data_block_len;
             }
+            printf("[EMMC] Read multiple blocks (start: $%llX blocks: $%08X)\n", transfer_start_addr, data_blocks);
+            printf("Reading from %s\n", (nand_selected()) ? "NAND" : "SD");
 
             if (cur_transfer_drive->eof())
                 cur_transfer_drive->clear();
@@ -398,10 +397,6 @@ void EMMC::send_cmd(int command)
             //command_end();
             break;
         case 25:
-            if (nand_selected())
-                cur_transfer_drive = &nand;
-            else
-                cur_transfer_drive = &sd;
             transfer_start_addr = argument;
             state = MMC_Transfer;
             response[0] = get_r1_reply();
@@ -411,7 +406,15 @@ void EMMC::send_cmd(int command)
             transfer_blocks = data_blocks;
             transfer_size = data_block_len;
             block_transfer = true;
-            printf("[EMMC] Write multiple blocks (start: $%08X blocks: $%08X)\n", argument, data_blocks);
+
+            if (nand_selected())
+                cur_transfer_drive = &nand;
+            else
+            {
+                cur_transfer_drive = &sd;
+                transfer_start_addr *= data_block_len;
+            }
+            printf("[EMMC] Write multiple blocks (start: $%llX blocks: $%08X)\n", transfer_start_addr, data_blocks);
 
             if (argument >= 0x0DD80000 && argument < 0x0DD80000 + 0x64C00)
             {
@@ -463,10 +466,11 @@ void EMMC::send_acmd(int command)
             command_end();
             break;
         case 41:
+            //Bit 30 of the OCR indicates SDXC, meaning that the eMMC can handle addresses larger than 2 GB
             if (nand_selected())
                 response[0] = ocr_reg;
             else
-                response[0] = ocr_reg;
+                response[0] = ocr_reg | (1 << 30);
             command_end();
             if (state == MMC_Idle)
                 state = MMC_Ready;
