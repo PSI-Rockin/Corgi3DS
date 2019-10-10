@@ -243,10 +243,6 @@ void GPU::do_transfer_engine_dma(uint64_t param)
 
         bool linear_to_tiled = (dma.flags >> 1) & 0x1;
 
-        int input_width = dma.disp_input_width;
-        if (dma.disp_input_width > dma.disp_output_width)
-            input_width = dma.disp_output_width;
-
         int input_y;
         if (dma.disp_input_height > dma.disp_output_height)
         {
@@ -264,6 +260,7 @@ void GPU::do_transfer_engine_dma(uint64_t param)
 
         if (dma.flags & (1 << 24))
         {
+            dma.disp_input_width >>= 1;
             dma.disp_output_width >>= 1;
         }
 
@@ -277,9 +274,9 @@ void GPU::do_transfer_engine_dma(uint64_t param)
 
                 if (!linear_to_tiled)
                     input_addr = get_swizzled_tile_addr(
-                            dma.input_addr, input_width, input_x, input_y, input_size);
+                            dma.input_addr, dma.disp_input_width, input_x, input_y, input_size);
                 else
-                    input_addr = dma.input_addr + (input_x + (input_y * input_width)) * input_size;
+                    input_addr = dma.input_addr + (input_x + (input_y * dma.disp_input_width)) * input_size;
 
                 switch (input_format)
                 {
@@ -395,9 +392,10 @@ void GPU::do_transfer_engine_dma(uint64_t param)
                         EmuException::die("[GPU] Unrecognized output format %d\n", output_format);
                 }
 
-                input_x++;
+                input_x = x;
+
                 if (dma.flags & (1 << 24))
-                    input_x++;
+                    input_x <<= 1;
             }
 
             if (dma.flags & 0x1)
@@ -3086,6 +3084,33 @@ void GPU::set_sh_dest(ShaderUnit &sh, uint8_t dst, float24 value, int index)
         EmuException::die("[GPU] Unrecognized dst $%02X in set_sh_dest", dst);
 }
 
+bool GPU::shader_meets_cond(ShaderUnit& sh, uint32_t instr)
+{
+    uint8_t cond = (instr >> 22) & 0x3;
+    bool ref_y = (instr >> 24) & 0x1;
+    bool ref_x = (instr >> 25) & 0x1;
+
+    bool passed = false;
+
+    switch (cond)
+    {
+        case 0:
+            passed = sh.cmp_regs[0] == ref_x || sh.cmp_regs[1] == ref_y;
+            break;
+        case 1:
+            passed = sh.cmp_regs[0] == ref_x && sh.cmp_regs[1] == ref_y;
+            break;
+        case 2:
+            passed = sh.cmp_regs[0] == ref_x;
+            break;
+        case 3:
+            passed = sh.cmp_regs[1] == ref_y;
+            break;
+    }
+
+    return passed;
+}
+
 void GPU::shader_add(ShaderUnit &sh, uint32_t instr)
 {
     uint32_t op_desc = sh.op_desc[instr & 0x7F];
@@ -3430,29 +3455,8 @@ void GPU::shader_callc(ShaderUnit &sh, uint32_t instr)
     uint8_t num = instr & 0xFF;
 
     uint16_t dst = (instr >> 10) & 0xFFF;
-    uint8_t cond = (instr >> 22) & 0x3;
-    bool ref_y = (instr >> 24) & 0x1;
-    bool ref_x = (instr >> 25) & 0x1;
 
-    bool passed;
-
-    switch (cond)
-    {
-        case 0:
-            passed = sh.cmp_regs[0] == ref_x || sh.cmp_regs[1] == ref_y;
-            break;
-        case 1:
-            passed = sh.cmp_regs[0] == ref_x && sh.cmp_regs[1] == ref_y;
-            break;
-        case 2:
-            passed = sh.cmp_regs[0] == ref_x;
-            break;
-        case 3:
-            passed = sh.cmp_regs[1] == ref_y;
-            break;
-    }
-
-    if (passed)
+    if (shader_meets_cond(sh, instr))
     {
         sh.call_stack[sh.call_ptr] = sh.pc;
         sh.call_cmp_stack[sh.call_ptr] = (dst + num) * 4;
@@ -3503,29 +3507,8 @@ void GPU::shader_ifc(ShaderUnit &sh, uint32_t instr)
     uint8_t num = instr & 0xFF;
 
     uint16_t dst = (instr >> 10) & 0xFFF;
-    uint8_t cond = (instr >> 22) & 0x3;
-    bool ref_y = (instr >> 24) & 0x1;
-    bool ref_x = (instr >> 25) & 0x1;
 
-    bool passed;
-
-    switch (cond)
-    {
-        case 0:
-            passed = sh.cmp_regs[0] == ref_x || sh.cmp_regs[1] == ref_y;
-            break;
-        case 1:
-            passed = sh.cmp_regs[0] == ref_x && sh.cmp_regs[1] == ref_y;
-            break;
-        case 2:
-            passed = sh.cmp_regs[0] == ref_x;
-            break;
-        case 3:
-            passed = sh.cmp_regs[1] == ref_y;
-            break;
-    }
-
-    if (passed)
+    if (shader_meets_cond(sh, instr))
     {
         sh.if_cmp_stack[sh.if_ptr] = dst * 4;
         sh.if_stack[sh.if_ptr] = (dst + num) * 4;
@@ -3571,29 +3554,8 @@ void GPU::shader_setemit(ShaderUnit &sh, uint32_t instr)
 void GPU::shader_jmpc(ShaderUnit &sh, uint32_t instr)
 {
     uint16_t dst = (instr >> 10) & 0xFFF;
-    uint8_t cond = (instr >> 22) & 0x3;
-    bool ref_y = (instr >> 24) & 0x1;
-    bool ref_x = (instr >> 25) & 0x1;
 
-    bool passed;
-
-    switch (cond)
-    {
-        case 0:
-            passed = sh.cmp_regs[0] == ref_x || sh.cmp_regs[1] == ref_y;
-            break;
-        case 1:
-            passed = sh.cmp_regs[0] == ref_x && sh.cmp_regs[1] == ref_y;
-            break;
-        case 2:
-            passed = sh.cmp_regs[0] == ref_x;
-            break;
-        case 3:
-            passed = sh.cmp_regs[1] == ref_y;
-            break;
-    }
-
-    if (passed)
+    if (shader_meets_cond(sh, instr))
         sh.pc = dst * 4;
 }
 
