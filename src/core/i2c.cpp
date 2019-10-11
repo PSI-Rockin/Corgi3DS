@@ -169,7 +169,7 @@ void I2C::update_time()
     time_t raw_time;
     struct tm * time;
     std::time(&raw_time);
-    time = std::gmtime(&raw_time);
+    time = std::localtime(&raw_time);
 
     mcu_time[0] = itob(time->tm_sec);
     mcu_time[1] = itob(time->tm_min);
