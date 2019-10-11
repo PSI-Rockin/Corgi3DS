@@ -39,16 +39,12 @@ uint32_t SPI::read32(uint32_t addr)
             return 0;
         case 0x03:
         {
-            printf("[SPI] Read NSPI_FIFO%d\n", bus);
-
             uint32_t value = nspi_buff[bus][nspi_buff_pos[bus]];
             nspi_buff_pos[bus]++;
             nspi_len[bus] -= 4;
 
             if (!nspi_len[bus])
                 nspi_buff_pos[bus] = 0;
-
-            printf("Value: $%08X\n", value);
 
             return value;
         }

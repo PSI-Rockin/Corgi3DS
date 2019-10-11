@@ -393,7 +393,7 @@ uint32_t MMU::get_domain_control()
 
 void MMU::set_l1_table_base(int index, uint32_t value)
 {
-    printf("[MMU] Set translation table%d base: $%08X\n", index, value);
+    //printf("[MMU] Set translation table%d base: $%08X\n", index, value);
     uint32_t mask = 0x3FFF;
     mask >>= l1_table_control;
     l1_table_base[index] = value & ~mask;

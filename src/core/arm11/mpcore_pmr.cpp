@@ -35,7 +35,7 @@ void MPCore_PMR::reset()
 
 void MPCore_PMR::assert_hw_irq(int id)
 {
-    printf("[PMR] Set global IRQ: $%02X\n", id);
+    //printf("[PMR] Set global IRQ: $%02X\n", id);
 
     uint8_t cpu_targets = global_int_targets[id - 32];
 
@@ -268,7 +268,7 @@ void MPCore_PMR::write8(int core, uint32_t addr, uint8_t value)
 {
     if (addr >= 0x17E01400 && addr < 0x17E01480)
     {
-        printf("[PMR%d] Write8 int%d priority: $%02X\n", core, addr - 0x17E01400, value);
+        //printf("[PMR%d] Write8 int%d priority: $%02X\n", core, addr - 0x17E01400, value);
         //Interrupt IDs 0-31 are aliased for each CPU
         if (addr < 0x17E01420)
             private_int_priority[core][addr - 0x17E01400] = value >> 4;
@@ -334,7 +334,7 @@ void MPCore_PMR::write32(int core, uint32_t addr, uint32_t value)
     }
     if (addr >= 0x17E01100 && addr < 0x17E01120)
     {
-        printf("[PMR%d] Write global int mask set $%08X: $%08X\n", core, addr, value);
+        //printf("[PMR%d] Write global int mask set $%08X: $%08X\n", core, addr, value);
         int index = (addr / 4) & 0x7;
         global_int_mask[index] |= value;
 
@@ -345,7 +345,7 @@ void MPCore_PMR::write32(int core, uint32_t addr, uint32_t value)
     }
     if (addr >= 0x17E01180 && addr < 0x17E011A0)
     {
-        printf("[PMR%d] Write global int mask clear $%08X: $%08X\n", core, addr, value);
+        //printf("[PMR%d] Write global int mask clear $%08X: $%08X\n", core, addr, value);
         int index = (addr / 4) & 0x7;
         global_int_mask[index] &= ~value;
         global_int_mask[0] |= 0xFFFF;
@@ -399,14 +399,14 @@ void MPCore_PMR::write32(int core, uint32_t addr, uint32_t value)
         case 0x17E00110:
         {
             //Clear active interrupt
-            printf("[PMR%d] Clear active int: $%08X\n", core, value);
+            //printf("[PMR%d] Clear active int: $%08X\n", core, value);
 
             local_irq_ctrl[core].cur_active_irq = SPURIOUS_INT;
             check_if_can_assert_irq(core);
         }
             return;
         case 0x17E01F00:
-            printf("[PMR%d] Send SWI: $%08X\n", core, value);
+            //printf("[PMR%d] Send SWI: $%08X\n", core, value);
         {
             uint32_t int_id = value & 0x3FF;
             if (int_id < 32)

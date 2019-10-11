@@ -441,7 +441,7 @@ uint32_t Cartridge::read32_spicard(uint32_t addr)
                         EmuException::die("[SPICARD] Unrecognized command in FIFO read $%02X", spi_cmd);
                 }
             }
-            printf("[SPICARD] Read32 NSPI_FIFO: $%08X\n", reg);
+            //printf("[SPICARD] Read32 NSPI_FIFO: $%08X\n", reg);
             break;
         default:
             printf("[SPICARD] Unrecognized read32 $%08X\n", addr);
@@ -588,7 +588,7 @@ void Cartridge::write32_spicard(uint32_t addr, uint32_t value)
             spi_block_len = value;
             break;
         case 0x1000D80C:
-            printf("[SPICARD] Write32 NSPI_FIFO: $%08X\n", value);
+            //printf("[SPICARD] Write32 NSPI_FIFO: $%08X\n", value);
             *(uint32_t*)&spi_input_buffer[spi_input_pos] = value;
             spi_input_pos += 4;
             if (spi_input_pos >= sizeof(spi_input_buffer))

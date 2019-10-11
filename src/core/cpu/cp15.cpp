@@ -207,6 +207,9 @@ void CP15::mcr(int operation_mode, int CP_reg, int coprocessor_info, int coproce
             cpu->halt();
             break;
         case 0x750:
+        case 0x751:
+        case 0x754:
+        case 0x756:
             break;
         case 0x761:
         case 0x7A1:
@@ -214,6 +217,7 @@ void CP15::mcr(int operation_mode, int CP_reg, int coprocessor_info, int coproce
         case 0x7A5:
             break;
         case 0x7E1:
+        case 0x7E2:
             break;
         case 0x850:
         case 0x860:
@@ -275,6 +279,10 @@ void CP15::mcr(int operation_mode, int CP_reg, int coprocessor_info, int coproce
         case 0xD03:
         case 0xD04:
             thread_regs[op - 0xD02] = value;
+            break;
+        case 0xF00:
+        case 0xF10:
+        case 0xF30:
             break;
         default:
             printf("[CP15_%d] Unrecognized MCR op $%04X ($%08X)\n", id, op, value);
