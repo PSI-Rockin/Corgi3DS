@@ -3068,6 +3068,16 @@ void GPU::exec_shader(ShaderUnit& sh)
             case 0x2F:
                 shader_cmp(sh, instr);
                 break;
+            case 0x30:
+            case 0x31:
+            case 0x32:
+            case 0x33:
+            case 0x34:
+            case 0x35:
+            case 0x36:
+            case 0x37:
+                shader_madi(sh, instr);
+                break;
             case 0x38:
             case 0x39:
             case 0x3A:
@@ -3770,6 +3780,38 @@ void GPU::shader_cmp(ShaderUnit &sh, uint32_t instr)
         }
 
         //printf("[GPU] Result of cmp op: %d\n", sh.cmp_regs[i]);
+    }
+}
+
+void GPU::shader_madi(ShaderUnit &sh, uint32_t instr)
+{
+    uint32_t op_desc = sh.op_desc[instr & 0x1F];
+
+    uint8_t src3 = (instr >> 5) & 0x7F;
+    uint8_t src2 = (instr >> 12) & 0x1F;
+    uint8_t src1 = (instr >> 17) & 0x1F;
+    uint8_t idx3 = (instr >> 22) & 0x3;
+    uint8_t dest = (instr >> 24) & 0x1F;
+
+    idx3 = get_idx1(sh, idx3, src3);
+
+    src3 += idx3;
+
+    uint8_t dest_mask = op_desc & 0xF;
+
+    Vec4<float24> src[3];
+
+    src[0] = swizzle_sh_src(get_src(sh, src1), op_desc, 1);
+    src[1] = swizzle_sh_src(get_src(sh, src2), op_desc, 2);
+    src[2] = swizzle_sh_src(get_src(sh, src3), op_desc, 3);
+
+    for (int i = 0; i < 4; i++)
+    {
+        if (dest_mask & (1 << i))
+        {
+            float24 value = src[2][3 - i] + (src[1][3 - i] * src[0][3 - i]);
+            set_sh_dest(sh, dest, value, 3 - i);
+        }
     }
 }
 

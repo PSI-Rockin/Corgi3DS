@@ -388,6 +388,7 @@ class GPU
         void shader_jmpc(ShaderUnit& sh, uint32_t instr);
         void shader_jmpu(ShaderUnit& sh, uint32_t instr);
         void shader_cmp(ShaderUnit& sh, uint32_t instr);
+        void shader_madi(ShaderUnit& sh, uint32_t instr);
         void shader_mad(ShaderUnit& sh, uint32_t instr);
 
         void render_fb_pixel(uint8_t* screen, int fb_index, int x, int y);
