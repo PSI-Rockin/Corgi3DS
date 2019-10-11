@@ -243,40 +243,44 @@ void GPU::do_transfer_engine_dma(uint64_t param)
 
         bool linear_to_tiled = (dma.flags >> 1) & 0x1;
 
-        int input_y;
-        if (dma.disp_input_height > dma.disp_output_height)
+        int x_scale = 0, y_scale = 0;
+        switch ((dma.flags >> 24) & 0x3)
         {
-            //TODO: is this right?
-            input_y = dma.disp_output_height - dma.disp_input_height;
-            if (dma.flags & 0x1)
-                input_y = dma.disp_input_height - input_y - 1;
-        }
-        else
-        {
-            input_y = 0;
-            if (dma.flags & 0x1)
-                input_y = dma.disp_input_height - 1;
+            case 1:
+                x_scale = 1;
+                break;
+            case 2:
+                x_scale = 1;
+                y_scale = 1;
+                break;
         }
 
-        if (dma.flags & (1 << 24))
-        {
-            dma.disp_input_width >>= 1;
-            dma.disp_output_width >>= 1;
-        }
+        uint32_t input_width = dma.disp_input_width;
+        uint32_t output_width = dma.disp_output_width >> x_scale;
 
-        for (unsigned int y = 0; y < dma.disp_output_height; y++)
+        printf("x scale: %d\n", x_scale);
+
+        uint32_t output_height = dma.disp_output_height >> y_scale;
+
+        for (unsigned int y = 0; y < output_height; y++)
         {
-            printf("input y: %d output y: %d\n", input_y, y);
-            int input_x = 0;
-            for (unsigned int x = 0; x < dma.disp_output_width; x++)
+            for (unsigned int x = 0; x < output_width; x++)
             {
                 uint32_t color = 0;
 
+                int input_x = x << x_scale;
+                int input_y = y << y_scale;
+
+                int output_x = x;
+                int output_y = y;
+                if (dma.flags & 0x1)
+                    output_y = output_height - output_y - 1;
+
                 if (!linear_to_tiled)
                     input_addr = get_swizzled_tile_addr(
-                            dma.input_addr, dma.disp_input_width, input_x, input_y, input_size);
+                            dma.input_addr, input_width, input_x, input_y, input_size);
                 else
-                    input_addr = dma.input_addr + (input_x + (input_y * dma.disp_input_width)) * input_size;
+                    input_addr = dma.input_addr + (input_x + (input_y * input_width)) * input_size;
 
                 switch (input_format)
                 {
@@ -339,18 +343,13 @@ void GPU::do_transfer_engine_dma(uint64_t param)
 
                 if (!linear_to_tiled)
                 {
-                    uint32_t output_offs = x + (y * dma.disp_output_width);
+                    uint32_t output_offs = output_x + (output_y * output_width);
 
                     output_addr = dma.output_addr + (output_offs * output_size);
                 }
                 else
-                {
-                    uint32_t output_x = x;
-                    uint32_t output_y = y;
-
-                    output_addr = get_swizzled_tile_addr(dma.output_addr, dma.disp_output_width,
+                    output_addr = get_swizzled_tile_addr(dma.output_addr, output_width,
                                                          output_x, output_y, output_size);
-                }
 
                 switch (output_format)
                 {
@@ -391,17 +390,7 @@ void GPU::do_transfer_engine_dma(uint64_t param)
                     default:
                         EmuException::die("[GPU] Unrecognized output format %d\n", output_format);
                 }
-
-                input_x = x;
-
-                if (dma.flags & (1 << 24))
-                    input_x <<= 1;
             }
-
-            if (dma.flags & 0x1)
-                input_y--;
-            else
-                input_y++;
         }
     }
     pmr->assert_hw_irq(0x2C);
