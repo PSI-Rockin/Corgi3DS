@@ -30,6 +30,7 @@ Emulator::Emulator() :
     fcram = nullptr;
     dsp_mem = nullptr;
     vram = nullptr;
+    qtm_ram = nullptr;
 }
 
 Emulator::~Emulator()
@@ -43,12 +44,34 @@ Emulator::~Emulator()
 
 void Emulator::reset(bool cold_boot)
 {
-    if (!arm9_RAM)
-        arm9_RAM = new uint8_t[1024 * 1024];
+    is_n3ds = emmc.is_n3ds();
+    if (is_n3ds)
+    {
+        printf("[Emulator] Running as New3DS\n");
+        arm9_ram_size = 1024 * 1024 * 3 / 2;
+        fcram_size = 1024 * 1024 * 256;
+        qtm_size = 1024 * 1024 * 4;
+        delete[] qtm_ram;
+        qtm_ram = new uint8_t[qtm_size];
+    }
+    else
+    {
+        printf("[Emulator] Running as Old3DS\n");
+        arm9_ram_size = 1024 * 1024;
+        fcram_size = 1024 * 1024 * 128;
+        qtm_size = 0;
+        delete[] qtm_ram;
+        qtm_ram = nullptr;
+    }
+
+    delete[] arm9_RAM;
+    delete[] fcram;
+
+    arm9_RAM = new uint8_t[arm9_ram_size];
+    fcram = new uint8_t[fcram_size];
+
     if (!axi_RAM)
         axi_RAM = new uint8_t[1024 * 512];
-    if (!fcram)
-        fcram = new uint8_t[1024 * 1024 * 128];
     if (!dsp_mem)
         dsp_mem = new uint8_t[1024 * 512];
     if (!vram)
@@ -116,10 +139,10 @@ void Emulator::reset(bool cold_boot)
     app_mmu.reset();
     sys_mmu.reset();
 
-    arm9_pu.add_physical_mapping(arm9_RAM, 0x08000000, 1024 * 1024);
+    arm9_pu.add_physical_mapping(arm9_RAM, 0x08000000, arm9_ram_size);
     arm9_pu.add_physical_mapping(dsp_mem, 0x1FF00000, 1024 * 512);
     arm9_pu.add_physical_mapping(axi_RAM, 0x1FF80000, 1024 * 512);
-    arm9_pu.add_physical_mapping(fcram, 0x20000000, 1024 * 1024 * 128);
+    arm9_pu.add_physical_mapping(fcram, 0x20000000, fcram_size);
     arm9_pu.add_physical_mapping(boot9_free, 0xFFFF0000, 1024 * 64);
     arm9_pu.add_physical_mapping(vram, 0x18000000, 1024 * 1024 * 6);
 
@@ -127,15 +150,17 @@ void Emulator::reset(bool cold_boot)
     app_mmu.add_physical_mapping(boot11_free, 0x10000, 1024 * 64);
     app_mmu.add_physical_mapping(dsp_mem, 0x1FF00000, 1024 * 512);
     app_mmu.add_physical_mapping(axi_RAM, 0x1FF80000, 1024 * 512);
-    app_mmu.add_physical_mapping(fcram, 0x20000000, 1024 * 1024 * 128);
+    app_mmu.add_physical_mapping(fcram, 0x20000000, fcram_size);
     app_mmu.add_physical_mapping(vram, 0x18000000, 1024 * 1024 * 6);
+    app_mmu.add_physical_mapping(qtm_ram, 0x1F000000, qtm_size);
 
     sys_mmu.add_physical_mapping(boot11_free, 0, 1024 * 64);
     sys_mmu.add_physical_mapping(boot11_free, 0x10000, 1024 * 64);
     sys_mmu.add_physical_mapping(dsp_mem, 0x1FF00000, 1024 * 512);
     sys_mmu.add_physical_mapping(axi_RAM, 0x1FF80000, 1024 * 512);
-    sys_mmu.add_physical_mapping(fcram, 0x20000000, 1024 * 1024 * 128);
+    sys_mmu.add_physical_mapping(fcram, 0x20000000, fcram_size);
     sys_mmu.add_physical_mapping(vram, 0x18000000, 1024 * 1024 * 6);
+    sys_mmu.add_physical_mapping(qtm_ram, 0x1F000000, qtm_size);
 
     memset(ARM_CPU::global_exclusive_start, 0, sizeof(ARM_CPU::global_exclusive_start));
     memset(ARM_CPU::global_exclusive_end, 0, sizeof(ARM_CPU::global_exclusive_end));
@@ -524,7 +549,7 @@ uint32_t Emulator::arm9_read32(uint32_t addr)
         case 0x101401C0:
             return 0; //SPI control
         case 0x10140FFC:
-            return 0x1; //bit 1 = New3DS (we're only emulating Old3DS for now)
+            return 0x1 | (is_n3ds << 1); //TODO: bit 2 = run at 3x speed
         case 0x10146000:
             return HID_PAD;
     }
@@ -933,6 +958,11 @@ uint32_t Emulator::arm11_read32(int core, uint32_t addr)
 {
     if (addr >= 0x17E00000 && addr < 0x17E02000)
         return mpcore_pmr.read32(core, addr);
+    if (addr >= 0x17E10000 && addr < 0x17E11000)
+    {
+        printf("[L2C] Unrecognized read32 $%08X\n", addr);
+        return 0;
+    }
     if (addr >= 0x10103000 && addr < 0x10104000)
     {
         printf("[CSND] Unrecognized read32 $%08X\n", addr);
@@ -1161,6 +1191,11 @@ void Emulator::arm11_write32(int core, uint32_t addr, uint32_t value)
     if (addr >= 0x17E00000 && addr < 0x17E02000)
     {
         mpcore_pmr.write32(core, addr, value);
+        return;
+    }
+    if (addr >= 0x17E10000 && addr < 0x17E11000)
+    {
+        printf("[L2C] Unrecognized write32 $%08X: $%08X\n", addr, value);
         return;
     }
     if (addr >= 0x10101000 && addr < 0x10102000)
