@@ -867,7 +867,7 @@ void WiFi::do_wmi_cmd()
                 printf("hey\n");
             };
 
-            scheduler->add_event(blorp, 5000000);
+            scheduler->add_event(blorp, XTENSA_CLOCKRATE, 500000);
 
             printf("[WiFi] WMI_SYNCHRONIZE\n");
         }

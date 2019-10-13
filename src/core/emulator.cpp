@@ -179,6 +179,10 @@ void Emulator::reset(bool cold_boot)
     }
 
     scheduler.reset();
+    scheduler.set_quantum_rate(ARM11_CLOCKRATE * 3);
+    scheduler.set_clockrate_9(ARM9_CLOCKRATE);
+    scheduler.set_clockrate_11(ARM11_CLOCKRATE);
+    scheduler.set_clockrate_xtensa(XTENSA_CLOCKRATE);
 }
 
 void Emulator::run()
@@ -189,8 +193,10 @@ void Emulator::run()
     int cycles = 0;
 
     //VBLANK start and end interrupts
-    scheduler.add_event([this](uint64_t param) {mpcore_pmr.assert_hw_irq(0x2A); gpu.render_frame();}, 4000000);
-    scheduler.add_event([this](uint64_t param) {mpcore_pmr.assert_hw_irq(0x2B);}, 4400000);
+    scheduler.add_event([this](uint64_t param) {mpcore_pmr.assert_hw_irq(0x2A); gpu.render_frame();},
+        ARM11_CLOCKRATE, 4000000);
+    scheduler.add_event([this](uint64_t param) {mpcore_pmr.assert_hw_irq(0x2B);},
+        ARM11_CLOCKRATE, 4400000);
     cartridge.save_check();
     while (cycles < 4400000)
     {
@@ -560,7 +566,7 @@ uint32_t Emulator::arm9_read32(uint32_t addr)
         case 0x101401C0:
             return 0; //SPI control
         case 0x10140FFC:
-            return 0x1 | (is_n3ds << 1); //TODO: bit 2 = run at 3x speed
+            return 0x1 | (is_n3ds << 1) | (1 << 2);
         case 0x10146000:
             return HID_PAD;
     }
@@ -954,7 +960,7 @@ uint16_t Emulator::arm11_read16(int core, uint32_t addr)
         case 0x101401C0:
             return 0x7; //3DS/DS SPI switch
         case 0x10140FFC:
-            return 0x1 | (is_n3ds << 1); //TODO: bit 2 = run at 3x speed
+            return 0x1 | (is_n3ds << 1) | (1 << 2);
         case 0x10146000:
             return HID_PAD;
         case 0x10163004:

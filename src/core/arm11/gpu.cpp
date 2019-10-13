@@ -3913,7 +3913,8 @@ void GPU::write32(uint32_t addr, uint32_t value)
 
                     //TODO: How long does a memfill take? We just assume a constant value for now
                     uint32_t cycles = memfill[index].end - memfill[index].start;
-                    scheduler->add_event([this](uint64_t param) { this->do_memfill(param);}, cycles, index);
+                    scheduler->add_event([this](uint64_t param) { this->do_memfill(param);}, cycles,
+                            ARM11_CLOCKRATE, index);
                 }
                 break;
         }
@@ -3957,7 +3958,8 @@ void GPU::write32(uint32_t addr, uint32_t value)
             {
                 dma.busy = true;
                 dma.finished = false;
-                scheduler->add_event([this](uint64_t param) { this->do_transfer_engine_dma(param);}, 1000);
+                scheduler->add_event([this](uint64_t param) { this->do_transfer_engine_dma(param);},
+                    ARM11_CLOCKRATE, 1000);
             }
             break;
         case 0x0C20:
@@ -3987,7 +3989,8 @@ void GPU::write32(uint32_t addr, uint32_t value)
             if (value & 0x1)
             {
                 cmd_engine.busy = true;
-                scheduler->add_event([this](uint64_t param) { this->do_command_engine_dma(param);}, cmd_engine.size);
+                scheduler->add_event([this](uint64_t param) { this->do_command_engine_dma(param);},
+                    ARM11_CLOCKRATE, cmd_engine.size);
             }
             break;
         default:
