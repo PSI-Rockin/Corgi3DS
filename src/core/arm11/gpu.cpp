@@ -3959,7 +3959,7 @@ void GPU::write32(uint32_t addr, uint32_t value)
                 dma.busy = true;
                 dma.finished = false;
                 scheduler->add_event([this](uint64_t param) { this->do_transfer_engine_dma(param);},
-                    ARM11_CLOCKRATE, 1000);
+                    1000, ARM11_CLOCKRATE);
             }
             break;
         case 0x0C20:
@@ -3990,7 +3990,7 @@ void GPU::write32(uint32_t addr, uint32_t value)
             {
                 cmd_engine.busy = true;
                 scheduler->add_event([this](uint64_t param) { this->do_command_engine_dma(param);},
-                    ARM11_CLOCKRATE, cmd_engine.size);
+                    cmd_engine.size, ARM11_CLOCKRATE);
             }
             break;
         default:

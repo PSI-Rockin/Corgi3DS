@@ -75,6 +75,8 @@ void Scheduler::add_event(std::function<void(uint64_t)> func, int64_t cycles, ui
 
     event.func = func;
     event.time_registered = -1; //TODO
+
+    printf("ADD EVENT: %lld %lld\n", cycles, clockrate);
     event.time_to_run = quantum.count + (cycles * (quantum.clockrate / clockrate));
     event.param = param;
 
