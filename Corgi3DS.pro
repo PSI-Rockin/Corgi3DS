@@ -50,7 +50,8 @@ SOURCES += src/qt/main.cpp \
     src/core/arm11/xtensa.cpp \
     src/core/arm11/xtensa_interpreter.cpp \
     src/core/arm11/wifi_timers.cpp \
-    src/core/spi.cpp
+    src/core/spi.cpp \
+    src/external/mini-gmp.c
 
 HEADERS += \
     src/core/emulator.hpp \
@@ -94,7 +95,8 @@ HEADERS += \
     src/core/arm11/xtensa.hpp \
     src/core/arm11/xtensa_interpreter.hpp \
     src/core/arm11/wifi_timers.hpp \
-    src/core/spi.hpp
+    src/core/spi.hpp \
+    src/external/mini-gmp.h
 
 INCLUDEPATH += /usr/local/include
 

@@ -3,7 +3,7 @@
 #include <cstdint>
 #include <string>
 
-#include <gmp.h>
+#include "../../external/mini-gmp.h"
 
 struct RSA_CNT_REG
 {

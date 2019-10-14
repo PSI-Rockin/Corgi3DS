@@ -241,7 +241,7 @@ void RSA::do_rsa_op()
     mpz_t gmp_msg, gmp_b, gmp_e, gmp_m;
 
     RSA_KeySlot* key = &keys[RSA_CNT.keyslot];
-    mpz_inits(gmp_msg, NULL);
+    mpz_init(gmp_msg);
     convert_to_bignum((uint8_t*)msg, gmp_b);
     convert_to_bignum((uint8_t*)key->exp, gmp_e);
     convert_to_bignum((uint8_t*)key->mod, gmp_m);

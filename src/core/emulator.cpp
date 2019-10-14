@@ -576,7 +576,7 @@ uint32_t Emulator::arm9_read32(uint32_t addr)
             return HID_PAD;
     }
 
-    EmuException::die("[ARM9] Invalid read32 $%08X\n", addr);
+    //EmuException::die("[ARM9] Invalid read32 $%08X\n", addr);
     return 0;
 }
 
