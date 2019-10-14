@@ -139,7 +139,11 @@ void Emulator::reset(bool cold_boot)
     cdma.set_mem_read32_func(cdma_read32);
     cdma.set_mem_write8_func([this] (uint32_t addr, uint8_t value) {arm11_write8(0, addr, value);});
     cdma.set_mem_write32_func(cdma_write32);
-    cdma.set_send_interrupt([this] (int chan) {mpcore_pmr.assert_hw_irq(0x30 + chan);});
+
+    if (!is_n3ds)
+        cdma.set_send_interrupt([this] (int chan) {mpcore_pmr.assert_hw_irq(0x30 + chan);});
+    else
+        cdma.set_send_interrupt([this] (int chan) {mpcore_pmr.assert_hw_irq(0x38 + chan);});
 
     sysprot9 = 0;
     sysprot11 = 0;
@@ -1230,11 +1234,11 @@ void Emulator::arm11_write16(int core, uint32_t addr, uint16_t value)
             return;
         case 0x10141300:
         {
-            clock_ctrl = value;
-            auto update_clockrate = [this, value](uint64_t param)
+            clock_ctrl = value & ~0x8000;
+            auto update_clockrate = [this](uint64_t param)
             {
-                clock_ctrl |= value;
-                switch (value & 0x7)
+                clock_ctrl |= 0x8000;
+                switch (clock_ctrl & 0x7)
                 {
                     case 0x1:
                         scheduler.set_clockrate_11(ARM11_CLOCKRATE);
@@ -1249,7 +1253,7 @@ void Emulator::arm11_write16(int core, uint32_t addr, uint16_t value)
                         printf("[ARM11] Set clockrate to 3x\n");
                         break;
                     default:
-                        EmuException::die("[Emulator] Invalid clockrate $%02X given to MPCORE_CLKCNT", value & 0x7);
+                        EmuException::die("[Emulator] Invalid clockrate $%02X given to MPCORE_CLKCNT", clock_ctrl & 0x7);
                 }
                 mpcore_pmr.assert_hw_irq(0x58);
             };

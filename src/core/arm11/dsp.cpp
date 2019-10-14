@@ -238,7 +238,7 @@ uint16_t DSP::read16(uint32_t addr)
             //printf("[DSP_CPU] Read16 PSTS: $%04X\n", reg);
             break;
         case 0x10203010:
-            //TODO: Is SET_SEMA readable?
+            reg = apbp.dsp_sema_recv;
             break;
         case 0x10203014:
             reg = apbp.cpu_sema_mask;
@@ -2321,7 +2321,7 @@ void DSP::assert_dsp_irq(int id)
 
 void DSP::int_check()
 {
-    if (mod3.master_int_enable)
+    if (mod3.master_int_enable && !rep)
     {
         bool irq_found = false;
         for (int id = 0; id < 16; id++)
