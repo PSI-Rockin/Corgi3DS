@@ -37,6 +37,10 @@ class Emulator
 
         bool is_n3ds;
         int core_count;
+        uint32_t clock_ctrl;
+        uint32_t boot_overlay_addr;
+        uint8_t boot_ctrl[4];
+
         uint32_t fcram_size;
         uint32_t arm9_ram_size;
         uint32_t qtm_size;

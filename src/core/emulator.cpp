@@ -112,6 +112,9 @@ void Emulator::reset(bool cold_boot)
     emmc.reset();
     pxi.reset();
 
+    for (int i = 0; i < 4; i++)
+        boot_ctrl[i] = 0x20;
+
     //CDMA has its own special encodings for IO addresses, so we need to expand its read/write functions
 
     auto cdma_read32 = [this] (uint32_t addr)
@@ -144,6 +147,7 @@ void Emulator::reset(bool cold_boot)
     if (cold_boot)
         config_bootenv = 0;
 
+    clock_ctrl = 0;
     config_cardctrl2 = 0;
     card_reset = 0;
 
@@ -190,33 +194,34 @@ void Emulator::run()
     static int frames = 0;
     i2c.update_time();
     printf("FRAME %d\n", frames);
-    int cycles = 0;
+
+    bool frame_ended = false;
 
     //VBLANK start and end interrupts
     scheduler.add_event([this](uint64_t param) {mpcore_pmr.assert_hw_irq(0x2A); gpu.render_frame();},
         4000000, ARM11_CLOCKRATE);
-    scheduler.add_event([this](uint64_t param) {mpcore_pmr.assert_hw_irq(0x2B);},
+    scheduler.add_event([this, &frame_ended](uint64_t param) {mpcore_pmr.assert_hw_irq(0x2B); frame_ended = true;},
         4400000, ARM11_CLOCKRATE);
     cartridge.save_check();
-    while (cycles < 4400000)
+    while (!frame_ended)
     {
         scheduler.calculate_cycles_to_run();
         int cycles11 = scheduler.get_cycles11_to_run();
         int cycles9 = scheduler.get_cycles9_to_run();
-        cycles += cycles11;
+
         arm11[0].run(cycles11);
         arm11[1].run(cycles11);
 
         //TODO: Is it faster to always run the additional cores in Old3DS mode?
         //Probably not, because the branch predictor should have an easy time with this
-        /*if (is_n3ds)
+        if (is_n3ds)
         {
             arm11[2].run(cycles11);
             arm11[3].run(cycles11);
-        }*/
+        }
 
         arm9.run(cycles9);
-        timers.run(cycles11);
+        timers.run(cycles11, cycles9);
         dsp.run(cycles9);
         dma9.process_ndma_reqs();
         dma9.run_xdma();
@@ -362,8 +367,8 @@ void Emulator::load_and_run_elf(uint8_t *elf, uint64_t size)
 
 uint8_t Emulator::arm9_read8(uint32_t addr)
 {
-    if (addr >= 0x08000000 && addr < 0x08100000)
-        return arm9_RAM[addr & 0xFFFFF];
+    if (addr >= 0x08000000 && addr < 0x08000000 + arm9_ram_size)
+        return arm9_RAM[addr - 0x08000000];
 
     if (addr >= 0x18000000 && addr < 0x18600000)
         return gpu.read_vram<uint8_t>(addr);
@@ -493,8 +498,8 @@ uint32_t Emulator::arm9_read32(uint32_t addr)
     if (addr >= 0x10142000 && addr < 0x10144000)
         return spi.read32(addr);
 
-    if (addr >= 0x08000000 && addr < 0x08100000)
-        return *(uint32_t*)&arm9_RAM[addr & 0xFFFFF];
+    if (addr >= 0x08000000 && addr < 0x08000000 + arm9_ram_size)
+        return *(uint32_t*)&arm9_RAM[addr - 0x08000000];
 
     if (addr >= 0x18000000 && addr < 0x18600000)
         return gpu.read_vram<uint32_t>(addr);
@@ -566,7 +571,7 @@ uint32_t Emulator::arm9_read32(uint32_t addr)
         case 0x101401C0:
             return 0; //SPI control
         case 0x10140FFC:
-            return 0x1 | (is_n3ds << 1) | (1 << 2);
+            return 0x5 | (is_n3ds << 1);
         case 0x10146000:
             return HID_PAD;
     }
@@ -748,9 +753,9 @@ void Emulator::arm9_write32(uint32_t addr, uint32_t value)
         timers.arm9_write16(addr + 2, value >> 16);
         return;
     }
-    if (addr >= 0x08000000 && addr < 0x08100000)
+    if (addr >= 0x08000000 && addr < 0x08000000 + arm9_ram_size)
     {
-        *(uint32_t*)&arm9_RAM[addr & 0xFFFFF] = value;
+        *(uint32_t*)&arm9_RAM[addr - 0x08000000] = value;
         return;
     }
     if (addr >= 0x1FF80000 && addr < 0x20000000)
@@ -833,9 +838,9 @@ void Emulator::arm9_write32(uint32_t addr, uint32_t value)
         return;
     }
 
-    if (addr >= 0x20000000 && addr < 0x28000000)
+    if (addr >= 0x20000000 && addr < 0x20000000 + fcram_size)
     {
-        *(uint32_t*)&fcram[addr & 0x07FFFFFF] = value;
+        *(uint32_t*)&fcram[addr & (fcram_size - 1)] = value;
         return;
     }
 
@@ -885,8 +890,8 @@ uint8_t Emulator::arm11_read8(int core, uint32_t addr)
         return mpcore_pmr.read8(core, addr);
     if (addr >= 0x18000000 && addr < 0x18600000)
         return gpu.read_vram<uint8_t>(addr);
-    if (addr >= 0x20000000 && addr < 0x28000000)
-        return fcram[addr & 0x07FFFFFF];
+    if (addr >= 0x20000000 && addr < 0x20000000 + fcram_size)
+        return fcram[addr & (fcram_size - 1)];
     if (addr >= 0x1FF80000 && addr < 0x20000000)
         return axi_RAM[addr & 0x0007FFFF];
     switch (addr)
@@ -895,6 +900,8 @@ uint8_t Emulator::arm11_read8(int core, uint32_t addr)
             return 0;
         case 0x10140180:
             return 0; //WiFi power
+        case 0x10140420:
+            return 0;
         case 0x10141204:
             return 1; //GPU power
         case 0x10141208:
@@ -905,6 +912,11 @@ uint8_t Emulator::arm11_read8(int core, uint32_t addr)
             return 0; //Camera power
         case 0x10141230:
             return 0; //DSP power
+        case 0x10141310:
+        case 0x10141311:
+        case 0x10141312:
+        case 0x10141313:
+            return boot_ctrl[addr - 0x10141310];
         case 0x10163000:
         case 0x10163001:
         case 0x10163002:
@@ -951,8 +963,8 @@ uint16_t Emulator::arm11_read16(int core, uint32_t addr)
     }
     if (addr >= 0x10203000 && addr < 0x10204000)
         return dsp.read16(addr);
-    if (addr >= 0x20000000 && addr < 0x28000000)
-        return *(uint16_t*)&fcram[addr & 0x07FFFFFF];
+    if (addr >= 0x20000000 && addr < 0x20000000 + fcram_size)
+        return *(uint16_t*)&fcram[addr & (fcram_size - 1)];
     if (addr >= 0x18000000 && addr < 0x18600000)
         return gpu.read_vram<uint16_t>(addr);
     switch (addr)
@@ -960,7 +972,11 @@ uint16_t Emulator::arm11_read16(int core, uint32_t addr)
         case 0x101401C0:
             return 0x7; //3DS/DS SPI switch
         case 0x10140FFC:
-            return 0x1 | (is_n3ds << 1) | (1 << 2);
+            return 0x5 | (is_n3ds << 1);
+        case 0x10141300:
+            return clock_ctrl;
+        case 0x10141304:
+            return 0;
         case 0x10146000:
             return HID_PAD;
         case 0x10163004:
@@ -973,7 +989,13 @@ uint16_t Emulator::arm11_read16(int core, uint32_t addr)
 uint32_t Emulator::arm11_read32(int core, uint32_t addr)
 {
     if (addr >= 0x17E00000 && addr < 0x17E02000)
+    {
+        //Bit of a hack: Since we do not handle accurate ARM11 timings, we shave off a cycle for MPR reads.
+        //At a 3x clock multipler, Kernel11 requires a 6 cycle difference between two timer reads, but there are
+        //only 5 instructions between the reads. Without handling this, threads will sleep for 0xFFFFFFFF cycles.
+        arm11[core].inc_cycle_count(1);
         return mpcore_pmr.read32(core, addr);
+    }
     if (addr >= 0x17E10000 && addr < 0x17E11000)
     {
         printf("[L2C] Unrecognized read32 $%08X\n", addr);
@@ -1021,8 +1043,8 @@ uint32_t Emulator::arm11_read32(int core, uint32_t addr)
         printf("[AXI] Unrecognized read32 $%08X\n", addr);
         return 0;
     }
-    if (addr >= 0x20000000 && addr < 0x28000000)
-        return *(uint32_t*)&fcram[addr & 0x07FFFFFF];
+    if (addr >= 0x20000000 && addr < 0x20000000 + fcram_size)
+        return *(uint32_t*)&fcram[addr & (fcram_size - 1)];
     switch (addr)
     {
         case 0x10140180:
@@ -1085,9 +1107,9 @@ void Emulator::arm11_write8(int core, uint32_t addr, uint8_t value)
         return;
     }
 
-    if (addr >= 0x20000000 && addr < 0x28000000)
+    if (addr >= 0x20000000 && addr < 0x20000000 + fcram_size)
     {
-        fcram[addr & 0x07FFFFFF] = value;
+        fcram[addr & (fcram_size - 1)] = value;
         return;
     }
 
@@ -1099,6 +1121,10 @@ void Emulator::arm11_write8(int core, uint32_t addr, uint8_t value)
             return;
         case 0x10140180:
             return;
+        case 0x10140400:
+            return;
+        case 0x10140420:
+            return;
         case 0x10141204:
             return;
         case 0x10141208:
@@ -1108,6 +1134,17 @@ void Emulator::arm11_write8(int core, uint32_t addr, uint8_t value)
         case 0x10141224:
             return;
         case 0x10141230:
+            return;
+        case 0x10141312:
+        case 0x10141313:
+            boot_ctrl[addr - 0x10141310] = value;
+            printf("BOOT: $%02X\n", value);
+            if ((value & 0x3) == 0x3)
+            {
+                arm11[addr - 0x10141310].unhalt();
+                arm11[addr - 0x10141310].jp(boot_overlay_addr, true);
+                boot_ctrl[addr - 0x10141310] = 0x30;
+            }
             return;
         case 0x10163001:
         {
@@ -1182,14 +1219,44 @@ void Emulator::arm11_write16(int core, uint32_t addr, uint16_t value)
         gpu.write_vram<uint16_t>(addr, value);
         return;
     }
-    if (addr >= 0x20000000 && addr < 0x28000000)
+    if (addr >= 0x20000000 && addr < 0x20000000 + fcram_size)
     {
-        *(uint16_t*)&fcram[addr & 0x07FFFFFF] = value;
+        *(uint16_t*)&fcram[addr & (fcram_size - 1)] = value;
         return;
     }
     switch (addr)
     {
         case 0x101401C0:
+            return;
+        case 0x10141300:
+        {
+            clock_ctrl = value;
+            auto update_clockrate = [this, value](uint64_t param)
+            {
+                clock_ctrl |= value;
+                switch (value & 0x7)
+                {
+                    case 0x1:
+                        scheduler.set_clockrate_11(ARM11_CLOCKRATE);
+                        printf("[ARM11] Set clockrate to 1x\n");
+                        break;
+                    case 0x3:
+                        scheduler.set_clockrate_11(ARM11_CLOCKRATE * 2);
+                        printf("[ARM11] Set clockrate to 2x\n");
+                        break;
+                    case 0x5:
+                        scheduler.set_clockrate_11(ARM11_CLOCKRATE * 3);
+                        printf("[ARM11] Set clockrate to 3x\n");
+                        break;
+                    default:
+                        EmuException::die("[Emulator] Invalid clockrate $%02X given to MPCORE_CLKCNT", value & 0x7);
+                }
+                mpcore_pmr.assert_hw_irq(0x58);
+            };
+            scheduler.add_event(update_clockrate, 32, ARM11_CLOCKRATE);
+        }
+            return;
+        case 0x10141304:
             return;
         case 0x10148002:
             return;
@@ -1284,9 +1351,9 @@ void Emulator::arm11_write32(int core, uint32_t addr, uint32_t value)
         gpu.write_vram<uint32_t>(addr, value);
         return;
     }
-    if (addr >= 0x20000000 && addr < 0x28000000)
+    if (addr >= 0x20000000 && addr < 0x20000000 + fcram_size)
     {
-        *(uint32_t*)&fcram[addr & 0x07FFFFFF] = value;
+        *(uint32_t*)&fcram[addr & (fcram_size - 1)] = value;
         return;
     }
     switch (addr)
@@ -1295,6 +1362,11 @@ void Emulator::arm11_write32(int core, uint32_t addr, uint32_t value)
             return; //GPUPROT
         case 0x10140180:
             return; //Enable WiFi subsystem
+        case 0x10140410:
+            return;
+        case 0x10140424:
+            boot_overlay_addr = value;
+            return;
         case 0x1014110C:
             return;
         case 0x10141200:

@@ -244,7 +244,6 @@ uint32_t MPCore_PMR::read32(int core, uint32_t addr)
     switch (addr)
     {
         case 0x17E00004:
-            printf("[PMR%d] Read SCU_CONFIG\n", core);
             return (core_count - 1) | (0xF << 4);
         case 0x17E0010C:
         {

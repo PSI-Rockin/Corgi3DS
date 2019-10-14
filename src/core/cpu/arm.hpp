@@ -84,6 +84,7 @@ class ARM_CPU
         void print_state();
         int get_id();
         int get_cycles_ran();
+        void inc_cycle_count(int delta);
 
         bool is_halted();
         uint32_t get_PC();
@@ -182,6 +183,11 @@ inline int ARM_CPU::get_id()
 inline int ARM_CPU::get_cycles_ran()
 {
     return cycles_ran;
+}
+
+inline void ARM_CPU::inc_cycle_count(int delta)
+{
+    cycles_ran += delta;
 }
 
 inline uint32_t ARM_CPU::get_register(int id)
