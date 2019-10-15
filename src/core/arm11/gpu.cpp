@@ -1465,6 +1465,16 @@ float24 orient2D(const Vertex &v1, const Vertex &v2, const Vertex &v3)
     return (v2.pos[0] - v1.pos[0]) * (v3.pos[1] - v1.pos[1]) - (v3.pos[0] - v1.pos[0]) * (v2.pos[1] - v1.pos[1]);
 }
 
+bool GPU::get_fill_rule_bias(Vertex &vtx, Vertex &line1, Vertex &line2)
+{
+    //This function prevents pixels on the right-side or flat bottom side of a triangle from being drawn.
+    if (line1.pos[1] == line2.pos[1])
+        return vtx.pos[1] < line1.pos[1];
+    return vtx.pos[0] < line1.pos[0] + (line2.pos[0] - line1.pos[0]) *
+                                                       (vtx.pos[1] - line1.pos[1]) /
+                                                       (line2.pos[1] - line1.pos[1]);
+}
+
 void GPU::rasterize_tri(Vertex &v0, Vertex &v1, Vertex &v2)
 {
     //The triangle rasterization code uses an approach with barycentric coordinates
@@ -1547,6 +1557,10 @@ void GPU::rasterize_tri(Vertex &v0, Vertex &v1, Vertex &v2)
     int32_t w2_dy = (v0.pos[0] - v2.pos[0]).ToFloat32() * 0x10;
     int32_t w3_dy = (v1.pos[0] - v0.pos[0]).ToFloat32() * 0x10;*/
 
+    int bias0 = get_fill_rule_bias(v0, v1, v2) ? -1 : 0;
+    int bias1 = get_fill_rule_bias(v1, v2, v0) ? -1 : 0;
+    int bias2 = get_fill_rule_bias(v2, v0, v1) ? -1 : 0;
+
     //TODO: Parallelize this
     for (int32_t y = min_y; y < max_y; y += 0x10)
     {
@@ -1558,9 +1572,9 @@ void GPU::rasterize_tri(Vertex &v0, Vertex &v1, Vertex &v2)
             Vertex temp;
             temp.pos[0] = float24::FromFloat32(x);
             temp.pos[1] = float24::FromFloat32(y);
-            int32_t w1 = roundf(orient2D(v1, v2, temp).ToFloat32());
-            int32_t w2 = roundf(orient2D(v2, v0, temp).ToFloat32());
-            int32_t w3 = roundf(orient2D(v0, v1, temp).ToFloat32());
+            int32_t w1 = roundf(orient2D(v1, v2, temp).ToFloat32()) + bias0;
+            int32_t w2 = roundf(orient2D(v2, v0, temp).ToFloat32()) + bias1;
+            int32_t w3 = roundf(orient2D(v0, v1, temp).ToFloat32()) + bias2;
             //Is inside triangle?
             if ((w1 | w2 | w3) >= 0)
             {
