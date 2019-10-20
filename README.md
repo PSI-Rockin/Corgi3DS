@@ -10,7 +10,21 @@ Outside contributions are greatly appreciated! [Corgi3DS is licensed under the G
 ## Compilation
 Compilation requires Qt 5 and GMP. GMP is the library currently used for handling RSA crypto operations. Corgi3DS is cross-platform, **but it may be difficult to compile on Windows due to the GMP requirement**.
 
-### QMake
+### MSYS2
+Make sure you're using **MSYS2 MinGW 64-bit** for this.
+
+```
+pacman -S mingw-w64-x86_64-{qt5,gmp,cmake}
+git clone --recursive https://github.com/PSI-Rockin/Corgi3DS.git
+cd Corgi3DS
+mkdir build && cd build
+cmake .. -G "MSYS Makefiles" -DCMAKE_BUILD_TYPE=Release
+make
+```
+
+### macOS/Linux
+
+#### QMake
 ```
 git clone --recursive https://github.com/PSI-Rockin/Corgi3DS.git
 cd Corgi3DS
@@ -18,7 +32,7 @@ qmake
 make
 ```
 
-### CMake (3.1+)
+#### CMake (3.1+)
 ```
 git clone --recursive https://github.com/PSI-Rockin/Corgi3DS.git
 cd Corgi3DS
