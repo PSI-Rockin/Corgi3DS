@@ -30,7 +30,7 @@ void Xtensa::run(int cycles)
         uint16_t instr = fetch_word();
         Xtensa_Interpreter::interpret(*this, instr);
 
-        if (lcount && pc == lend)
+        if (lcount > 0 && pc == lend)
         {
             //Looping is disabled during an exception
             if (!ps.exception)
@@ -58,53 +58,86 @@ uint16_t Xtensa::fetch_word()
 
 uint8_t Xtensa::read8(uint32_t addr)
 {
+    printf("[Xtensa] Read8 $%08X\n", addr);
     return wifi->read8_xtensa(addr);
 }
 
 uint16_t Xtensa::read16(uint32_t addr)
 {
+    if (addr & 0x1)
+        EmuException::die("[Xtensa] Invalid read16 $%08X", addr);
+    printf("[Xtensa] Read16 $%08X\n", addr);
     return wifi->read16_xtensa(addr);
 }
 
 uint32_t Xtensa::read32(uint32_t addr)
 {
+    if (addr & 0x3)
+        EmuException::die("[Xtensa] Invalid read32 $%08X", addr);
+    printf("[Xtensa] Read32 $%08X\n", addr);
     return wifi->read32_xtensa(addr);
 }
 
 void Xtensa::write8(uint32_t addr, uint8_t value)
 {
+    printf("[Xtensa] Write8 $%08X: $%02X\n", addr, value);
     wifi->write8_xtensa(addr, value);
 }
 
 void Xtensa::write16(uint32_t addr, uint16_t value)
 {
+    if (addr & 0x1)
+        EmuException::die("[Xtensa] Invalid write16 $%08X: $%04X", addr, value);
+    printf("[Xtensa] Write16 $%08X: $%04X\n", addr, value);
     wifi->write16_xtensa(addr, value);
 }
 
 void Xtensa::write32(uint32_t addr, uint32_t value)
 {
-    if (addr == 0x5224B0 + 0x38)
-        printf("[Xtensa] Write32 BLORP: $%08X\n", value);
-    if (addr == 0x5224B0 + 0x30)
-        printf("[Xtensa] Write32 hey: $%08X\n", value);
+    if (addr & 0x3)
+        EmuException::die("[Xtensa] Invalid write32 $%08X: $%08X", addr, value);
+    if (addr >= 0x520000)
+        printf("[Xtensa] Write32 $%08X: $%08X\n", addr, value);
     wifi->write32_xtensa(addr, value);
 }
 
 void Xtensa::send_irq(int id)
 {
+    uint32_t vector;
+    int level;
+    if (id == 0)
+    {
+        level = 1;
+        vector = 0x8E0720;
+    }
+    else if (id < 15)
+    {
+        level = 2;
+        vector = 0x8E0920;
+    }
+    else
+    {
+        level = 3;
+        vector = 0x8E0A20;
+    }
     interrupt |= 1 << id;
     if (intenable & (1 << id))
     {
-        if (ps.int_level < 3)
+        if (ps.int_level < level)
         {
-            epc[1] = pc;
-            eps[1] = ps;
-            ps.int_level = 2;
+            epc[level - 1] = pc;
+            eps[level - 1] = ps;
+            ps.int_level = level;
             ps.exception = true;
-            pc = 0x8E0920;
+            pc = vector;
             unhalt();
         }
     }
+}
+
+void Xtensa::clear_irq(int id)
+{
+    interrupt &= ~(1 << id);
 }
 
 void Xtensa::jp(uint32_t addr)
@@ -120,16 +153,15 @@ void Xtensa::branch(int offset)
 void Xtensa::print_state()
 {
     printf("pc:$%08X\n", pc);
-    for (int i = 0; i < 16; i++)
+    /*for (int i = 0; i < 16; i++)
     {
         printf("a%d:%08X ", i, gpr[i + (window_base << 2)]);
         if (i % 4 == 3)
             printf("\n");
         else
             printf("\t");
-    }
-    printf("Window base: $%02X start: $%08X\n", window_base, window_start);
-    printf("\n");
+    }*/
+    //printf("Window base: $%02X start: $%08X\n", window_base, window_start);
 }
 
 uint32_t Xtensa::get_xsr(int index)
@@ -157,6 +189,7 @@ uint32_t Xtensa::get_xsr(int index)
             reg = excsave[index - 209];
             break;
         case 226:
+            printf("Interrupt: $%08X\n", interrupt);
             return interrupt;
         case 228:
             return intenable;
@@ -204,6 +237,7 @@ void Xtensa::set_xsr(int index, uint32_t value)
             excsave[index - 209] = value;
             break;
         case 227:
+            printf("[Xtensa] Write interrupt $%08X\n", value);
             interrupt &= ~value;
             break;
         case 228:
@@ -243,9 +277,13 @@ void Xtensa::set_ps(uint32_t value)
 
 void Xtensa::setup_loop(int count, int offset, bool cond)
 {
-    lcount = count - 1;
+    if (count > 0)
+        lcount = count - 1;
+    else
+        lcount = 0;
     lbeg = pc;
     lend = pc + offset + 1;
+
     if (!cond)
         pc = lend;
 }

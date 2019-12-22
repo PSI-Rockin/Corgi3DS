@@ -204,10 +204,16 @@ void WiFi::reset()
 
     memcpy(eeprom + 0xA, mac, 6);
 
-    *(uint32_t*)&eeprom[0x10] = 0x60000000;
+    //MSB is checked by NWM, which will error out if not exactly equal to 0x60.
+    //(LSB & 0x3) is checked by the firmware, which seems to expect 2 or 3? Crashes on 0 and 1
+    *(uint32_t*)&eeprom[0x10] = 0x60000003;
 
     memset(eeprom + 0x3C, 0xFF, 0x70);
     memset(eeprom + 0x140, 0xFF, 8);
+
+    //???
+    eeprom[0x14F] = 1;
+    eeprom[0x158] = 1;
 
     //Checksum
     uint16_t checksum = 0xFFFF;
@@ -229,6 +235,11 @@ void WiFi::reset()
 void WiFi::run(int cycles)
 {
 #ifdef LLE_WIFI
+    //Keep MBOX level-triggered
+    if (xtensa_mbox_irq_enable & xtensa_mbox_irq_stat)
+        send_xtensa_soc_irq(12);
+    else
+        clear_xtensa_soc_irq(12);
     xtensa.run(cycles);
     timers.run(cycles);
 #endif
@@ -608,9 +619,8 @@ uint16_t WiFi::read_fifo16()
 void WiFi::do_wifi_cmd()
 {
 #ifdef LLE_WIFI
+    printf("[WiFi] MBOX ARM->Xtensa transfer finished\n");
     xtensa_mbox_irq_stat |= 1 << 12;
-    if (xtensa_mbox_irq_enable & (1 << 12))
-        send_xtensa_soc_irq(12);
 #else
     if (!bmi_done)
         do_bmi_cmd();
@@ -913,7 +923,16 @@ void WiFi::send_wmi_reply(uint8_t *reply, uint32_t len, uint8_t eid, uint8_t fla
 void WiFi::send_xtensa_soc_irq(int id)
 {
     xtensa_irq_stat |= 1 << id;
+
     xtensa.send_irq(16 - id);
+}
+
+void WiFi::clear_xtensa_soc_irq(int id)
+{
+    xtensa_irq_stat &= ~(1 << id);
+
+    if (id == 12)
+        xtensa.clear_irq(4);
 }
 
 void WiFi::check_card_irq()
@@ -1163,11 +1182,23 @@ uint32_t WiFi::read32_xtensa(uint32_t addr)
         case 0x04000:
             //Reset control
             return 0;
+        case 0x04014:
+            //PLL_CONTROL
+            return 0;
+        case 0x04018:
+            //PLL_SETTLE
+            return 0x0;
+        case 0x04020:
+            //CLOCK_OUT
+            return 0;
         case 0x04028:
             //Clock control?
             return 0;
         case 0x04030:
             //Watchdog control
+            return 0;
+        case 0x04040:
+            //Watchdog reset
             return 0;
         case 0x04044:
             return xtensa_irq_stat;
@@ -1201,6 +1232,9 @@ uint32_t WiFi::read32_xtensa(uint32_t addr)
         case 0x040C4:
             //SOC_SYSTEM_SLEEP
             return 0;
+        case 0x040CC:
+            //MAC_SLEEP_CONTROL
+            return 0;
         case 0x040EC:
             //Chip id
             return 0x0D000001;
@@ -1209,15 +1243,44 @@ uint32_t WiFi::read32_xtensa(uint32_t addr)
         case 0x04110:
             //Power control
             return 0;
+        case 0x10004:
+        {
+            //I2C status
+            uint32_t value = xtensa_i2c_done << 9;
+            xtensa_i2c_done = false;
+            return value;
+        }
+        case 0x10010:
+            return *(uint32_t*)&xtensa_i2c_rx[0];
+        case 0x10014:
+            return *(uint32_t*)&xtensa_i2c_rx[4];
+        case 0x14030:
+        case 0x14034:
+            //GPIO
+            return 0;
         case 0x14048:
             printf("[WiFi] Read32 Xtensa GPIO_PIN8\n");
+            return 0;
+        case 0x18000:
+            return mbox_tpop[0];
+        case 0x18010:
+            //MBOX full/empty flags
+            return 0;
+        case 0x18058:
+            //WLAN_MBOX_INT_STATUS
             return 0;
         case 0x180C0:
             //Local scratchpad
             return 0;
+        case 0x28048:
+            //MAC_PCU_DIAG_SW
+            return 0;
+        case 0x28068:
+            //MAC_PCU_OBS_BUS_2
+            return 0;
     }
 
-    EmuException::die("[WiFi] Unrecognized Xtensa read32 $%08X\n", addr);
+    printf("[WiFi] Unrecognized Xtensa read32 $%08X\n", addr);
     return 0;
 }
 
@@ -1276,10 +1339,14 @@ void WiFi::write32_xtensa(uint32_t addr, uint32_t value)
     {
         case 0x04000:
             printf("[WiFi] Write32 Xtensa SOC_RESET_CONTROL: $%08X\n", value);
-            reset();
+            //reset();
             return;
         case 0x04014:
             //Clock control?
+            return;
+        case 0x04018:
+            //PLL_SETTLE
+            printf("[WiFi] Write32 Xtensa PLL_SETTLE: $%08X\n", value);
             return;
         case 0x04020:
             //SOC_CPU_CLOCK
@@ -1289,6 +1356,9 @@ void WiFi::write32_xtensa(uint32_t addr, uint32_t value)
             return;
         case 0x04030:
             //Watchdog control
+            return;
+        case 0x04040:
+            //Watchdog reset
             return;
         case 0x04048:
         case 0x04058:
@@ -1320,6 +1390,9 @@ void WiFi::write32_xtensa(uint32_t addr, uint32_t value)
         case 0x040C4:
             printf("[WiFi] Write32 Xtensa SOC_SYSTEM_SLEEP: $%08X\n", value);
             return;
+        case 0x040CC:
+            //MAC_SLEEP_CONTROL
+            return;
         case 0x040D4:
             printf("[WiFi] Write32 Xtensa SOC_LPO_CAL_TIME: $%08X\n", value);
             return;
@@ -1338,15 +1411,70 @@ void WiFi::write32_xtensa(uint32_t addr, uint32_t value)
         case 0x08200:
             //Memory error control
             return;
+        case 0x10000:
+            //I2C config
+            return;
+        case 0x10004:
+            printf("[WiFi] Write32 Xtensa SI_CS: $%08X\n", value);
+            if (value & (1 << 8))
+            {
+                //Start a transfer
+                uint32_t addr = ((xtensa_i2c_tx[0] >> 1) & 0x3) * 0x100;
+                addr |= xtensa_i2c_tx[1];
+
+                printf("[WiFi] EEPROM read $%08X\n", addr);
+                memcpy(xtensa_i2c_rx, &eeprom[addr], 8);
+                xtensa_i2c_done = true;
+            }
+            return;
+        case 0x10008:
+            printf("[WiFi] Write32 Xtensa SI_TX_DATA0: $%08X\n", value);
+            *(uint32_t*)&xtensa_i2c_tx[0] = value;
+            return;
         case 0x14010:
             printf("[WiFi] Write32 Xtensa WLAN_GPIO_ENABLE_W1TS: $%08X\n", value);
+            return;
+        case 0x14030:
+        case 0x14034:
+            //GPIO
             return;
         case 0x14048:
             printf("[WiFi] Write32 Xtensa GPIO_PIN8: $%08X\n", value);
             return;
+        case 0x18000:
+            printf("[WiFi] Write32 Xtensa MBOX reply: $%08X\n", value);
+            write8_mbox(mbox[4], value & 0xFF);
+            check_f1_irq();
+            return;
+        case 0x18018:
+        case 0x18028:
+        case 0x18038:
+        case 0x18048:
+            printf("[WiFi] Write32 Xtensa MBOX%d RX DMA base: $%08X\n", (((addr & 0xF0) >> 4) - 1), value);
+            return;
+        case 0x1801C:
+        case 0x1802C:
+        case 0x1803C:
+        case 0x1804C:
+            printf("[WiFi] Write32 Xtensa MBOX%d RX DMA control: $%08X\n", (((addr & 0xF0) >> 4) - 1), value);
+            return;
+        case 0x18020:
+        case 0x18030:
+        case 0x18040:
+        case 0x18050:
+            printf("[WiFi] Write32 Xtensa MBOX%d TX DMA base: $%08X\n", (((addr & 0xF0) >> 4) - 2), value);
+            return;
+        case 0x18024:
+        case 0x18034:
+        case 0x18044:
+        case 0x18054:
+            printf("[WiFi] Write32 Xtensa MBOX%d TX DMA control: $%08X\n", (((addr & 0xF0) >> 4) - 2), value);
+            return;
         case 0x18058:
             printf("[WiFi] Write32 Xtensa WLAN_MBOX_INT_STATUS: $%08X\n", value);
             xtensa_mbox_irq_stat &= ~value;
+            if (!mbox[0].empty())
+                xtensa_mbox_irq_stat |= 1 << 12;
             return;
         case 0x1805C:
             printf("[WiFi] Write32 Xtensa WLAN_MBOX_INT_ENABLE: $%08X\n", value);
@@ -1358,9 +1486,21 @@ void WiFi::write32_xtensa(uint32_t addr, uint32_t value)
         case 0x180E4:
             //Some sort of SDIO config?
             return;
+        case 0x180F0:
+            //Empty flags
+            mbox_tpop[0] = (mbox[0].empty() << 16) | (0xE << 16);
+
+            if (!mbox[0].empty())
+                mbox_tpop[0] |= read8_mbox(mbox[0]);
+
+            printf("[WiFi] Xtensa MBOX read: $%08X\n", mbox_tpop[0]);
+            return;
+        case 0x28048:
+            //MAC_PCU_DIAG_SW
+            return;
     }
 
-    EmuException::die("[WiFi] Unrecognized Xtensa write32 $%08X: $%08X\n", addr, value);
+    printf("[WiFi] Unrecognized Xtensa write32 $%08X: $%08X\n", addr, value);
 }
 
 uint32_t WiFi::read_fifo32()

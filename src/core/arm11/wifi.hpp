@@ -68,10 +68,15 @@ class WiFi
         uint32_t xtensa_irq_stat;
         uint32_t xtensa_mbox_irq_stat;
         uint32_t xtensa_mbox_irq_enable;
+        uint8_t xtensa_i2c_tx[8], xtensa_i2c_rx[8];
+        bool xtensa_i2c_done;
 
         //FIFOs in F1 used to send BMI/WMI commands and receive replies to and from the card
         //Although four exist on real hardware, we use eight to have separate read/write FIFOs
         std::queue<uint8_t> mbox[8];
+
+        //Popped ARM->Xtensa MBOX values, containing 8-bit data and status flags like full/empty
+        uint32_t mbox_tpop[4];
 
         void do_sdio_cmd(uint8_t cmd);
 
@@ -97,6 +102,7 @@ class WiFi
 
         void send_wmi_reply(uint8_t* reply, uint32_t len, uint8_t eid, uint8_t flag, uint16_t ctrl);
         void send_xtensa_soc_irq(int id);
+        void clear_xtensa_soc_irq(int id);
 
         void check_card_irq();
         void check_f0_irq();
