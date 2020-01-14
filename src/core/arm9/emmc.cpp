@@ -383,7 +383,7 @@ void EMMC::send_cmd(int command)
                 cur_transfer_drive = &sd;
                 transfer_start_addr *= data_block_len;
             }
-            printf("[EMMC] Read multiple blocks (start: $%llX blocks: $%08X)\n", transfer_start_addr, data_blocks);
+            printf("[EMMC] Read multiple blocks (start: $%lX blocks: $%08X)\n", transfer_start_addr, data_blocks);
             printf("Reading from %s\n", (nand_selected()) ? "NAND" : "SD");
 
             if (cur_transfer_drive->eof())
@@ -414,7 +414,7 @@ void EMMC::send_cmd(int command)
                 cur_transfer_drive = &sd;
                 transfer_start_addr *= data_block_len;
             }
-            printf("[EMMC] Write multiple blocks (start: $%llX blocks: $%08X)\n", transfer_start_addr, data_blocks);
+            printf("[EMMC] Write multiple blocks (start: $%lX blocks: $%08X)\n", transfer_start_addr, data_blocks);
 
             if (argument >= 0x0DD80000 && argument < 0x0DD80000 + 0x64C00)
             {
