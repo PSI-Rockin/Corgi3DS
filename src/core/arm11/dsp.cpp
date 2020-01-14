@@ -173,7 +173,7 @@ void DSP::unhalt()
 void DSP::print_state()
 {
     printf("pc:$%05X sp:$%04X\n", pc, sp);
-    printf("a0:$%llX a1:$%llX b0:$%llX b1:$%llX\n", a0, a1, b0, b1);
+    printf("a0:$%lX a1:$%lX b0:$%lX b1:$%lX\n", a0, a1, b0, b1);
     printf("fz:%d fm:%d fn:%d fv:%d fc:%d fe:%d fvl:%d flm:%d\n",
            stt0.fz, stt0.fm, stt0.fn, stt0.fv, stt0.fc, stt0.fe, stt0.fvl, stt0.flm);
     printf("x0:$%04X x1:$%04X y0:$%04X y1:$%04X\n", x[0], x[1], y[0], y[1]);

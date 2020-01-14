@@ -213,7 +213,7 @@ uint32_t PXI::read_msg11()
 void PXI::send_to_9(uint32_t value)
 {
     //log << "[PXI] Send to ARM9: " << std::hex << value << std::endl;
-    printf("[PXI] Send to 9: $%08X (%d)\n", value, recv9.size());
+    printf("[PXI] Send to 9: $%08X (%ld)\n", value, recv9.size());
     recv9.push(value);
     if (recv9.size() == 1 && cnt9.recv_not_empty_irq)
         int9->assert_irq(14);

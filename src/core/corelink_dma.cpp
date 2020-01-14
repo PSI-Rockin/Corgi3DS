@@ -2,7 +2,7 @@
 #include "common/common.hpp"
 #include "corelink_dma.hpp"
 
-#define printf(fmt, ...)(0)
+#define printf(fmt, ...) (void)(0)
 
 void Corelink_Chan::push8(uint8_t value)
 {

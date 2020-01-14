@@ -60,8 +60,8 @@ class ARM_CPU
         int cycles_ran;
         uint64_t local_exclusive_start, local_exclusive_end;
 
-        VFP* vfp;
         CP15* cp15;
+        VFP* vfp;
 
         uint32_t fiq_regs[5];
         uint32_t SP_und, SP_irq, SP_svc, SP_fiq, SP_abt;
