@@ -1450,25 +1450,49 @@ void WiFi::write32_xtensa(uint32_t addr, uint32_t value)
         case 0x18028:
         case 0x18038:
         case 0x18048:
-            printf("[WiFi] Write32 Xtensa MBOX%d RX DMA base: $%08X\n", (((addr & 0xF0) >> 4) - 1), value);
+            printf("[WiFi] Write32 Xtensa MBOX%d RX DMA base: $%08X\n", ((addr & 0xF0) >> 4) - 1, value);
+            xtensa_mbox_rx_ptr[((addr & 0xF0) >> 4) - 1] = value;
             return;
         case 0x1801C:
         case 0x1802C:
         case 0x1803C:
         case 0x1804C:
-            printf("[WiFi] Write32 Xtensa MBOX%d RX DMA control: $%08X\n", (((addr & 0xF0) >> 4) - 1), value);
+            printf("[WiFi] Write32 Xtensa MBOX%d RX DMA control: $%08X\n", ((addr & 0xF0) >> 4) - 1, value);
+            if (value & 0x4)
+            {
+                int index = ((addr & 0xF0) >> 4) - 1;
+                uint32_t addr = xtensa_mbox_rx_ptr[index];
+                printf("Blorp $%08X $%08X\n", addr, read32_xtensa(addr));
+                while (read32_xtensa(addr) == 0xC0000080)
+                {
+                    uint32_t pkt_addr = read32_xtensa(addr + 4);
+                    printf("[WiFi] Starting MBOX%d RX DMA at $%08X\n", index, addr);
+                    printf("Packet addr: $%08X\n", pkt_addr);
+                    for (int i = 0; i < 0x80; i++)
+                    {
+                        uint8_t value = read8_xtensa(pkt_addr + i);
+                        printf("Push $%02X to MBOX%d\n", value, index);
+                        write8_mbox(mbox[index + 4], value);
+                    }
+                    addr = read32_xtensa(addr + 8);
+                }
+                //xtensa_mbox_irq_stat |= 1 << (28 + index);
+                check_f1_irq();
+                xtensa_mbox_rx_ptr[index] = addr;
+            }
             return;
         case 0x18020:
         case 0x18030:
         case 0x18040:
         case 0x18050:
-            printf("[WiFi] Write32 Xtensa MBOX%d TX DMA base: $%08X\n", (((addr & 0xF0) >> 4) - 2), value);
+            printf("[WiFi] Write32 Xtensa MBOX%d TX DMA base: $%08X\n", ((addr & 0xF0) >> 4) - 2, value);
+            xtensa_mbox_tx_ptr[((addr & 0xF0) >> 4) - 2] = value;
             return;
         case 0x18024:
         case 0x18034:
         case 0x18044:
         case 0x18054:
-            printf("[WiFi] Write32 Xtensa MBOX%d TX DMA control: $%08X\n", (((addr & 0xF0) >> 4) - 2), value);
+            printf("[WiFi] Write32 Xtensa MBOX%d TX DMA control: $%08X\n", ((addr & 0xF0) >> 4) - 2, value);
             return;
         case 0x18058:
             printf("[WiFi] Write32 Xtensa WLAN_MBOX_INT_STATUS: $%08X\n", value);

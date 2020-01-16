@@ -70,6 +70,8 @@ class WiFi
         uint32_t xtensa_mbox_irq_enable;
         uint8_t xtensa_i2c_tx[8], xtensa_i2c_rx[8];
         bool xtensa_i2c_done;
+        uint32_t xtensa_mbox_tx_ptr[4];
+        uint32_t xtensa_mbox_rx_ptr[4];
 
         //FIFOs in F1 used to send BMI/WMI commands and receive replies to and from the card
         //Although four exist on real hardware, we use eight to have separate read/write FIFOs
