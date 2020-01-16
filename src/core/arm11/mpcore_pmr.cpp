@@ -27,7 +27,7 @@ void MPCore_PMR::reset()
     memset(private_int_pending, 0, sizeof(private_int_pending));
     memset(private_int_active, 0, sizeof(private_int_active));
     memset(private_int_priority, 0, sizeof(private_int_priority));
-
+    memset(regs, 0, sizeof(regs));
 
     //Interrupts 0-15 are always enabled
     global_int_mask[0] = 0xFFFF;
@@ -162,7 +162,7 @@ uint8_t MPCore_PMR::read8(int core, uint32_t addr)
         return 0;
     }
     printf("[PMR%d] Unrecognized read8 $%08X\n", core, addr);
-    return 0;
+    return regs[addr & 0x1FFF];
 }
 
 uint32_t MPCore_PMR::read32(int core, uint32_t addr)
@@ -261,7 +261,7 @@ uint32_t MPCore_PMR::read32(int core, uint32_t addr)
             return (1 << 5) | 0x3;
     }
     printf("[PMR%d] Unrecognized read32 $%08X\n", core, addr);
-    return 0;
+    return *(uint32_t*)&regs[addr & 0x1FFF];
 }
 
 void MPCore_PMR::write8(int core, uint32_t addr, uint8_t value)
@@ -287,11 +287,13 @@ void MPCore_PMR::write8(int core, uint32_t addr, uint8_t value)
         return;
     }
     printf("[PMR%d] Unrecognized write8 $%08X: $%02X\n", core, addr, value);
+    regs[addr & 0x1FFF] = value;
 }
 
 void MPCore_PMR::write16(int core, uint32_t addr, uint16_t value)
 {
     printf("[PMR%d] Unrecognized write16 $%08X: $%04X\n", core, addr, value);
+    *(uint16_t*)&regs[addr & 0x1FFF] = value;
 }
 
 void MPCore_PMR::write32(int core, uint32_t addr, uint32_t value)
@@ -439,6 +441,7 @@ void MPCore_PMR::write32(int core, uint32_t addr, uint32_t value)
             return;
     }
     printf("[PMR%d] Unrecognized write32 $%08X: $%08X\n", core, addr, value);
+    *(uint32_t*)&regs[addr & 0x1FFF] = value;
 }
 
 void MPCore_PMR::set_int_signal(int core, bool irq)

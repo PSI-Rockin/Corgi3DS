@@ -33,6 +33,8 @@ class MPCore_PMR
         uint8_t global_int_priority[96];
         uint8_t global_int_targets[96];
 
+        uint8_t regs[0x2000];
+
         uint8_t get_int_priority(int core, int int_id);
         uint32_t find_highest_priority_pending(int core);
 
