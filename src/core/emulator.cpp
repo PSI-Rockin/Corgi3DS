@@ -1,5 +1,6 @@
 #include <cstdio>
 #include <cstring>
+#include <iostream>
 #include "common/common.hpp"
 #include "emulator.hpp"
 
@@ -618,6 +619,10 @@ void Emulator::arm9_write8(uint32_t addr, uint8_t value)
             return;
         case 0x10000200:
             return; //supposed to control how much FCRAM N3DS has - ignore because we do O3DS for now
+        case 0x1000800C:
+            //This register (PXI_RECV) is read-only. We abuse it to act as serial output here.
+            std::cerr << (char)value;
+            return;
         case 0x10009010:
             aes.write_keysel(value);
             return;
@@ -1074,6 +1079,10 @@ void Emulator::arm11_write8(int core, uint32_t addr, uint8_t value)
             uint32_t sync = pxi.read_sync11() & 0x00FFFFFF;
             pxi.write_sync11(sync | (value << 24));
         }
+            return;
+        case 0x1016300C:
+            //This register (PXI_RECV) is read-only. We abuse it to act as serial output here.
+            std::cerr << (char)value;
             return;
     }
     EmuException::die("[ARM11] Invalid write8 $%08X: $%02X\n", addr, value);
