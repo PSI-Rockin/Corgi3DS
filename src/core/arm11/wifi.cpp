@@ -186,7 +186,7 @@ void WiFi::reset()
     imask = 0;
 
     block.active = false;
-    bmi_done = false;
+    boot_status = 0;
     card_irq_mask = false;
     card_irq_stat = false;
     old_card_irq = false;
@@ -622,10 +622,18 @@ void WiFi::do_wifi_cmd()
     printf("[WiFi] MBOX ARM->Xtensa transfer finished\n");
     xtensa_mbox_irq_stat |= 1 << 12;
 #else
-    if (!bmi_done)
-        do_bmi_cmd();
-    else
-        do_wmi_cmd();
+    switch (boot_status)
+    {
+        case 0:
+            do_bmi_cmd();
+            break;
+        case 1:
+            do_htc_cmd();
+            break;
+        case 2:
+            do_wmi_cmd();
+            break;
+    }
 #endif
 }
 
@@ -645,7 +653,7 @@ void WiFi::do_bmi_cmd()
             //DONE
         {
             printf("[WiFi] BMI_DONE\n");
-            bmi_done = true;
+            boot_status = 1;
 
             uint8_t ready[] = {0x01, 0x00, 0x01, 0x00, 0x01, 0x00, 0x00, 0x00};
             send_wmi_reply(ready, sizeof(ready), 0, 0, 0);
@@ -815,7 +823,7 @@ void WiFi::do_bmi_cmd()
     }
 }
 
-void WiFi::do_wmi_cmd()
+void WiFi::do_htc_cmd()
 {
     uint16_t header = read16_mbox(mbox[0]);
     uint16_t len = read16_mbox(mbox[0]);
@@ -826,7 +834,7 @@ void WiFi::do_wmi_cmd()
     switch (cmd)
     {
         case 0x0002:
-            //RECONNECT
+            //CONNECT_TO_SERVICE
         {
             uint16_t service = read16_mbox(mbox[0]);
             uint16_t flags = read16_mbox(mbox[0]);
@@ -838,14 +846,15 @@ void WiFi::do_wmi_cmd()
             *(uint16_t*)&reply[2] = service;
 
             reply[5] = (service & 0xFF) + 1;
-            *(uint32_t*)&reply[6] = 0x00010001;
+            *(uint16_t*)&reply[6] = 0x0100; //max message size - need to verify with LLE
+            *(uint16_t*)&reply[8] = 0x0001;
 
             send_wmi_reply(reply, sizeof(reply), 0, 0, 0);
-            printf("[WiFi] WMI_RECONNECT: $%04X $%04X\n", service, flags);
+            printf("[WiFi] HTC_CONNECT_TO_SERVICE: $%04X $%04X\n", service, flags);
         }
             break;
         case 0x0004:
-            //SYNCHRONIZE
+            //SETUP_COMPLETE
         {
             uint8_t reply[18];
             memset(reply, 0, sizeof(reply));
@@ -858,29 +867,54 @@ void WiFi::do_wmi_cmd()
             *(uint16_t*)&reply[8] = 0x0602;
             *(uint32_t*)&reply[10] = 0x230000EC;
 
-            //*(uint32_t*)&reply[14] = 0xDEADBEEF;
+            send_wmi_reply(reply, sizeof(reply), 1, 0, 0);
+
+            boot_status = 2;
+
+            printf("[WiFi] HTC_SETUP_COMPLETE\n");
+        }
+            break;
+        default:
+            EmuException::die("[WiFi] Unrecognized HTC command $%02X", cmd);
+    }
+
+    //Remove all remaining data from the mbox
+    std::queue<uint8_t> empty;
+    mbox[0].swap(empty);
+}
+
+void WiFi::do_wmi_cmd()
+{
+    uint16_t header = read16_mbox(mbox[0]);
+    uint16_t len = read16_mbox(mbox[0]);
+    uint16_t header2 = read16_mbox(mbox[0]);
+
+    uint16_t cmd = read16_mbox(mbox[0]);
+
+    switch (cmd)
+    {
+        case 0x0008:
+            //SET_SCAN_PARAMS
+            printf("[WiFi] WMI_SET_SCAN_PARAMS\n");
+            break;
+        case 0x000E:
+            //GET_CHANNEL_LIST
+        {
+            uint8_t reply[8];
+            memset(reply, 0, sizeof(reply));
+
+            *(uint16_t*)&reply[0] = 0x000E;
+            *(uint32_t*)&reply[4] = 1;
+            *(uint16_t*)&reply[6] = 0;
 
             send_wmi_reply(reply, sizeof(reply), 1, 0, 0);
 
-            auto blorp = [this](uint64_t param)
-            {
-                uint8_t reply[8];
-                memset(reply, 0, sizeof(reply));
-
-                *(uint16_t*)&reply[0] = 0x000E; //WMI_GET_CHANNEL_LIST
-                *(uint32_t*)&reply[4] = 1;
-                *(uint16_t*)&reply[6] = 0;
-
-                send_wmi_reply(reply, sizeof(reply), 1, 0, 0);
-
-                check_f1_irq();
-                printf("hey\n");
-            };
-
-            scheduler->add_event(blorp, 5000000);
-
-            printf("[WiFi] WMI_SYNCHRONIZE\n");
+            check_f1_irq();
+            printf("[WiFi] WMI_GET_CHANNEL_LIST\n");
+            break;
         }
+        case 0x0049:
+            printf("[WiFi] WMI_HOST_EXIT_NOTIFY\n");
             break;
         default:
             EmuException::die("[WiFi] Unrecognized WMI command $%02X", cmd);

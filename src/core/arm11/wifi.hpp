@@ -56,7 +56,7 @@ class WiFi
         uint32_t window_write_addr;
         uint8_t eeprom[0x400];
         uint8_t mac[0x6];
-        bool bmi_done;
+        int boot_status;
 
         uint8_t irq_f0_stat;
         uint8_t irq_f0_mask;
@@ -100,6 +100,7 @@ class WiFi
 
         void do_wifi_cmd();
         void do_bmi_cmd();
+        void do_htc_cmd();
         void do_wmi_cmd();
 
         void send_wmi_reply(uint8_t* reply, uint32_t len, uint8_t eid, uint8_t flag, uint16_t ctrl);
