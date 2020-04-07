@@ -45,7 +45,8 @@ void PSR_Flags::set(uint32_t value)
     mode = (PSR_MODE)(value & 0x1F);
 }
 
-ARM_CPU::ARM_CPU(Emulator* e, int id, CP15* cp15, VFP* vfp) : e(e), id(id), cp15(cp15), vfp(vfp)
+ARM_CPU::ARM_CPU(Emulator* e, Scheduler* scheduler, int id, CP15* cp15, VFP* vfp) :
+    e(e), scheduler(scheduler), id(id), cp15(cp15), vfp(vfp)
 {
 
 }
@@ -95,24 +96,26 @@ void ARM_CPU::reset()
     prefetch_abort_occurred = false;
     can_disassemble = false;
     event_pending = false;
-    halted = false;
     waiting_for_event = false;
     int_pending = false;
 
     local_exclusive_start = 0;
     local_exclusive_end = 0;
+
+    cur_timestamp = 0;
+
+    registered_sched_id = scheduler->register_cpu([this] (int64_t cycles) { this->run(cycles); },
+        &cur_timestamp, Scheduler::ARM11_CLOCKRATE);
+
+    unhalt();
 }
 
 void ARM_CPU::run(int cycles)
 {
-    if (halted)
-        return;
-
     try
     {
-        int cycles_to_run = cycles;
         cycles_ran = 0;
-        while (!halted && cycles_to_run)
+        while (!halted && cycles > 0)
         {
             if (CPSR.thumb)
             {
@@ -144,8 +147,9 @@ void ARM_CPU::run(int cycles)
                 }
                 ARM_Interpreter::interpret_arm(*this, instr);
             }
+            cur_timestamp++;
             cycles_ran++;
-            cycles_to_run--;
+            cycles--;
         }
     }
     catch (EmuException::ARMDataAbort& a)
@@ -398,11 +402,13 @@ void ARM_CPU::halt()
     {
         //printf("[ARM%d] Halting... $%08X\n", id, CPSR.get());
         halted = true;
+        scheduler->stop_cpu(registered_sched_id);
     }
 }
 
 void ARM_CPU::unhalt()
 {
+    scheduler->activate_cpu(registered_sched_id);
     halted = false;
 }
 

@@ -4,9 +4,9 @@
 #include "emulator.hpp"
 
 Emulator::Emulator() :
-    arm9(this, 9, &arm9_cp15, nullptr),
-    appcore(this, 11, &app_cp15, &app_vfp),
-    syscore(this, 12, &sys_cp15, &sys_vfp),
+    arm9(this, &scheduler, 9, &arm9_cp15, nullptr),
+    appcore(this, &scheduler, 11, &app_cp15, &app_vfp),
+    syscore(this, &scheduler, 12, &sys_cp15, &sys_vfp),
     arm9_cp15(9, &arm9, &arm9_pu),
     app_cp15(0, &appcore, &app_mmu),
     sys_cp15(1, &syscore, &sys_mmu),
@@ -53,6 +53,9 @@ void Emulator::reset(bool cold_boot)
         dsp_mem = new uint8_t[1024 * 512];
     if (!vram)
         vram = new uint8_t[1024 * 1024 * 6];
+
+    //Scheduler should be reset first so that other components can register scheduler stuff in their reset function
+    scheduler.reset();
 
     mpcore_pmr.reset();
     timers.reset();
@@ -147,8 +150,6 @@ void Emulator::reset(bool cold_boot)
     arm9.reset();
     appcore.reset();
     syscore.reset();
-
-    scheduler.reset();
 }
 
 void Emulator::run()
@@ -168,9 +169,6 @@ void Emulator::run()
         int cycles11 = scheduler.get_cycles11_to_run();
         int cycles9 = scheduler.get_cycles9_to_run();
         cycles += cycles11;
-        appcore.run(cycles11);
-        syscore.run(cycles11);
-        arm9.run(cycles9);
         timers.run(cycles11);
         dsp.run(cycles9);
         dma9.process_ndma_reqs();
@@ -179,6 +177,7 @@ void Emulator::run()
 
         int xtensa_cycles = scheduler.get_xtensa_cycles_to_run();
         wifi.run(xtensa_cycles);
+        scheduler.run_cpus();
         scheduler.process_events();
     }
     frames++;
