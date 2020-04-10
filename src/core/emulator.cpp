@@ -1185,7 +1185,14 @@ void Emulator::arm11_write32(int core, uint32_t addr, uint32_t value)
     }
     if (addr >= 0x10202000 && addr < 0x10203000)
     {
-        if (addr == 0x10202204)
+        if (addr == 0x10202014)
+        {
+            //WARNING: LCD initialization is far more complicated than this.
+            //Since what actually happens is poorly understood, this will have to do for now.
+            gpu.set_lcd_init(value & 0x1);
+            return;
+        }
+        else if (addr == 0x10202204)
         {
             gpu.set_screenfill(0, value);
             return;

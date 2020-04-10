@@ -312,6 +312,7 @@ class GPU
 
         uint8_t* top_screen, *bottom_screen;
 
+        bool lcd_initialized;
         FrameBuffer framebuffers[2];
 
         MemoryFill memfill[2];
@@ -407,6 +408,7 @@ class GPU
         uint32_t read32(uint32_t addr);
         void write32(uint32_t addr, uint32_t value);
 
+        void set_lcd_init(bool init);
         void set_screenfill(int index, uint32_t value);
 
         uint8_t* get_top_buffer();
