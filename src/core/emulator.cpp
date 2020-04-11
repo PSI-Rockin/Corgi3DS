@@ -438,6 +438,8 @@ uint16_t Emulator::arm9_read16(uint32_t addr)
             return 0;
         case 0x10008004:
             return pxi.read_cnt9();
+        case 0x10140FFC:
+            return 0x1; //bit 1 = New3DS (we're only emulating Old3DS for now)
         case 0x10146000:
             return HID_PAD; //bits on = keys not pressed
     }
