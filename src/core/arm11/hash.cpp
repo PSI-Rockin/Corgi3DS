@@ -1,7 +1,7 @@
 #include "../common/common.hpp"
 #include "hash.hpp"
 
-#define printf(fmt,...)(0)
+#define printf(fmt,...) (void)(0)
 
 HASH::HASH()
 {

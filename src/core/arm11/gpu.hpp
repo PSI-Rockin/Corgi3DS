@@ -312,6 +312,7 @@ class GPU
 
         uint8_t* top_screen, *bottom_screen;
 
+        bool lcd_initialized;
         FrameBuffer framebuffers[2];
 
         MemoryFill memfill[2];
@@ -340,6 +341,8 @@ class GPU
         void submit_vtx(Vertex& v, bool winding);
         void process_tri(Vertex& v0, Vertex& v1, Vertex& v2);
         void viewport_transform(Vertex& v);
+
+        bool get_fill_rule_bias(Vertex& vtx, Vertex& line1, Vertex& line2);
         void rasterize_tri(Vertex& v0, Vertex& v1, Vertex& v2);
         void rasterize_half_tri(float24 x0, float24 x1, int y0, int y1, Vertex &x_step,
                                 Vertex &y_step, Vertex &init, float24 step_x0, float24 step_x1);
@@ -405,6 +408,7 @@ class GPU
         uint32_t read32(uint32_t addr);
         void write32(uint32_t addr, uint32_t value);
 
+        void set_lcd_init(bool init);
         void set_screenfill(int index, uint32_t value);
 
         uint8_t* get_top_buffer();

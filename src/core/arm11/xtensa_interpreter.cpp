@@ -173,6 +173,9 @@ void op0_qrst(Xtensa &cpu, uint32_t instr)
         case 0x1:
             op0_qrst_rst1(cpu, instr);
             break;
+        case 0x2:
+            op0_qrst_rst2(cpu, instr);
+            break;
         case 0x3:
             op0_qrst_rst3(cpu, instr);
             break;
@@ -216,6 +219,9 @@ void op0_qrst_rst0(Xtensa &cpu, uint32_t instr)
         case 0x2:
             or_(cpu, instr);
             break;
+        case 0x3:
+            xor_(cpu, instr);
+            break;
         case 0x4:
             op0_qrst_rst0_st1(cpu, instr);
             break;
@@ -225,14 +231,29 @@ void op0_qrst_rst0(Xtensa &cpu, uint32_t instr)
         case 0x6:
             op0_qrst_rst0_rt0(cpu, instr);
             break;
+        case 0x8:
+            add(cpu, instr);
+            break;
         case 0x9:
             addx2(cpu, instr);
+            break;
+        case 0xA:
+            addx4(cpu, instr);
             break;
         case 0xB:
             addx8(cpu, instr);
             break;
         case 0xC:
             sub(cpu, instr);
+            break;
+        case 0xD:
+            subx2(cpu, instr);
+            break;
+        case 0xE:
+            subx4(cpu, instr);
+            break;
+        case 0xF:
+            subx8(cpu, instr);
             break;
         default:
             EmuException::die("[Xtensa_Interpreter] Unrecognized op0_qrst_rst0 $%02X ($%06X)", op2, instr);
@@ -261,6 +282,28 @@ void or_(Xtensa &cpu, uint32_t instr)
     cpu.set_gpr(dest, source1 | source2);
 }
 
+void xor_(Xtensa &cpu, uint32_t instr)
+{
+    int reg1 = (instr >> 8) & 0xF;
+    int reg2 = (instr >> 4) & 0xF;
+    int dest = (instr >> 12) & 0xF;
+
+    uint32_t source1 = cpu.get_gpr(reg1);
+    uint32_t source2 = cpu.get_gpr(reg2);
+    cpu.set_gpr(dest, source1 ^ source2);
+}
+
+void add(Xtensa &cpu, uint32_t instr)
+{
+    int reg1 = (instr >> 8) & 0xF;
+    int reg2 = (instr >> 4) & 0xF;
+    int dest = (instr >> 12) & 0xF;
+
+    uint32_t source1 = cpu.get_gpr(reg1);
+    uint32_t source2 = cpu.get_gpr(reg2);
+    cpu.set_gpr(dest, source1 + source2);
+}
+
 void addx2(Xtensa &cpu, uint32_t instr)
 {
     int reg1 = (instr >> 8) & 0xF;
@@ -270,6 +313,17 @@ void addx2(Xtensa &cpu, uint32_t instr)
     uint32_t source1 = cpu.get_gpr(reg1);
     uint32_t source2 = cpu.get_gpr(reg2);
     cpu.set_gpr(dest, (source1 << 1) + source2);
+}
+
+void addx4(Xtensa &cpu, uint32_t instr)
+{
+    int reg1 = (instr >> 8) & 0xF;
+    int reg2 = (instr >> 4) & 0xF;
+    int dest = (instr >> 12) & 0xF;
+
+    uint32_t source1 = cpu.get_gpr(reg1);
+    uint32_t source2 = cpu.get_gpr(reg2);
+    cpu.set_gpr(dest, (source1 << 2) + source2);
 }
 
 void addx8(Xtensa &cpu, uint32_t instr)
@@ -292,6 +346,42 @@ void sub(Xtensa &cpu, uint32_t instr)
     uint32_t source1 = cpu.get_gpr(reg1);
     uint32_t source2 = cpu.get_gpr(reg2);
     cpu.set_gpr(dest, source1 - source2);
+}
+
+void subx2(Xtensa &cpu, uint32_t instr)
+{
+    int reg1 = (instr >> 8) & 0xF;
+    int reg2 = (instr >> 4) & 0xF;
+    int dest = (instr >> 12) & 0xF;
+
+    uint32_t value1 = cpu.get_gpr(reg1) << 1;
+    uint32_t value2 = cpu.get_gpr(reg2);
+
+    cpu.set_gpr(dest, value1 - value2);
+}
+
+void subx4(Xtensa &cpu, uint32_t instr)
+{
+    int reg1 = (instr >> 8) & 0xF;
+    int reg2 = (instr >> 4) & 0xF;
+    int dest = (instr >> 12) & 0xF;
+
+    uint32_t value1 = cpu.get_gpr(reg1) << 2;
+    uint32_t value2 = cpu.get_gpr(reg2);
+
+    cpu.set_gpr(dest, value1 - value2);
+}
+
+void subx8(Xtensa &cpu, uint32_t instr)
+{
+    int reg1 = (instr >> 8) & 0xF;
+    int reg2 = (instr >> 4) & 0xF;
+    int dest = (instr >> 12) & 0xF;
+
+    uint32_t value1 = cpu.get_gpr(reg1) << 3;
+    uint32_t value2 = cpu.get_gpr(reg2);
+
+    cpu.set_gpr(dest, value1 - value2);
 }
 
 void op0_qrst_rst0_st0(Xtensa &cpu, uint32_t instr)
@@ -415,6 +505,9 @@ void op0_qrst_rst0_rt0(Xtensa &cpu, uint32_t instr)
         case 0x0:
             neg(cpu, instr);
             break;
+        case 0x1:
+            abs(cpu, instr);
+            break;
         default:
             EmuException::die("[Xtensa_Interpreter] Unrecognized op0_qrst_rst0_rt0 $%02X ($%06X)", s, instr);
     }
@@ -429,13 +522,31 @@ void neg(Xtensa &cpu, uint32_t instr)
     cpu.set_gpr(dest, ~source_reg + 1);
 }
 
+void abs(Xtensa &cpu, uint32_t instr)
+{
+    int source = (instr >> 4) & 0xF;
+    int dest = (instr >> 12) & 0xF;
+
+    uint32_t source_reg = cpu.get_gpr(source);
+    cpu.set_gpr(dest, source_reg & ~(1 << 31));
+}
+
 void op0_qrst_rst0_st1(Xtensa &cpu, uint32_t instr)
 {
     int r = (instr >> 12) & 0xF;
     switch (r)
     {
+        case 0x0:
+            ssr(cpu, instr);
+            break;
         case 0x1:
             ssl(cpu, instr);
+            break;
+        case 0x2:
+            ssa8l(cpu, instr);
+            break;
+        case 0x4:
+            ssai(cpu, instr);
             break;
         case 0xF:
             nsau(cpu, instr);
@@ -445,12 +556,35 @@ void op0_qrst_rst0_st1(Xtensa &cpu, uint32_t instr)
     }
 }
 
+void ssr(Xtensa &cpu, uint32_t instr)
+{
+    int reg = (instr >> 8) & 0xF;
+
+    uint32_t value = cpu.get_gpr(reg) & 0x1F;
+    cpu.set_sar(value);
+}
+
 void ssl(Xtensa &cpu, uint32_t instr)
 {
     int reg = (instr >> 8) & 0xF;
 
     uint32_t value = cpu.get_gpr(reg) & 0x1F;
     cpu.set_sar(32 - value);
+}
+
+void ssa8l(Xtensa &cpu, uint32_t instr)
+{
+    int reg = (instr >> 8) & 0xF;
+
+    uint32_t value = (cpu.get_gpr(reg) & 0x3) << 3;
+    cpu.set_sar(value);
+}
+
+void ssai(Xtensa &cpu, uint32_t instr)
+{
+    uint32_t value = (instr >> 8) & 0xF;
+    value |= ((instr >> 4) & 0x1) << 4;
+    cpu.set_sar(value);
 }
 
 void nsau(Xtensa &cpu, uint32_t instr)
@@ -484,14 +618,33 @@ void op0_qrst_rst1(Xtensa &cpu, uint32_t instr)
         case 0x1:
             slli(cpu, instr);
             break;
+        case 0x2:
+        case 0x3:
+            srai(cpu, instr);
+            break;
         case 0x4:
             srli(cpu, instr);
             break;
         case 0x6:
             xsr(cpu, instr);
             break;
+        case 0x8:
+            src(cpu, instr);
+            break;
+        case 0x9:
+            srl(cpu, instr);
+            break;
         case 0xA:
             sll(cpu, instr);
+            break;
+        case 0xB:
+            sra(cpu, instr);
+            break;
+        case 0xC:
+            mul16u(cpu, instr);
+            break;
+        case 0xD:
+            mul16s(cpu, instr);
             break;
         default:
             EmuException::die("[Xtensa_Interpreter] Unrecognized op0_qrst_rst1 $%02X ($%06X)", op2, instr);
@@ -507,6 +660,17 @@ void slli(Xtensa &cpu, uint32_t instr)
 
     uint32_t source_reg = cpu.get_gpr(source);
     cpu.set_gpr(dest, source_reg << (32 - shift));
+}
+
+void srai(Xtensa &cpu, uint32_t instr)
+{
+    int shift = (instr >> 8) & 0xF;
+    shift |= ((instr >> 20) & 0x1) << 4;
+    int source = (instr >> 4) & 0xF;
+    int dest = (instr >> 12) & 0xF;
+
+    int32_t source_reg = (int32_t)cpu.get_gpr(source);
+    cpu.set_gpr(dest, source_reg >> shift);
 }
 
 void srli(Xtensa &cpu, uint32_t instr)
@@ -531,6 +695,27 @@ void xsr(Xtensa &cpu, uint32_t instr)
     cpu.set_gpr(gpr, xsr_value);
 }
 
+void src(Xtensa &cpu, uint32_t instr)
+{
+    int reg1 = (instr >> 4) & 0xF;
+    int reg2 = (instr >> 8) & 0xF;
+    int dest = (instr >> 12) & 0xF;
+
+    uint64_t value = cpu.get_gpr(reg2);
+    value <<= 32ULL;
+    value |= cpu.get_gpr(reg1);
+    cpu.set_gpr(dest, value >> cpu.get_sar());
+}
+
+void srl(Xtensa &cpu, uint32_t instr)
+{
+    int source = (instr >> 4) & 0xF;
+    int dest = (instr >> 12) & 0xF;
+
+    uint32_t source_reg = cpu.get_gpr(source);
+    cpu.set_gpr(dest, source_reg >> cpu.get_sar());
+}
+
 void sll(Xtensa &cpu, uint32_t instr)
 {
     int source = (instr >> 8) & 0xF;
@@ -538,6 +723,66 @@ void sll(Xtensa &cpu, uint32_t instr)
 
     uint32_t source_reg = cpu.get_gpr(source);
     cpu.set_gpr(dest, source_reg << (32 - cpu.get_sar()));
+}
+
+void sra(Xtensa &cpu, uint32_t instr)
+{
+    int source = (instr >> 4) & 0xF;
+    int dest = (instr >> 12) & 0xF;
+
+    int32_t source_reg = (int32_t)cpu.get_gpr(source);
+    cpu.set_gpr(dest, source_reg >> cpu.get_sar());
+}
+
+void mul16u(Xtensa &cpu, uint32_t instr)
+{
+    int reg1 = (instr >> 8) & 0xF;
+    int reg2 = (instr >> 4) & 0xF;
+    int dest = (instr >> 12) & 0xF;
+
+    uint32_t value1 = cpu.get_gpr(reg1) & 0xFFFF;
+    uint32_t value2 = cpu.get_gpr(reg2) & 0xFFFF;
+
+    cpu.set_gpr(dest, value1 * value2);
+}
+
+void mul16s(Xtensa &cpu, uint32_t instr)
+{
+    int reg1 = (instr >> 8) & 0xF;
+    int reg2 = (instr >> 4) & 0xF;
+    int dest = (instr >> 12) & 0xF;
+
+    int32_t value1 = (int16_t)(cpu.get_gpr(reg1) & 0xFFFF);
+    int32_t value2 = (int16_t)(cpu.get_gpr(reg2) & 0xFFFF);
+
+    cpu.set_gpr(dest, value1 * value2);
+}
+
+void op0_qrst_rst2(Xtensa &cpu, uint32_t instr)
+{
+    int op2 = instr >> 20;
+    switch (op2)
+    {
+        case 0x8:
+            mull(cpu, instr);
+            break;
+        default:
+            EmuException::die("[Xtensa_Interpreter] Unrecognized op0_qrst_rst2 $%02X ($%06X)", op2, instr);
+    }
+}
+
+void mull(Xtensa &cpu, uint32_t instr)
+{
+    int reg1 = (instr >> 8) & 0xF;
+    int reg2 = (instr >> 4) & 0xF;
+    int dest = (instr >> 12) & 0xF;
+
+    //TODO: Xtensa manual says that this is a 32-bit multiplication, but it also says the 32 LSB of the product
+    //are written to dest. Is this code correct?
+    uint64_t value1 = cpu.get_gpr(reg1);
+    uint64_t value2 = cpu.get_gpr(reg2);
+
+    cpu.set_gpr(dest, (value1 * value2) & 0xFFFFFFFF);
 }
 
 void op0_qrst_rst3(Xtensa &cpu, uint32_t instr)
@@ -551,11 +796,29 @@ void op0_qrst_rst3(Xtensa &cpu, uint32_t instr)
         case 0x1:
             wsr(cpu, instr);
             break;
+        case 0x4:
+            min_(cpu, instr);
+            break;
+        case 0x5:
+            max_(cpu, instr);
+            break;
+        case 0x6:
+            minu(cpu, instr);
+            break;
+        case 0x7:
+            maxu(cpu, instr);
+            break;
         case 0x8:
             moveqz(cpu, instr);
             break;
         case 0x9:
             movnez(cpu, instr);
+            break;
+        case 0xA:
+            movltz(cpu, instr);
+            break;
+        case 0xB:
+            movgez(cpu, instr);
             break;
         default:
             EmuException::die("[Xtensa_Interpreter] Unrecognized op0_qrst_rst3 $%02X ($%06X)", op2, instr);
@@ -578,6 +841,54 @@ void wsr(Xtensa &cpu, uint32_t instr)
 
     uint32_t value = cpu.get_gpr(gpr);
     cpu.set_xsr(xsr, value);
+}
+
+void min_(Xtensa &cpu, uint32_t instr)
+{
+    int reg1 = (instr >> 4) & 0xF;
+    int reg2 = (instr >> 8) & 0xF;
+    int dest = (instr >> 12) & 0xF;
+
+    int32_t value1 = (int32_t)cpu.get_gpr(reg1);
+    int32_t value2 = (int32_t)cpu.get_gpr(reg2);
+
+    cpu.set_gpr(dest, (value1 < value2) ? value1 : value2);
+}
+
+void max_(Xtensa &cpu, uint32_t instr)
+{
+    int reg1 = (instr >> 4) & 0xF;
+    int reg2 = (instr >> 8) & 0xF;
+    int dest = (instr >> 12) & 0xF;
+
+    int32_t value1 = (int32_t)cpu.get_gpr(reg1);
+    int32_t value2 = (int32_t)cpu.get_gpr(reg2);
+
+    cpu.set_gpr(dest, (value1 > value2) ? value1 : value2);
+}
+
+void minu(Xtensa &cpu, uint32_t instr)
+{
+    int reg1 = (instr >> 4) & 0xF;
+    int reg2 = (instr >> 8) & 0xF;
+    int dest = (instr >> 12) & 0xF;
+
+    uint32_t value1 = cpu.get_gpr(reg1);
+    uint32_t value2 = cpu.get_gpr(reg2);
+
+    cpu.set_gpr(dest, (value1 < value2) ? value1 : value2);
+}
+
+void maxu(Xtensa &cpu, uint32_t instr)
+{
+    int reg1 = (instr >> 4) & 0xF;
+    int reg2 = (instr >> 8) & 0xF;
+    int dest = (instr >> 12) & 0xF;
+
+    uint32_t value1 = cpu.get_gpr(reg1);
+    uint32_t value2 = cpu.get_gpr(reg2);
+
+    cpu.set_gpr(dest, (value1 > value2) ? value1 : value2);
 }
 
 void moveqz(Xtensa &cpu, uint32_t instr)
@@ -606,6 +917,32 @@ void movnez(Xtensa &cpu, uint32_t instr)
     }
 }
 
+void movltz(Xtensa &cpu, uint32_t instr)
+{
+    int test = (instr >> 4) & 0xF;
+    int source = (instr >> 8) & 0xF;
+    int dest = (instr >> 12) & 0xF;
+
+    if ((int32_t)cpu.get_gpr(test) < 0)
+    {
+        uint32_t source_reg = cpu.get_gpr(source);
+        cpu.set_gpr(dest, source_reg);
+    }
+}
+
+void movgez(Xtensa &cpu, uint32_t instr)
+{
+    int test = (instr >> 4) & 0xF;
+    int source = (instr >> 8) & 0xF;
+    int dest = (instr >> 12) & 0xF;
+
+    if ((int32_t)cpu.get_gpr(test) >= 0)
+    {
+        uint32_t source_reg = cpu.get_gpr(source);
+        cpu.set_gpr(dest, source_reg);
+    }
+}
+
 void op0_lsai(Xtensa &cpu, uint32_t instr)
 {
     make_24bit(cpu, instr);
@@ -613,7 +950,10 @@ void op0_lsai(Xtensa &cpu, uint32_t instr)
     switch (r)
     {
         case 0x0:
-            l8i(cpu, instr);
+            l8ui(cpu, instr);
+            break;
+        case 0x1:
+            l16ui(cpu, instr);
             break;
         case 0x2:
             l32i(cpu, instr);
@@ -621,8 +961,14 @@ void op0_lsai(Xtensa &cpu, uint32_t instr)
         case 0x4:
             s8i(cpu, instr);
             break;
+        case 0x5:
+            s16i(cpu, instr);
+            break;
         case 0x6:
             s32i(cpu, instr);
+            break;
+        case 0x9:
+            l16si(cpu, instr);
             break;
         case 0xA:
             movi(cpu, instr);
@@ -630,12 +976,15 @@ void op0_lsai(Xtensa &cpu, uint32_t instr)
         case 0xC:
             addi(cpu, instr);
             break;
+        case 0xD:
+            addmi(cpu, instr);
+            break;
         default:
             EmuException::die("[Xtensa_Interpreter] Unrecognized op0_lsai $%02X ($%06X)", r, instr);
     }
 }
 
-void l8i(Xtensa &cpu, uint32_t instr)
+void l8ui(Xtensa &cpu, uint32_t instr)
 {
     int offset = instr >> 16;
     int base = (instr >> 8) & 0xF;
@@ -643,6 +992,17 @@ void l8i(Xtensa &cpu, uint32_t instr)
 
     uint32_t addr = cpu.get_gpr(base) + offset;
     uint32_t value = cpu.read8(addr);
+    cpu.set_gpr(dest, value);
+}
+
+void l16ui(Xtensa &cpu, uint32_t instr)
+{
+    int offset = (instr >> 16) << 1;
+    int base = (instr >> 8) & 0xF;
+    int dest = (instr >> 4) & 0xF;
+
+    uint32_t addr = cpu.get_gpr(base) + offset;
+    uint16_t value = cpu.read16(addr);
     cpu.set_gpr(dest, value);
 }
 
@@ -668,6 +1028,17 @@ void s8i(Xtensa &cpu, uint32_t instr)
     cpu.write8(addr, source_reg);
 }
 
+void s16i(Xtensa &cpu, uint32_t instr)
+{
+    int offset = (instr >> 16) << 1;
+    int base = (instr >> 8) & 0xF;
+    int source = (instr >> 4) & 0xF;
+
+    uint32_t source_reg = cpu.get_gpr(source);
+    uint32_t addr = cpu.get_gpr(base) + offset;
+    cpu.write16(addr, source_reg);
+}
+
 void s32i(Xtensa &cpu, uint32_t instr)
 {
     int offset = (instr >> 16) << 2;
@@ -677,6 +1048,17 @@ void s32i(Xtensa &cpu, uint32_t instr)
     uint32_t source_reg = cpu.get_gpr(source);
     uint32_t addr = cpu.get_gpr(base) + offset;
     cpu.write32(addr, source_reg);
+}
+
+void l16si(Xtensa &cpu, uint32_t instr)
+{
+    int offset = (instr >> 16) << 1;
+    int base = (instr >> 8) & 0xF;
+    int dest = (instr >> 4) & 0xF;
+
+    uint32_t addr = cpu.get_gpr(base) + offset;
+    int16_t value = (int16_t)cpu.read16(addr);
+    cpu.set_gpr(dest, value);
 }
 
 void movi(Xtensa &cpu, uint32_t instr)
@@ -692,6 +1074,16 @@ void movi(Xtensa &cpu, uint32_t instr)
 void addi(Xtensa &cpu, uint32_t instr)
 {
     int imm = SignExtend<8>(instr >> 16);
+    int source = (instr >> 8) & 0xF;
+    int dest = (instr >> 4) & 0xF;
+
+    uint32_t source_reg = cpu.get_gpr(source);
+    cpu.set_gpr(dest, source_reg + imm);
+}
+
+void addmi(Xtensa &cpu, uint32_t instr)
+{
+    int imm = SignExtend<8>(instr >> 16) << 8;
     int source = (instr >> 8) & 0xF;
     int dest = (instr >> 4) & 0xF;
 
@@ -803,8 +1195,17 @@ void op0_si(Xtensa &cpu, uint32_t instr)
         case 0x7:
             op0_si_b1(cpu, instr);
             break;
+        case 0x9:
+            bltz(cpu, instr);
+            break;
+        case 0xA:
+            blti(cpu, instr);
+            break;
         case 0xB:
             bltui(cpu, instr);
+            break;
+        case 0xD:
+            bgez(cpu, instr);
             break;
         case 0xE:
             bgei(cpu, instr);
@@ -878,6 +1279,29 @@ void bnei(Xtensa &cpu, uint32_t instr)
         cpu.branch(offset + 1);
 }
 
+void bltz(Xtensa &cpu, uint32_t instr)
+{
+    int offset = SignExtend<12>(instr >> 12);
+    int reg = (instr >> 8) & 0xF;
+
+    int32_t value = (int32_t)cpu.get_gpr(reg);
+    if (value < 0)
+        cpu.branch(offset + 1);
+}
+
+void blti(Xtensa &cpu, uint32_t instr)
+{
+    int offset = SignExtend<8>(instr >> 16);
+    int32_t imm = (instr >> 12) & 0xF;
+    int reg = (instr >> 8) & 0xF;
+
+    imm = b4const[imm];
+    int32_t value = (int32_t)cpu.get_gpr(reg);
+
+    if (value < imm)
+        cpu.branch(offset + 1);
+}
+
 void bltui(Xtensa &cpu, uint32_t instr)
 {
     int offset = SignExtend<8>(instr >> 16);
@@ -888,6 +1312,16 @@ void bltui(Xtensa &cpu, uint32_t instr)
     uint32_t value = cpu.get_gpr(reg);
 
     if (value < imm)
+        cpu.branch(offset + 1);
+}
+
+void bgez(Xtensa &cpu, uint32_t instr)
+{
+    int offset = SignExtend<12>(instr >> 12);
+    int reg = (instr >> 8) & 0xF;
+
+    int32_t value = (int32_t)cpu.get_gpr(reg);
+    if (value >= 0)
         cpu.branch(offset + 1);
 }
 
@@ -965,18 +1399,34 @@ void op0_b(Xtensa &cpu, uint32_t instr)
         case 0x1:
             beq(cpu, instr);
             break;
+        case 0x2:
+            blt(cpu, instr);
+            break;
         case 0x3:
             bltu(cpu, instr);
+            break;
+        case 0x5:
+            bbc(cpu, instr);
             break;
         case 0x6:
         case 0x7:
             bbci(cpu, instr);
             break;
+        case 0x8:
+            bany(cpu, instr);
+            break;
         case 0x9:
             bne(cpu, instr);
             break;
+        case 0xA:
+            bge(cpu, instr);
+            break;
         case 0xB:
             bgeu(cpu, instr);
+            break;
+        case 0xE:
+        case 0xF:
+            bbsi(cpu, instr);
             break;
         default:
             EmuException::die("[Xtensa_Interpreter] Unrecognized op0_b $%02X ($%06X)", r, instr);
@@ -1009,6 +1459,19 @@ void beq(Xtensa &cpu, uint32_t instr)
         cpu.branch(offset + 1);
 }
 
+void blt(Xtensa &cpu, uint32_t instr)
+{
+    int reg1 = (instr >> 8) & 0xF;
+    int reg2 = (instr >> 4) & 0xF;
+    int offset = SignExtend<8>(instr >> 16);
+
+    int32_t source1 = (int32_t)cpu.get_gpr(reg1);
+    int32_t source2 = (int32_t)cpu.get_gpr(reg2);
+
+    if (source1 < source2)
+        cpu.branch(offset + 1);
+}
+
 void bltu(Xtensa &cpu, uint32_t instr)
 {
     int reg1 = (instr >> 8) & 0xF;
@@ -1022,6 +1485,19 @@ void bltu(Xtensa &cpu, uint32_t instr)
         cpu.branch(offset + 1);
 }
 
+void bbc(Xtensa &cpu, uint32_t instr)
+{
+    int offset = SignExtend<8>(instr >> 16);
+    int reg = (instr >> 8) & 0xF;
+    int test = (instr >> 4) & 0xF;
+
+    uint32_t value = cpu.get_gpr(reg);
+    uint32_t imm = cpu.get_gpr(test) & 0x1F;
+
+    if (!(value & (1 << imm)))
+        cpu.branch(offset + 1);
+}
+
 void bbci(Xtensa &cpu, uint32_t instr)
 {
     int offset = SignExtend<8>(instr >> 16);
@@ -1031,6 +1507,19 @@ void bbci(Xtensa &cpu, uint32_t instr)
 
     uint32_t value = cpu.get_gpr(reg);
     if (!(value & (1 << imm)))
+        cpu.branch(offset + 1);
+}
+
+void bany(Xtensa &cpu, uint32_t instr)
+{
+    int reg1 = (instr >> 8) & 0xF;
+    int reg2 = (instr >> 4) & 0xF;
+    int offset = SignExtend<8>(instr >> 16);
+
+    uint32_t value = cpu.get_gpr(reg1);
+    uint32_t mask = cpu.get_gpr(reg2);
+
+    if (value & mask)
         cpu.branch(offset + 1);
 }
 
@@ -1047,6 +1536,19 @@ void bne(Xtensa &cpu, uint32_t instr)
         cpu.branch(offset + 1);
 }
 
+void bge(Xtensa &cpu, uint32_t instr)
+{
+    int reg1 = (instr >> 8) & 0xF;
+    int reg2 = (instr >> 4) & 0xF;
+    int offset = SignExtend<8>(instr >> 16);
+
+    int32_t source1 = (int32_t)cpu.get_gpr(reg1);
+    int32_t source2 = (int32_t)cpu.get_gpr(reg2);
+
+    if (source1 >= source2)
+        cpu.branch(offset + 1);
+}
+
 void bgeu(Xtensa &cpu, uint32_t instr)
 {
     int reg1 = (instr >> 8) & 0xF;
@@ -1057,6 +1559,18 @@ void bgeu(Xtensa &cpu, uint32_t instr)
     uint32_t source2 = cpu.get_gpr(reg2);
 
     if (source1 >= source2)
+        cpu.branch(offset + 1);
+}
+
+void bbsi(Xtensa &cpu, uint32_t instr)
+{
+    int offset = SignExtend<8>(instr >> 16);
+    int reg = (instr >> 8) & 0xF;
+    int imm = (instr >> 4) & 0xF;
+    imm |= ((instr >> 12) & 0x1) << 4;
+
+    uint32_t value = cpu.get_gpr(reg);
+    if (value & (1 << imm))
         cpu.branch(offset + 1);
 }
 

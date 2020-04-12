@@ -489,6 +489,8 @@ uint16_t Emulator::arm9_read16(uint32_t addr)
             return 0;
         case 0x10008004:
             return pxi.read_cnt9();
+        case 0x10140FFC:
+            return 0x1; //bit 1 = New3DS (we're only emulating Old3DS for now)
         case 0x10146000:
             return HID_PAD; //bits on = keys not pressed
     }
@@ -1307,7 +1309,14 @@ void Emulator::arm11_write32(int core, uint32_t addr, uint32_t value)
     }
     if (addr >= 0x10202000 && addr < 0x10203000)
     {
-        if (addr == 0x10202204)
+        if (addr == 0x10202014)
+        {
+            //WARNING: LCD initialization is far more complicated than this.
+            //Since what actually happens is poorly understood, this will have to do for now.
+            gpu.set_lcd_init(value & 0x1);
+            return;
+        }
+        else if (addr == 0x10202204)
         {
             gpu.set_screenfill(0, value);
             return;

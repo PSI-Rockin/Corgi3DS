@@ -36,6 +36,8 @@ class I2C
         uint8_t mcu_time[7];
 
         int mcu_counter;
+        int mcu_7f_pos;
+        uint8_t mcu_7f_buf[0x13];
 
         uint8_t mcu_int_pending[4];
         uint8_t mcu_int_mask[4];

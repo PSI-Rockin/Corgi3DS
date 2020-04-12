@@ -23,10 +23,6 @@ void WiFi_Timers::run(int cycles)
             {
                 send_soc_irq(6 + i);
                 timers[i].int_status = true;
-                if (!timers[i].auto_restart)
-                    timers[i].enabled = false;
-                else
-                    timers[i].count -= timers[i].target;
             }
         }
     }

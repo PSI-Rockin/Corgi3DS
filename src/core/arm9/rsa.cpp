@@ -5,7 +5,7 @@
 #include "interrupt9.hpp"
 #include "rsa.hpp"
 
-#define printf(fmt,...)(0)
+#define printf(fmt,...) (void)(0)
 
 RSA::RSA(Interrupt9* int9) : int9(int9)
 {

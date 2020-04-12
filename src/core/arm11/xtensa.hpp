@@ -1,6 +1,7 @@
 #ifndef XTENSA_HPP
 #define XTENSA_HPP
 #include <cstdint>
+#include <cstdio>
 
 class WiFi;
 
@@ -68,6 +69,7 @@ class Xtensa
         void unhalt();
 
         void send_irq(int id);
+        void clear_irq(int id);
 
         void jp(uint32_t addr);
         void branch(int offset);
@@ -117,6 +119,7 @@ inline uint32_t Xtensa::get_gpr(int index)
 
 inline void Xtensa::set_gpr(int index, uint32_t value)
 {
+    //printf("[Xtensa] Set a%d: $%08X\n", index, value);
     gpr[index + (window_base << 2)] = value;
 }
 
