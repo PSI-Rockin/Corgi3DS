@@ -110,9 +110,8 @@ void ARM_CPU::run(int cycles)
 
     try
     {
-        int cycles_to_run = cycles;
         cycles_ran = 0;
-        while (!halted && cycles_to_run)
+        while (!halted && cycles_ran < cycles)
         {
             if (CPSR.thumb)
             {
@@ -145,7 +144,6 @@ void ARM_CPU::run(int cycles)
                 ARM_Interpreter::interpret_arm(*this, instr);
             }
             cycles_ran++;
-            cycles_to_run--;
         }
     }
     catch (EmuException::ARMDataAbort& a)
@@ -189,7 +187,7 @@ void ARM_CPU::jp(uint32_t addr, bool change_thumb_state)
     {
         //can_disassemble = true;
         uint32_t process_ptr = read32(0xFFFF9004);
-        uint32_t pid = read32(process_ptr + 0xB4);
+        uint32_t pid = read32(process_ptr + 0xB4 + 8);
 
         bool main_thread = read32(0xFFFF9000) == read32(process_ptr + 192);
         printf("Jumping to PID%d (main_thread:%d, addr: $%08X)\n", pid, main_thread, addr);
@@ -208,7 +206,7 @@ void ARM_CPU::jp(uint32_t addr, bool change_thumb_state)
                    printf("Error: $%08X\n", gpr[0]);
             }
         }
-        if (pid == 40)
+        if (pid == 7)
         {
             //can_disassemble = true;
 
@@ -305,14 +303,14 @@ void ARM_CPU::swi()
     {
         //uint32_t process_ptr = read32(0xFFFF9004);
         //printf("SVC $%02X, PID%d\n", op, read32(process_ptr + 0xB4));
-        printf("SVC $%02X!\n", op);
+        printf("[ARM%d] SVC $%02X!\n", id, op);
         //printf("SVC $%04X!\n", gpr[7]);
         if (op == 0x32)
         {
             uint32_t tls = cp15->mrc(0, 0xD, 0x3, 0x0);
             uint32_t header = read32(tls + 0x80);
             uint32_t process_ptr = read32(0xFFFF9004);
-            uint32_t pid = read32(process_ptr + 0xB4);
+            uint32_t pid = read32(process_ptr + 0xB4 + 8);
             printf("(PID%d) SendSyncRequest: $%08X\n", pid, header);
         }
     }

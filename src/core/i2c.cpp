@@ -107,7 +107,7 @@ void I2C::set_cnt(int id, uint8_t value)
     {
         cnt[id].ack_flag = true;
         cnt[id].busy = true;
-        scheduler->add_event([this](uint64_t param) { this->do_transfer(param);}, 20000, id);
+        scheduler->add_event([this](uint64_t param) { this->do_transfer(param);}, 20000, ARM11_CLOCKRATE, id);
     }
 }
 
@@ -309,7 +309,8 @@ void I2C::write_mcu(uint8_t reg_id, uint8_t value)
             for (int i = 0; i < 6; i++)
             {
                 if (value & (1 << i))
-                    scheduler->add_event([this](uint64_t param) { this->mcu_interrupt(param); }, 1000 * 1000, 24 + i);
+                    scheduler->add_event([this](uint64_t param) { this->mcu_interrupt(param); }, 1000 * 1000,
+                        ARM11_CLOCKRATE, 24 + i);
             }
             break;
         default:

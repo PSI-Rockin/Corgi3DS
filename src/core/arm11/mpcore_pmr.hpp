@@ -18,7 +18,8 @@ struct LocalIrqController
 class MPCore_PMR
 {
     private:
-        ARM_CPU *appcore, *syscore;
+        ARM_CPU* arm11;
+        int core_count;
         Timers* timers;
         LocalIrqController local_irq_ctrl[4];
 
@@ -42,9 +43,9 @@ class MPCore_PMR
         void set_int_signal(int core, bool irq);
     public:
         constexpr static uint32_t SPURIOUS_INT = 0x3FF;
-        MPCore_PMR(ARM_CPU* appcore, ARM_CPU* syscore, Timers* timers);
+        MPCore_PMR(ARM_CPU arm11[4], Timers* timers);
 
-        void reset();
+        void reset(int core_count);
         void assert_hw_irq(int id);
         void set_pending_irq(int core, int int_id, int id_of_requester = 0);
 
