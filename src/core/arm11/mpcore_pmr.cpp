@@ -5,14 +5,15 @@
 #include "../timers.hpp"
 #include "mpcore_pmr.hpp"
 
-MPCore_PMR::MPCore_PMR(ARM_CPU* appcore, ARM_CPU* syscore, Timers* timers) :
-    appcore(appcore), syscore(syscore), timers(timers)
+MPCore_PMR::MPCore_PMR(ARM_CPU arm11[4], Timers* timers) :
+    arm11(arm11), timers(timers)
 {
 
 }
 
-void MPCore_PMR::reset()
+void MPCore_PMR::reset(int core_count)
 {
+    this->core_count = core_count;
     //No interrupt pending
     for (int i = 0; i < 4; i++)
     {
@@ -39,8 +40,7 @@ void MPCore_PMR::assert_hw_irq(int id)
 
     uint8_t cpu_targets = global_int_targets[id - 32];
 
-    //2 cores
-    for (int i = 0; i < 2; i++)
+    for (int i = 0; i < core_count; i++)
     {
         //Only set the interrupt to pending if the core is in the target list
         if (cpu_targets & (1 << i))
@@ -186,10 +186,7 @@ uint32_t MPCore_PMR::read32(int core, uint32_t addr)
                 return timers->arm11_get_load(timer_id);
             case 0x04:
             case 0x24:
-                //2 cores
-                if (core == 0)
-                    return timers->arm11_get_counter(timer_id, appcore->get_cycles_ran());
-                return timers->arm11_get_counter(timer_id, syscore->get_cycles_ran());
+                return timers->arm11_get_counter(timer_id, arm11[core].get_cycles_ran());
             case 0x08:
             case 0x28:
                 return timers->arm11_get_control(timer_id);
@@ -230,17 +227,24 @@ uint32_t MPCore_PMR::read32(int core, uint32_t addr)
         if (addr == 0x17E0181C)
         {
             //29-31 are always 1. 0-28 are always 0 (as they are SWIs)
-            //2 cores
-            if (core == 0)
-                return 0x01010100;
-            return 0x02020200;
+            switch (core)
+            {
+                case 0:
+                    return 0x01010100;
+                case 1:
+                    return 0x02020200;
+                case 2:
+                    return 0x04040400;
+                case 3:
+                    return 0x08080800;
+            }
         }
         return 0;
     }
     switch (addr)
     {
         case 0x17E00004:
-            return 1 | (3 << 4); //2 cores
+            return (core_count - 1) | (0xF << 4);
         case 0x17E0010C:
         {
             //Reading returns the cause of the IRQ and acknowledges it
@@ -257,8 +261,7 @@ uint32_t MPCore_PMR::read32(int core, uint32_t addr)
         case 0x17E00118:
             return local_irq_ctrl[core].highest_priority_pending;
         case 0x17E01004:
-            //2 cores + 96 external interrupt lines
-            return (1 << 5) | 0x3;
+            return ((core_count - 1) << 5) | 0x3;
     }
     printf("[PMR%d] Unrecognized read32 $%08X\n", core, addr);
     return *(uint32_t*)&regs[addr & 0x1FFF];
@@ -275,8 +278,7 @@ void MPCore_PMR::write8(int core, uint32_t addr, uint8_t value)
         else
             global_int_priority[addr - 0x17E01420] = value >> 4;
 
-        //2 cores
-        for (int i = 0; i < 2; i++)
+        for (int i = 0; i < core_count; i++)
             check_if_can_assert_irq(i);
         return;
     }
@@ -340,8 +342,7 @@ void MPCore_PMR::write32(int core, uint32_t addr, uint32_t value)
         int index = (addr / 4) & 0x7;
         global_int_mask[index] |= value;
 
-        //2 cores
-        for (int i = 0; i < 2; i++)
+        for (int i = 0; i < core_count; i++)
             check_if_can_assert_irq(i);
         return;
     }
@@ -352,8 +353,7 @@ void MPCore_PMR::write32(int core, uint32_t addr, uint32_t value)
         global_int_mask[index] &= ~value;
         global_int_mask[0] |= 0xFFFF;
 
-        //2 cores
-        for (int i = 0; i < 2; i++)
+        for (int i = 0; i < core_count; i++)
             check_if_can_assert_irq(i);
         return;
     }
@@ -371,8 +371,7 @@ void MPCore_PMR::write32(int core, uint32_t addr, uint32_t value)
                 private_int_pending[i][index] &= ~value;
         }
 
-        //2 cores
-        for (int i = 0; i < 2; i++)
+        for (int i = 0; i < core_count; i++)
             check_if_can_assert_irq(i);
         return;
     }
@@ -408,7 +407,7 @@ void MPCore_PMR::write32(int core, uint32_t addr, uint32_t value)
         }
             return;
         case 0x17E01F00:
-            //printf("[PMR%d] Send SWI: $%08X\n", core, value);
+            printf("[PMR%d] Send SWI: $%08X\n", core, value);
         {
             uint32_t int_id = value & 0x3FF;
             if (int_id < 32)
@@ -419,7 +418,7 @@ void MPCore_PMR::write32(int core, uint32_t addr, uint32_t value)
                 {
                     case 0:
                         //Send to CPUs within target list
-                        for (int i = 0; i < 2; i++)
+                        for (int i = 0; i < core_count; i++)
                         {
                             if (target_list & (1 << i))
                                 set_pending_irq(i, int_id, core);
@@ -427,7 +426,7 @@ void MPCore_PMR::write32(int core, uint32_t addr, uint32_t value)
                         break;
                     case 1:
                         //Send to all CPUs except the sender
-                        for (int i = 0; i < 2; i++)
+                        for (int i = 0; i < core_count; i++)
                         {
                             if (core != i)
                                 set_pending_irq(i, int_id, core);
@@ -446,15 +445,5 @@ void MPCore_PMR::write32(int core, uint32_t addr, uint32_t value)
 
 void MPCore_PMR::set_int_signal(int core, bool irq)
 {
-    switch (core)
-    {
-        case 0:
-            appcore->set_int_signal(irq);
-            break;
-        case 1:
-            syscore->set_int_signal(irq);
-            break;
-        default:
-            EmuException::die("[PMR] Core%d not implemented for set_int_signal\n", core);
-    }
+    arm11[core].set_int_signal(irq);
 }

@@ -35,6 +35,16 @@ class Emulator
         uint8_t boot9_free[1024 * 64], boot11_free[1024 * 64];
         uint8_t boot9_locked[1024 * 64], boot11_locked[1024 * 64];
 
+        bool is_n3ds;
+        int core_count;
+        uint32_t clock_ctrl;
+        uint32_t boot_overlay_addr;
+        uint8_t boot_ctrl[4];
+
+        uint32_t fcram_size;
+        uint32_t arm9_ram_size;
+        uint32_t qtm_size;
+
         uint8_t twl_consoleid[8];
 
         uint8_t* arm9_RAM;
@@ -42,11 +52,12 @@ class Emulator
         uint8_t* fcram;
         uint8_t* dsp_mem;
         uint8_t* vram;
+        uint8_t* qtm_ram;
 
-        ARM_CPU arm9, appcore, syscore;
-        CP15 arm9_cp15, app_cp15, sys_cp15;
-        MMU arm9_pu, app_mmu, sys_mmu;
-        VFP app_vfp, sys_vfp;
+        ARM_CPU arm9, arm11[4];
+        CP15 arm9_cp15, arm11_cp15[4];
+        MMU arm9_pu, arm11_mmu[4];
+        VFP vfp[4];
 
         AES aes;
         Cartridge cartridge;

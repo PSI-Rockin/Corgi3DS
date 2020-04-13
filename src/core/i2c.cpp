@@ -19,9 +19,19 @@ void I2C::reset()
     memset(cnt, 0, sizeof(cnt));
     memset(devices, 0, sizeof(devices));
     mcu_counter = 0;
+    mcu_7f_pos = 0;
 
     memset(mcu_int_mask, 0, sizeof(mcu_int_mask));
     memset(mcu_int_pending, 0, sizeof(mcu_int_pending));
+    memset(mcu_7f_buf, 0, sizeof(mcu_7f_buf));
+
+    //Extra button states - 0 means the object is held/active
+    //Bit 0 - Power button
+    //Bit 1 - HOME button
+    //Bit 2 - WiFi slider
+    //Bit 5 - Charging LED
+    //Bit 6 - Charger plugged in
+    mcu_7f_buf[0x12] = 0xFF;
 }
 
 uint8_t I2C::read8(uint32_t addr)
@@ -97,7 +107,7 @@ void I2C::set_cnt(int id, uint8_t value)
     {
         cnt[id].ack_flag = true;
         cnt[id].busy = true;
-        scheduler->add_event([this](uint64_t param) { this->do_transfer(param);}, 20000, id);
+        scheduler->add_event([this](uint64_t param) { this->do_transfer(param);}, 20000, ARM11_CLOCKRATE, id);
     }
 }
 
@@ -243,6 +253,17 @@ uint8_t I2C::read_mcu(uint8_t reg_id)
         return mcu_time[reg_id - 0x30];
     }
 
+    if (reg_id == 0x7F)
+    {
+        //Decrement cur reg by 1 to keep on reg 0x7F
+        devices[1][0x4A].cur_reg--;
+        uint8_t value = 0xFF;
+        if (mcu_7f_pos < 0x13)
+            value = mcu_7f_buf[mcu_7f_pos];
+        mcu_7f_pos++;
+        return value;
+    }
+
     switch (reg_id)
     {
         case 0x00:
@@ -288,7 +309,8 @@ void I2C::write_mcu(uint8_t reg_id, uint8_t value)
             for (int i = 0; i < 6; i++)
             {
                 if (value & (1 << i))
-                    scheduler->add_event([this](uint64_t param) { this->mcu_interrupt(param); }, 1000 * 1000, 24 + i);
+                    scheduler->add_event([this](uint64_t param) { this->mcu_interrupt(param); }, 1000 * 1000,
+                        ARM11_CLOCKRATE, 24 + i);
             }
             break;
         default:

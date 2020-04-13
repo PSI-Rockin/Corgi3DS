@@ -145,6 +145,10 @@ uint32_t CP15::mrc(int operation_mode, int CP_reg, int coprocessor_info, int cop
             return instr_fault_reg;
         case 0x600:
             return data_fault_addr;
+        case 0xD01:
+            if (id == 9)
+                return thread_regs[0];
+            return 0;
         case 0xD02:
         case 0xD03:
         case 0xD04:
@@ -274,6 +278,8 @@ void CP15::mcr(int operation_mode, int CP_reg, int coprocessor_info, int coproce
         case 0xD01:
             if (id != 9)
                 mmu->set_asid(value);
+            else
+                thread_regs[0] = value;
             break;
         case 0xD02:
         case 0xD03:

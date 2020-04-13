@@ -102,8 +102,7 @@ void GPU::reset(uint8_t* vram)
     memset(top_screen, 0, 240 * 400 * 4);
     memset(bottom_screen, 0, 240 * 320 * 4);
 
-    framebuffers[0].screenfill_enabled = true;
-    framebuffers[1].screenfill_enabled = true;
+    lcd_initialized = false;
 
     framebuffers[0].left_addr_a = 0x18000000;
     framebuffers[1].left_addr_a = 0x18000000;
@@ -118,7 +117,7 @@ void GPU::render_frame()
     {
         for (int x = 0; x < 240; x++)
         {
-            if (!framebuffers[0].screenfill_enabled)
+            if (!framebuffers[0].screenfill_enabled && lcd_initialized)
                 render_fb_pixel(top_screen, 0, x, y);
             else
                 *(uint32_t*)&top_screen[(x + (y * 240)) * 4] = 0xFF000000 | framebuffers[0].screenfill_color;
@@ -129,7 +128,7 @@ void GPU::render_frame()
     {
         for (int x = 0; x < 240; x++)
         {
-            if (!framebuffers[1].screenfill_enabled)
+            if (!framebuffers[1].screenfill_enabled && lcd_initialized)
                 render_fb_pixel(bottom_screen, 1, x, y);
             else
                 *(uint32_t*)&bottom_screen[(x + (y * 240)) * 4] = 0xFF000000 | framebuffers[1].screenfill_color;
@@ -3927,7 +3926,8 @@ void GPU::write32(uint32_t addr, uint32_t value)
 
                     //TODO: How long does a memfill take? We just assume a constant value for now
                     uint32_t cycles = memfill[index].end - memfill[index].start;
-                    scheduler->add_event([this](uint64_t param) { this->do_memfill(param);}, cycles, index);
+                    scheduler->add_event([this](uint64_t param) { this->do_memfill(param);}, cycles,
+                            ARM11_CLOCKRATE, index);
                 }
                 break;
         }
@@ -3971,7 +3971,8 @@ void GPU::write32(uint32_t addr, uint32_t value)
             {
                 dma.busy = true;
                 dma.finished = false;
-                scheduler->add_event([this](uint64_t param) { this->do_transfer_engine_dma(param);}, 1000);
+                scheduler->add_event([this](uint64_t param) { this->do_transfer_engine_dma(param);},
+                    1000, ARM11_CLOCKRATE);
             }
             break;
         case 0x0C20:
@@ -4001,7 +4002,8 @@ void GPU::write32(uint32_t addr, uint32_t value)
             if (value & 0x1)
             {
                 cmd_engine.busy = true;
-                scheduler->add_event([this](uint64_t param) { this->do_command_engine_dma(param);}, cmd_engine.size);
+                scheduler->add_event([this](uint64_t param) { this->do_command_engine_dma(param);},
+                    cmd_engine.size, ARM11_CLOCKRATE);
             }
             break;
         default:
@@ -4082,6 +4084,11 @@ uint8_t* GPU::get_top_buffer()
 uint8_t* GPU::get_bottom_buffer()
 {
     return bottom_screen;
+}
+
+void GPU::set_lcd_init(bool init)
+{
+    lcd_initialized = init;
 }
 
 void GPU::set_screenfill(int index, uint32_t value)

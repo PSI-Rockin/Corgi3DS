@@ -105,6 +105,21 @@ bool EMMC::parse_essentials(uint8_t *otp)
     return false;
 }
 
+bool EMMC::is_n3ds()
+{
+    //Read the partition crypt types at 0x118-0x120. If one of them is 0x3, this is a New3DS NAND.
+    char sector[0x200];
+    nand.seekg(0);
+    nand.read((char*)sector, 0x200);
+
+    for (int i = 0x118; i < 0x120; i++)
+    {
+        if (sector[i] == 0x3)
+            return true;
+    }
+    return false;
+}
+
 uint16_t EMMC::read16(uint32_t addr)
 {
     uint16_t reg = 0;
