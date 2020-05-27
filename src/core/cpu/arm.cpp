@@ -188,9 +188,16 @@ void ARM_CPU::jp(uint32_t addr, bool change_thumb_state)
         //can_disassemble = true;
         uint32_t process_ptr = read32(0xFFFF9004);
         uint32_t pid = read32(process_ptr + 0xB4 + 8);
+        uint32_t codeset_ptr = read32(process_ptr + 0xB4 + 4);
+        uint8_t procname[9];
+        int i = 0;
+        for(; i < 8; i++)
+            procname[i] = read8(codeset_ptr + 0x50 + i);
+        procname[i] = '\0';
+       
 
         bool main_thread = read32(0xFFFF9000) == read32(process_ptr + 192);
-        printf("Jumping to PID%d (main_thread:%d, addr: $%08X)\n", pid, main_thread, addr);
+        printf("Jumping to PID%d[%s] (main_thread:%d, addr: $%08X)\n", pid, procname, main_thread, addr);
         if (addr & 0xFFFFF)
         {
             uint32_t prev_instr = read32(addr - 4);
@@ -311,7 +318,14 @@ void ARM_CPU::swi()
             uint32_t header = read32(tls + 0x80);
             uint32_t process_ptr = read32(0xFFFF9004);
             uint32_t pid = read32(process_ptr + 0xB4 + 8);
-            printf("(PID%d) SendSyncRequest: $%08X\n", pid, header);
+            uint32_t codeset_ptr = read32(process_ptr + 0xB4 + 4);
+            uint8_t procname[9];
+            int i = 0;
+            for(; i < 8; i++)
+                procname[i] = read8(codeset_ptr + 0x50 + i);
+            procname[i] = '\0';
+            
+            printf("(PID%d[%s]) SendSyncRequest: $%08X\n", pid, procname, header);
         }
     }
     if (op == 0x3C)
