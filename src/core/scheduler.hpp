@@ -1,5 +1,6 @@
 #ifndef SCHEDULER_HPP
 #define SCHEDULER_HPP
+#include <cstdint>
 #include <functional>
 #include <list>
 
