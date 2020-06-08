@@ -124,7 +124,7 @@ uint32_t CP15::mrc(int operation_mode, int CP_reg, int coprocessor_info, int cop
         {
             uint32_t reg = mmu_enabled;
             reg |= high_exception_vector << 13;
-            return reg;
+            return reg | ((id!=9) ? 0x78:0);
         }
         case 0x101:
             return aux_control;
