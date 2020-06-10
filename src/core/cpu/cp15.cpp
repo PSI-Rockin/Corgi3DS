@@ -190,8 +190,7 @@ void CP15::mcr(int operation_mode, int CP_reg, int coprocessor_info, int coproce
             break;
         case 0x300:
             mmu->set_domain_control(value);
-            break;
-        
+            break;    
         case 0x502:
             if (id == 9)
                 mmu->set_pu_permissions_ex(true, value);
