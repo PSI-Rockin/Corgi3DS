@@ -1,0 +1,54 @@
+# This is a basic workflow to help you get started with Actions
+
+name: CI
+
+on:
+  push:
+    branches: [ master ]
+
+# A workflow run is made up of one or more jobs that can run sequentially or in parallel
+jobs:
+  build-linux:
+    # The type of runner that the job will run on
+    runs-on: ubuntu-latest
+
+    # Steps represent a sequence of tasks that will be executed as part of the job
+    steps:
+    # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
+    - uses: actions/checkout@v2
+
+    # Runs a set of commands using the runners shell
+    - name: Build
+      run: |
+        sudo apt-get update -y
+        sudo apt-get install qt5-default qtmultimedia5-dev libgmp-dev cmake -y
+        mkdir build && cd build
+        cmake .. -DCMAKE_BUILD_TYPE=Release
+        make
+
+    
+    - name: Upload artifact
+      uses: actions/upload-artifact@v1
+      with:
+        name: Corgi3DS
+        path: ./build/Corgi3DS
+
+  build-windows:
+    # Build for windows
+    runs-on: ubuntu-latest
+
+    # Steps represent a sequence of tasks that will be executed as part of the job
+    steps:
+       # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
+    - uses: actions/checkout@v2
+
+    # Runs a set of commands using the runners shell\
+    - name: Build
+      run:
+        docker run -u root -e ENABLE_COMPATIBILITY_REPORTING -v $GITHUB_WORKSPACE:/corgi3DS burningdaylight/mingw-arch:qt /bin/bash -ex /corgi3DS/.github/workflows/windows_build.sh
+    
+    - name: Upload artifact
+      uses: actions/upload-artifact@v1
+      with:
+        name: Corgi3DS-windows
+        path: ./build/Corgi3DS.exe
