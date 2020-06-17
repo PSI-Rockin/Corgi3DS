@@ -30,7 +30,7 @@ jobs:
     - name: Upload artifact
       uses: actions/upload-artifact@v1
       with:
-        name: Corgi3DS
+        name: Corgi3DS-linux
         path: ./build/Corgi3DS
 
   build-windows:
@@ -45,7 +45,7 @@ jobs:
     # Runs a set of commands using the runners shell\
     - name: Build
       run:
-        docker run -u root -e ENABLE_COMPATIBILITY_REPORTING -v $GITHUB_WORKSPACE:/corgi3DS burningdaylight/mingw-arch:qt /bin/bash -ex /corgi3DS/.github/workflows/windows_build.sh
+        docker run -u root -v $GITHUB_WORKSPACE:/corgi3DS burningdaylight/mingw-arch:qt /bin/bash -ex /corgi3DS/.github/workflows/windows_build.sh
     
     - name: Upload artifact
       uses: actions/upload-artifact@v1
