@@ -1,0 +1,44 @@
+name: CI
+
+on:
+  push:
+    branches: [ master ]
+
+jobs:
+  build-linux:
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v2
+
+    - name: Build
+      run: |
+        sudo apt-get update -y
+        sudo apt-get install qt5-default qtmultimedia5-dev libgmp-dev cmake -y
+        mkdir build && cd build
+        cmake .. -DCMAKE_BUILD_TYPE=Release
+        make
+
+    
+    - name: Upload artifact
+      uses: actions/upload-artifact@v1
+      with:
+        name: Corgi3DS-linux
+        path: ./build/Corgi3DS
+
+  build-windows:
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v2
+
+    # 
+    - name: Build
+      run:
+        docker run -u root -v $GITHUB_WORKSPACE:/corgi3DS burningdaylight/mingw-arch:qt /bin/bash -ex /corgi3DS/.github/workflows/windows_build.sh
+    
+    - name: Upload artifact
+      uses: actions/upload-artifact@v1
+      with:
+        name: Corgi3DS-windows
+        path: ./build/Corgi3DS.exe
