@@ -32,7 +32,6 @@ jobs:
     steps:
     - uses: actions/checkout@v2
 
-    # 
     - name: Build
       run:
         docker run -u root -v $GITHUB_WORKSPACE:/corgi3DS burningdaylight/mingw-arch:qt /bin/bash -ex /corgi3DS/.github/workflows/windows_build.sh
@@ -42,3 +41,23 @@ jobs:
       with:
         name: Corgi3DS-windows
         path: ./build/Corgi3DS.exe
+  
+  build-macos:
+    runs-on: macos-latest
+
+    steps:
+      - uses: actions/checkout@v2
+
+      - name: Build
+        run: |
+          brew install qt gmp
+          brew link qt --force
+          qmake
+          make 
+          
+      - name: Upload artifact
+        uses: actions/upload-artifact@v1
+        with:
+          name: Corgi3DS-macos
+          path: ./Corgi3DS
+          
