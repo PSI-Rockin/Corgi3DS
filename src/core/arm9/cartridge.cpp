@@ -57,6 +57,8 @@ void Cartridge::save_check()
 
 bool Cartridge::mount(std::string file_name)
 {
+    if (card.is_open())
+        card.close();
     card.open(file_name, std::ios::ate | std::ios::binary);
 
     cart_id = 0xFFFFFFFF;

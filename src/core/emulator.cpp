@@ -149,7 +149,10 @@ void Emulator::reset(bool cold_boot)
     sysprot11 = 0;
 
     if (cold_boot)
+    {
+        frames = 0;
         config_bootenv = 0;
+    }
 
     clock_ctrl = 0;
     config_cardctrl2 = 0;
@@ -195,7 +198,6 @@ void Emulator::reset(bool cold_boot)
 
 void Emulator::run()
 {
-    static int frames = 0;
     i2c.update_time();
     printf("FRAME %d\n", frames);
 

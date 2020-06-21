@@ -51,13 +51,6 @@ class EmuWindow : public QMainWindow
     public:
         EmuWindow();
 
-        uint16_t get_pad_state();
-        bool is_running();
-
-        bool is_touchscreen_pressed();
-        uint16_t get_touchscreen_x();
-        uint16_t get_touchscreen_y();
-
         void keyPressEvent(QKeyEvent* event) override;
         void keyReleaseEvent(QKeyEvent* event) override;
         void closeEvent(QCloseEvent* event) override;
@@ -71,30 +64,5 @@ class EmuWindow : public QMainWindow
         void draw(uint8_t* top_screen, uint8_t* bottom_screen);
         void display_emu_error(QString message);
 };
-
-inline bool EmuWindow::is_running()
-{
-    return running;
-}
-
-inline uint16_t EmuWindow::get_pad_state()
-{
-    return pad_state;
-}
-
-inline bool EmuWindow::is_touchscreen_pressed()
-{
-    return touchscreen_pressed;
-}
-
-inline uint16_t EmuWindow::get_touchscreen_x()
-{
-    return touchscreen_x;
-}
-
-inline uint16_t EmuWindow::get_touchscreen_y()
-{
-    return touchscreen_y;
-}
 
 #endif // EMUWINDOW_HPP

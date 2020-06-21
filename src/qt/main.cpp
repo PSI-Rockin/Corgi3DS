@@ -72,10 +72,11 @@ int main(int argc, char** argv)
     e.reset();*/
     QApplication a(argc, argv);
     EmuWindow* emuwindow = new EmuWindow();
-    while (emuwindow->is_running())
+    a.exec();
+    /*while (emuwindow->is_running())
     {
         a.processEvents();
-        /*uint16_t pad = emuwindow->get_pad_state();
+        uint16_t pad = emuwindow->get_pad_state();
         e.set_pad(pad);
 
         if (emuwindow->is_touchscreen_pressed())
@@ -97,8 +98,8 @@ int main(int argc, char** argv)
         catch (EmuException::RebootException& r)
         {
             e.reset(false);
-        }*/
-    }
+        }
+    }*/
 
     return 0;
 }

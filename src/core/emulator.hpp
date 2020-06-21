@@ -84,6 +84,8 @@ class Emulator
         uint8_t config_cardctrl2;
         int card_reset;
 
+        int frames;
+
         uint8_t dsp_mem_config[16];
 
         uint16_t HID_PAD;

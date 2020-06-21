@@ -57,12 +57,16 @@ void EMMC::reset()
 
 bool EMMC::mount_nand(std::string file_name)
 {
+    if (nand.is_open())
+        nand.close();
     nand.open(file_name, std::ios::binary | std::ios::in | std::ios::out);
     return nand.is_open();
 }
 
 bool EMMC::mount_sd(std::string file_name)
 {
+    if (sd.is_open())
+        sd.close();
     sd.open(file_name, std::ios::binary | std::ios::in | std::ios::out);
     return sd.is_open();
 }
