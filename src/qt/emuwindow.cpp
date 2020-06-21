@@ -29,6 +29,8 @@ EmuWindow::EmuWindow()
     init_menu_bar();
 
     connect(&emuthread, &EmuThread::boot_error, this, &EmuWindow::display_boot_error);
+    connect(&emuthread, &EmuThread::frame_complete, this, &EmuWindow::draw);
+    connect(&emuthread, &EmuThread::emu_error, this, &EmuWindow::display_emu_error);
 }
 
 void EmuWindow::init_menu_bar()
@@ -222,10 +224,26 @@ void EmuWindow::release_key(HID_PAD_STATE state)
 
 void EmuWindow::boot_emulator(QString cart_path)
 {
-    emuthread.boot_emulator(cart_path);
+    if (emuthread.boot_emulator(cart_path))
+        emuthread.start();
 }
 
 void EmuWindow::display_boot_error(QString message)
 {
-    QMessageBox::critical(this, tr("Error"), message);
+    QMessageBox msgBox;
+    msgBox.setText("Error occurred during boot");
+    msgBox.setInformativeText(message);
+    msgBox.setStandardButtons(QMessageBox::Abort);
+    msgBox.setDefaultButton(QMessageBox::Abort);
+    msgBox.exec();
+}
+
+void EmuWindow::display_emu_error(QString message)
+{
+    QMessageBox msgBox;
+    msgBox.setText("Emulation has been terminated");
+    msgBox.setInformativeText(message);
+    msgBox.setStandardButtons(QMessageBox::Abort);
+    msgBox.setDefaultButton(QMessageBox::Abort);
+    msgBox.exec();
 }

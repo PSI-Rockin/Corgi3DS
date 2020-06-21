@@ -9,6 +9,7 @@ class EmuThread : public QThread
 {
     Q_OBJECT
     private:
+        bool quit;
         Emulator e;
     public:
         EmuThread();
@@ -18,6 +19,8 @@ class EmuThread : public QThread
         void run() override;
     signals:
         void boot_error(QString message);
+        void frame_complete(uint8_t* top_buffer, uint8_t* bottom_buffer);
+        void emu_error(QString message);
 };
 
 #endif // EMUTHREAD_HPP

@@ -3,22 +3,43 @@
 #include "emuthread.hpp"
 #include "settings.hpp"
 
+#include "../core/common/exceptions.hpp"
+
 using namespace std;
 
 EmuThread::EmuThread()
 {
-
+    quit = true;
 }
 
 void EmuThread::run()
 {
-
+    while (!quit)
+    {
+        try
+        {
+            e.run();
+            emit frame_complete(e.get_top_buffer(), e.get_bottom_buffer());
+        }
+        catch (EmuException::FatalError& error)
+        {
+            e.print_state();
+            emit emu_error(error.what());
+            quit = true;
+            break;
+        }
+        catch (EmuException::RebootException& r)
+        {
+            e.reset(false);
+        }
+    }
 }
 
 //Returns true if all settings are parsed correctly, allowing the UI thread to start the emuthread.
 bool EmuThread::boot_emulator(QString cart_path)
 {
     //This function runs in the UI thread. Hence, it is safe for it to access Settings.
+    quit = true;
 
     uint8_t boot9_rom[1024 * 64], boot11_rom[1024 * 64];
 
@@ -78,6 +99,8 @@ bool EmuThread::boot_emulator(QString cart_path)
     }
 
     e.reset();
+
+    quit = false;
 
     return true;
 }

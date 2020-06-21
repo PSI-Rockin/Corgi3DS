@@ -65,10 +65,11 @@ class EmuWindow : public QMainWindow
         void mousePressEvent(QMouseEvent* event) override;
         void mouseReleaseEvent(QMouseEvent* event) override;
 
-        void draw(uint8_t* top_screen, uint8_t* bottom_screen);
         void paintEvent(QPaintEvent* event) override;
     public slots:
         void display_boot_error(QString message);
+        void draw(uint8_t* top_screen, uint8_t* bottom_screen);
+        void display_emu_error(QString message);
 };
 
 inline bool EmuWindow::is_running()
