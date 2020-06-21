@@ -1,4 +1,5 @@
 #include <QAction>
+#include <QFileDialog>
 #include <QImage>
 #include <QMenu>
 #include <QMenuBar>
@@ -6,7 +7,9 @@
 #include <QPalette>
 #include <QPoint>
 #include <QMatrix>
+#include <QMessageBox>
 #include "emuwindow.hpp"
+#include "settings.hpp"
 
 EmuWindow::EmuWindow()
 {
@@ -23,6 +26,13 @@ EmuWindow::EmuWindow()
 
     settings_window = new SettingsWindow;
 
+    init_menu_bar();
+
+    connect(&emuthread, &EmuThread::boot_error, this, &EmuWindow::display_boot_error);
+}
+
+void EmuWindow::init_menu_bar()
+{
     auto settings_action = new QAction(tr("&Settings"), this);
     connect(settings_action, &QAction::triggered, this, [=]() {
         settings_window->show();
@@ -30,6 +40,21 @@ EmuWindow::EmuWindow()
 
     auto options_menu = menuBar()->addMenu(tr("&Options"));
     options_menu->addAction(settings_action);
+
+    auto open_cart_action = new QAction(tr("&Open 3DS cartridge..."), this);
+    connect(open_cart_action, &QAction::triggered, this, [=]() {
+        QString file_name = QFileDialog::getOpenFileName(this, tr("Open 3DS cartridge"), "", "3DS cartridge (*.3ds)");
+        boot_emulator(file_name);
+    });
+
+    auto no_cart_boot_action = new QAction(tr("Boot without cartridge"), this);
+    connect(no_cart_boot_action, &QAction::triggered, this, [=]() {
+        boot_emulator("");
+    });
+
+    auto file_menu = menuBar()->addMenu(tr("&File"));
+    file_menu->addAction(open_cart_action);
+    file_menu->addAction(no_cart_boot_action);
 }
 
 void EmuWindow::closeEvent(QCloseEvent *event)
@@ -193,4 +218,14 @@ void EmuWindow::press_key(HID_PAD_STATE state)
 void EmuWindow::release_key(HID_PAD_STATE state)
 {
     pad_state &= ~(1 << state);
+}
+
+void EmuWindow::boot_emulator(QString cart_path)
+{
+    emuthread.boot_emulator(cart_path);
+}
+
+void EmuWindow::display_boot_error(QString message)
+{
+    QMessageBox::critical(this, tr("Error"), message);
 }

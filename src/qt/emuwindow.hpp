@@ -9,6 +9,7 @@
 
 #include <cstdint>
 
+#include "emuthread.hpp"
 #include "settingswindow.hpp"
 
 enum HID_PAD_STATE
@@ -31,6 +32,7 @@ class EmuWindow : public QMainWindow
 {
     Q_OBJECT
     private:
+        EmuThread emuthread;
         SettingsWindow* settings_window;
         bool running;
         QImage top_image, bottom_image;
@@ -42,6 +44,10 @@ class EmuWindow : public QMainWindow
 
         void press_key(HID_PAD_STATE state);
         void release_key(HID_PAD_STATE state);
+
+        void init_menu_bar();
+
+        void boot_emulator(QString cart_path);
     public:
         EmuWindow();
 
@@ -61,6 +67,8 @@ class EmuWindow : public QMainWindow
 
         void draw(uint8_t* top_screen, uint8_t* bottom_screen);
         void paintEvent(QPaintEvent* event) override;
+    public slots:
+        void display_boot_error(QString message);
 };
 
 inline bool EmuWindow::is_running()
