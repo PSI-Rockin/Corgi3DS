@@ -9,6 +9,8 @@
 
 #include <cstdint>
 
+#include "settingswindow.hpp"
+
 enum HID_PAD_STATE
 {
     PAD_A,
@@ -29,6 +31,7 @@ class EmuWindow : public QMainWindow
 {
     Q_OBJECT
     private:
+        SettingsWindow* settings_window;
         bool running;
         QImage top_image, bottom_image;
 

@@ -14,7 +14,7 @@ int main(int argc, char** argv)
         return 1;
     }
 
-    uint8_t boot9_rom[1024 * 64], boot11_rom[1024 * 64];
+    /*uint8_t boot9_rom[1024 * 64], boot11_rom[1024 * 64];
 
     ifstream boot9(argv[1]);
     if (!boot9.is_open())
@@ -37,9 +37,6 @@ int main(int argc, char** argv)
     boot11.read((char*)&boot11_rom, sizeof(boot11_rom));
 
     boot11.close();
-
-    QApplication a(argc, argv);
-    EmuWindow* emuwindow = new EmuWindow();
 
     Emulator e;
     if (!e.mount_nand(argv[3]))
@@ -72,11 +69,13 @@ int main(int argc, char** argv)
         printf("Please make sure your NAND is dumped from the latest version of GodMode9.\n");
         return 1;
     }
-    e.reset();
+    e.reset();*/
+    QApplication a(argc, argv);
+    EmuWindow* emuwindow = new EmuWindow();
     while (emuwindow->is_running())
     {
         a.processEvents();
-        uint16_t pad = emuwindow->get_pad_state();
+        /*uint16_t pad = emuwindow->get_pad_state();
         e.set_pad(pad);
 
         if (emuwindow->is_touchscreen_pressed())
@@ -98,7 +97,7 @@ int main(int argc, char** argv)
         catch (EmuException::RebootException& r)
         {
             e.reset(false);
-        }
+        }*/
     }
 
     return 0;

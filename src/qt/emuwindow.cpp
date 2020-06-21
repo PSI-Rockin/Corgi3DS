@@ -1,4 +1,7 @@
+#include <QAction>
 #include <QImage>
+#include <QMenu>
+#include <QMenuBar>
 #include <QPainter>
 #include <QPalette>
 #include <QPoint>
@@ -17,6 +20,16 @@ EmuWindow::EmuWindow()
     running = true;
     touchscreen_pressed = false;
     pad_state = 0;
+
+    settings_window = new SettingsWindow;
+
+    auto settings_action = new QAction(tr("&Settings"), this);
+    connect(settings_action, &QAction::triggered, this, [=]() {
+        settings_window->show();
+    });
+
+    auto options_menu = menuBar()->addMenu(tr("&Options"));
+    options_menu->addAction(settings_action);
 }
 
 void EmuWindow::closeEvent(QCloseEvent *event)
@@ -67,6 +80,7 @@ void EmuWindow::keyPressEvent(QKeyEvent *event)
     switch (event->key())
     {
         case Qt::Key_Up:
+            settings_window->show();
             press_key(PAD_UP);
             break;
         case Qt::Key_Down:
