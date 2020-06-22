@@ -26,7 +26,7 @@ void save()
     qset.setValue("system/boot9", boot9_path);
     qset.setValue("system/boot11", boot11_path);
     qset.setValue("system/nand", nand_path);
-    qset.setValue("system/sd_path", sd_path);
+    qset.setValue("system/sd", sd_path);
 }
 
 }

@@ -37,16 +37,14 @@ class EmuWindow : public QMainWindow
         bool running;
         QImage top_image, bottom_image;
 
-        uint16_t pad_state;
-
-        bool touchscreen_pressed;
-        uint16_t touchscreen_x, touchscreen_y;
+        FrameSettings frame_settings;
 
         void press_key(HID_PAD_STATE state);
         void release_key(HID_PAD_STATE state);
 
         void init_menu_bar();
 
+        void draw(uint8_t* top_screen, uint8_t* bottom_screen);
         void boot_emulator(QString cart_path);
     public:
         EmuWindow();
@@ -59,9 +57,11 @@ class EmuWindow : public QMainWindow
         void mouseReleaseEvent(QMouseEvent* event) override;
 
         void paintEvent(QPaintEvent* event) override;
+    signals:
+        void pass_frame_settings(FrameSettings* f);
     public slots:
         void display_boot_error(QString message);
-        void draw(uint8_t* top_screen, uint8_t* bottom_screen);
+        void frame_complete(uint8_t* top_screen, uint8_t* bottom_screen);
         void display_emu_error(QString message);
 };
 

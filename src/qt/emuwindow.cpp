@@ -21,16 +21,17 @@ EmuWindow::EmuWindow()
     resize(400, 240 + 240);
     show();
     running = true;
-    touchscreen_pressed = false;
-    pad_state = 0;
+    frame_settings.touchscreen_pressed = false;
+    frame_settings.pad_state = 0;
 
     settings_window = new SettingsWindow;
 
     init_menu_bar();
 
     connect(&emuthread, &EmuThread::boot_error, this, &EmuWindow::display_boot_error);
-    connect(&emuthread, &EmuThread::frame_complete, this, &EmuWindow::draw);
+    connect(&emuthread, &EmuThread::frame_complete, this, &EmuWindow::frame_complete);
     connect(&emuthread, &EmuThread::emu_error, this, &EmuWindow::display_emu_error);
+    connect(this, &EmuWindow::pass_frame_settings, &emuthread, &EmuThread::pass_frame_settings);
 }
 
 void EmuWindow::init_menu_bar()
@@ -107,7 +108,6 @@ void EmuWindow::keyPressEvent(QKeyEvent *event)
     switch (event->key())
     {
         case Qt::Key_Up:
-            settings_window->show();
             press_key(PAD_UP);
             break;
         case Qt::Key_Down:
@@ -197,35 +197,45 @@ void EmuWindow::mousePressEvent(QMouseEvent *event)
 
     if (event->y() >= 240 && event->x() >= 40 && event->x() < 40 + 320)
     {
-        touchscreen_pressed = true;
-        touchscreen_x = event->x() - 40;
-        touchscreen_y = event->y() - 240;
+        frame_settings.touchscreen_pressed = true;
+        frame_settings.touchscreen_x = event->x() - 40;
+        frame_settings.touchscreen_y = event->y() - 240;
     }
     else
-        touchscreen_pressed = false;
+        frame_settings.touchscreen_pressed = false;
 }
 
 void EmuWindow::mouseReleaseEvent(QMouseEvent *event)
 {
     event->accept();
 
-    touchscreen_pressed = false;
+    frame_settings.touchscreen_pressed = false;
 }
 
 void EmuWindow::press_key(HID_PAD_STATE state)
 {
-    pad_state |= 1 << state;
+    frame_settings.pad_state |= 1 << state;
 }
 
 void EmuWindow::release_key(HID_PAD_STATE state)
 {
-    pad_state &= ~(1 << state);
+    frame_settings.pad_state &= ~(1 << state);
 }
 
 void EmuWindow::boot_emulator(QString cart_path)
 {
     if (emuthread.boot_emulator(cart_path))
+    {
+        emuthread.pass_frame_settings(&frame_settings);
         emuthread.start();
+    }
+}
+
+void EmuWindow::frame_complete(uint8_t *top_screen, uint8_t *bottom_screen)
+{
+    draw(top_screen, bottom_screen);
+
+    emuthread.pass_frame_settings(&frame_settings);
 }
 
 void EmuWindow::display_boot_error(QString message)

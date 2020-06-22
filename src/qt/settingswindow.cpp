@@ -48,7 +48,7 @@ SettingsWindow::SettingsWindow(QWidget *parent) : QWidget(parent)
     });
 
     connect(sd_button, &QPushButton::pressed, this, [=] {
-        QString file_name = QFileDialog::getOpenFileName(this, tr("Open SD Image"), "", "Binary file (*.bin)");
+        QString file_name = QFileDialog::getOpenFileName(this, tr("Open SD Image"), "", "");
         Settings::sd_path = file_name;
         settings_update();
     });

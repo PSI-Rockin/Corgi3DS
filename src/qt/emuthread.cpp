@@ -10,12 +10,16 @@ using namespace std;
 EmuThread::EmuThread()
 {
     quit = true;
+    has_frame_settings = false;
 }
 
 void EmuThread::run()
 {
     while (!quit)
     {
+        while (!has_frame_settings);
+
+        has_frame_settings = false;
         try
         {
             e.run();
@@ -101,6 +105,19 @@ bool EmuThread::boot_emulator(QString cart_path)
     e.reset();
 
     quit = false;
+    has_frame_settings = false;
 
     return true;
+}
+
+void EmuThread::pass_frame_settings(FrameSettings *f)
+{
+    e.set_pad(f->pad_state);
+
+    if (f->touchscreen_pressed)
+        e.set_touchscreen(f->touchscreen_x, f->touchscreen_y);
+    else
+        e.clear_touchscreen();
+
+    has_frame_settings = true;
 }
