@@ -45,7 +45,6 @@ class EmuWindow : public QMainWindow
         void init_menu_bar();
 
         void draw(uint8_t* top_screen, uint8_t* bottom_screen);
-        void boot_emulator(QString cart_path);
     public:
         EmuWindow();
 
@@ -57,6 +56,8 @@ class EmuWindow : public QMainWindow
         void mouseReleaseEvent(QMouseEvent* event) override;
 
         void paintEvent(QPaintEvent* event) override;
+
+        void boot_emulator(QString cart_path);
     signals:
         void pass_frame_settings(FrameSettings* f);
     public slots:
