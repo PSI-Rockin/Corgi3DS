@@ -16,6 +16,8 @@ struct FrameSettings
     uint16_t touchscreen_x, touchscreen_y;
 
     bool power_button;
+    bool home_button;
+    bool old_home_button;
 };
 
 class EmuThread : public QThread

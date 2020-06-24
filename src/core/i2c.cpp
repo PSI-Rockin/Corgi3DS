@@ -328,3 +328,11 @@ void I2C::power_button()
     }
     power_pressed = true;
 }
+
+void I2C::home_button(bool pressed)
+{
+    if (pressed)
+        mcu_interrupt(2);
+    else
+        mcu_interrupt(3);
+}

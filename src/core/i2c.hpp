@@ -66,6 +66,7 @@ class I2C
         void mcu_interrupt(int id);
 
         void power_button();
+        void home_button(bool pressed);
 
         uint8_t read8(uint32_t addr);
         void write8(uint32_t addr, uint8_t value);

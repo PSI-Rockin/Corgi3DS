@@ -133,6 +133,7 @@ class Emulator
         void clear_touchscreen();
 
         void power_button();
+        void home_button(bool pressed);
 };
 
 #endif // EMULATOR_HPP

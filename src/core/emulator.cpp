@@ -1441,3 +1441,8 @@ void Emulator::power_button()
 {
     i2c.power_button();
 }
+
+void Emulator::home_button(bool pressed)
+{
+    i2c.home_button(pressed);
+}

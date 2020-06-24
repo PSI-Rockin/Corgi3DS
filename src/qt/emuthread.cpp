@@ -122,5 +122,11 @@ void EmuThread::pass_frame_settings(FrameSettings *f)
     if (f->power_button)
         e.power_button();
 
+    if (f->home_button ^ f->old_home_button)
+    {
+        f->old_home_button = f->home_button;
+        e.home_button(f->home_button);
+    }
+
     has_frame_settings = true;
 }
