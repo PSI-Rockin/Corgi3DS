@@ -23,7 +23,6 @@ void EmuThread::run()
         try
         {
             e.run();
-            emit frame_complete(e.get_top_buffer(), e.get_bottom_buffer());
         }
         catch (EmuException::FatalError& error)
         {
@@ -36,6 +35,7 @@ void EmuThread::run()
         {
             e.reset(false);
         }
+        emit frame_complete(e.get_top_buffer(), e.get_bottom_buffer());
     }
 }
 
