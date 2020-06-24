@@ -137,6 +137,9 @@ void EmuWindow::keyPressEvent(QKeyEvent *event)
         case Qt::Key_W:
             press_key(PAD_R);
             break;
+        case Qt::Key_P:
+            frame_settings.power_button = true;
+            break;
         case Qt::Key_Return:
             press_key(PAD_START);
             break;
@@ -226,6 +229,7 @@ void EmuWindow::boot_emulator(QString cart_path)
 {
     if (emuthread.boot_emulator(cart_path))
     {
+        frame_settings.power_button = false;
         emuthread.pass_frame_settings(&frame_settings);
         emuthread.start();
     }

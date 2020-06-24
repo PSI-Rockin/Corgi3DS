@@ -16,6 +16,7 @@ I2C::I2C(MPCore_PMR* pmr, Scheduler* scheduler) : pmr(pmr), scheduler(scheduler)
 
 void I2C::reset()
 {
+    power_pressed = false;
     memset(cnt, 0, sizeof(cnt));
     memset(devices, 0, sizeof(devices));
     mcu_counter = 0;
@@ -316,4 +317,14 @@ void I2C::write_mcu(uint8_t reg_id, uint8_t value)
         default:
             printf("[I2C_MCU] Unrecognized write register $%02X\n", reg_id);
     }
+}
+
+void I2C::power_button()
+{
+    if (!power_pressed)
+    {
+        mcu_interrupt(0);
+        scheduler->add_event([this](uint64_t param) { mcu_interrupt(1);}, 5, 60);
+    }
+    power_pressed = true;
 }

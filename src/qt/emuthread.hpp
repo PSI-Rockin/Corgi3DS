@@ -14,6 +14,8 @@ struct FrameSettings
 
     bool touchscreen_pressed;
     uint16_t touchscreen_x, touchscreen_y;
+
+    bool power_button;
 };
 
 class EmuThread : public QThread

@@ -31,6 +31,8 @@ int main(int argc, char** argv)
     QString nand_path = parser.value("nand");
     QString sd_path = parser.value("sd");
 
+    Settings::load();
+
     if (!boot9_path.isEmpty())
         Settings::boot9_path = boot9_path;
 
@@ -48,7 +50,7 @@ int main(int argc, char** argv)
     Settings::save();
     EmuWindow* emuwindow = new EmuWindow();
 
-    QString cart_path = parser.value("cart");
+    QString cart_path = parser.value("autoload");
     if (parser.isSet("autoload-nocart"))
         emuwindow->boot_emulator("");
     else if (!cart_path.isEmpty())

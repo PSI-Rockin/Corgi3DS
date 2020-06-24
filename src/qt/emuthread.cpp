@@ -119,5 +119,8 @@ void EmuThread::pass_frame_settings(FrameSettings *f)
     else
         e.clear_touchscreen();
 
+    if (f->power_button)
+        e.power_button();
+
     has_frame_settings = true;
 }

@@ -131,6 +131,8 @@ class Emulator
 
         void set_touchscreen(uint16_t x, uint16_t y);
         void clear_touchscreen();
+
+        void power_button();
 };
 
 #endif // EMULATOR_HPP

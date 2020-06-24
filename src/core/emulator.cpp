@@ -1436,3 +1436,8 @@ void Emulator::clear_touchscreen()
 {
     spi.clear_touchscreen();
 }
+
+void Emulator::power_button()
+{
+    i2c.power_button();
+}
