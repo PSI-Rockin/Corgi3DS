@@ -983,6 +983,9 @@ uint16_t Emulator::arm11_read16(int core, uint32_t addr)
             return 0x7; //3DS/DS SPI switch
         case 0x10140FFC:
             return 0x5 | (is_n3ds << 1);
+        case 0x10141114:
+        case 0x10141116:
+            return 0;
         case 0x10141300:
             return clock_ctrl;
         case 0x10141304:
@@ -1237,6 +1240,9 @@ void Emulator::arm11_write16(int core, uint32_t addr, uint16_t value)
     switch (addr)
     {
         case 0x101401C0:
+            return;
+        case 0x10141114:
+        case 0x10141116:
             return;
         case 0x10141300:
         {
