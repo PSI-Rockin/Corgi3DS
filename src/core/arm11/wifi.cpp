@@ -205,15 +205,18 @@ void WiFi::reset()
     memcpy(eeprom + 0xA, mac, 6);
 
     //MSB is checked by NWM, which will error out if not exactly equal to 0x60.
-    //(LSB & 0x3) is checked by the firmware, which seems to expect 2 or 3? Crashes on 0 and 1
-    *(uint32_t*)&eeprom[0x10] = 0x60000003;
+    //(LSB & 0x3) is the Xtensa's capability. NWM expects 2, but the Xtensa can support 2 or 3.
+    *(uint32_t*)&eeprom[0x10] = 0x60000002;
 
     memset(eeprom + 0x3C, 0xFF, 0x70);
     memset(eeprom + 0x140, 0xFF, 8);
 
     //???
+    //Xtensa errors out if these values aren't set to 1
     eeprom[0x14F] = 1;
     eeprom[0x158] = 1;
+    eeprom[0x215] = 1;
+    eeprom[0x21E] = 1;
 
     //Checksum
     uint16_t checksum = 0xFFFF;
@@ -230,6 +233,8 @@ void WiFi::reset()
     xtensa_irq_stat = 0;
     xtensa_mbox_irq_enable = 0;
     xtensa_mbox_irq_stat = 0;
+
+    memset(xtensa_mbox_tx_ctrl, 0, sizeof(xtensa_mbox_tx_ctrl));
 }
 
 void WiFi::run(int cycles)
@@ -242,6 +247,31 @@ void WiFi::run(int cycles)
         clear_xtensa_soc_irq(12);
     xtensa.run(cycles);
     timers.run(cycles);
+
+    if ((xtensa_mbox_tx_ctrl[0] & 0x4) && mbox[0].size() == 0x80)
+    {
+        printf("[WiFi] Start ARM->Xtensa DMA\n");
+        uint32_t addr = xtensa_mbox_tx_ptr[0];
+        printf("Blorp $%08X $%08X\n", addr, read32_xtensa(addr));
+        if (read32_xtensa(addr) == 0x80608000)
+        {
+            write32_xtensa(addr, 0x40608000 | 0x80);
+            uint32_t pkt_addr = read32_xtensa(addr + 4);
+            printf("Packet addr: $%08X\n", pkt_addr);
+            for (int i = 0; i < 0x80; i++)
+            {
+                uint8_t value = read8_mbox(mbox[0]);
+                printf("Pop $%02X from MBOX0\n", value);
+                write8_xtensa(pkt_addr + i, value);
+            }
+            addr = read32_xtensa(addr + 8);
+        }
+        else
+            EmuException::die("[Xtensa] Bad TX descriptor $%08X found!", read32_xtensa(addr));
+        xtensa_mbox_irq_stat |= 1 << 24;
+        check_f1_irq();
+        xtensa_mbox_tx_ptr[0] = addr;
+    }
 #endif
 }
 
@@ -869,6 +899,19 @@ void WiFi::do_htc_cmd()
 
             send_wmi_reply(reply, sizeof(reply), 1, 0, 0);
 
+            auto blorp = [=](uint64_t param)
+            {
+                uint8_t regdomain[6];
+                memset(regdomain, 0, sizeof(regdomain));
+
+                *(uint16_t*)&reply[0] = 0x1006; //WMI_REGDOMAIN event
+                *(uint32_t*)&reply[2] = 0x80000348;
+
+                send_wmi_reply(regdomain, sizeof(regdomain), 1, 0, 0);
+            };
+
+            scheduler->add_event(blorp, 10000, XTENSA_CLOCKRATE, 0);
+
             boot_status = 2;
 
             printf("[WiFi] HTC_SETUP_COMPLETE\n");
@@ -1302,7 +1345,7 @@ uint32_t WiFi::read32_xtensa(uint32_t addr)
             return 0;
         case 0x18058:
             //WLAN_MBOX_INT_STATUS
-            return 0;
+            return xtensa_mbox_irq_stat;
         case 0x180C0:
             //Local scratchpad
             return 0;
@@ -1499,6 +1542,7 @@ void WiFi::write32_xtensa(uint32_t addr, uint32_t value)
                 printf("Blorp $%08X $%08X\n", addr, read32_xtensa(addr));
                 while (read32_xtensa(addr) == 0xC0000080)
                 {
+                    write32_xtensa(addr, 0x40000080);
                     uint32_t pkt_addr = read32_xtensa(addr + 4);
                     printf("[WiFi] Starting MBOX%d RX DMA at $%08X\n", index, addr);
                     printf("Packet addr: $%08X\n", pkt_addr);
@@ -1510,7 +1554,7 @@ void WiFi::write32_xtensa(uint32_t addr, uint32_t value)
                     }
                     addr = read32_xtensa(addr + 8);
                 }
-                //xtensa_mbox_irq_stat |= 1 << (28 + index);
+                xtensa_mbox_irq_stat |= 1 << (28 + index);
                 check_f1_irq();
                 xtensa_mbox_rx_ptr[index] = addr;
             }
@@ -1527,6 +1571,7 @@ void WiFi::write32_xtensa(uint32_t addr, uint32_t value)
         case 0x18044:
         case 0x18054:
             printf("[WiFi] Write32 Xtensa MBOX%d TX DMA control: $%08X\n", ((addr & 0xF0) >> 4) - 2, value);
+            xtensa_mbox_tx_ctrl[((addr & 0xF0) >> 4) - 2] = value;
             return;
         case 0x18058:
             printf("[WiFi] Write32 Xtensa WLAN_MBOX_INT_STATUS: $%08X\n", value);
