@@ -35,6 +35,8 @@ class I2C
 
         uint8_t mcu_time[7];
 
+        bool power_pressed;
+
         int mcu_counter;
         int mcu_7f_pos;
         uint8_t mcu_7f_buf[0x13];
@@ -62,6 +64,9 @@ class I2C
 
         void do_transfer(int id);
         void mcu_interrupt(int id);
+
+        void power_button();
+        void home_button(bool pressed);
 
         uint8_t read8(uint32_t addr);
         void write8(uint32_t addr, uint8_t value);

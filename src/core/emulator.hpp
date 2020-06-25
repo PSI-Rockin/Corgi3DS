@@ -84,6 +84,8 @@ class Emulator
         uint8_t config_cardctrl2;
         int card_reset;
 
+        int frames;
+
         uint8_t dsp_mem_config[16];
 
         uint16_t HID_PAD;
@@ -129,6 +131,9 @@ class Emulator
 
         void set_touchscreen(uint16_t x, uint16_t y);
         void clear_touchscreen();
+
+        void power_button();
+        void home_button(bool pressed);
 };
 
 #endif // EMULATOR_HPP

@@ -149,7 +149,10 @@ void Emulator::reset(bool cold_boot)
     sysprot11 = 0;
 
     if (cold_boot)
+    {
+        frames = 0;
         config_bootenv = 0;
+    }
 
     clock_ctrl = 0;
     config_cardctrl2 = 0;
@@ -195,7 +198,6 @@ void Emulator::reset(bool cold_boot)
 
 void Emulator::run()
 {
-    static int frames = 0;
     i2c.update_time();
     printf("FRAME %d\n", frames);
 
@@ -981,6 +983,9 @@ uint16_t Emulator::arm11_read16(int core, uint32_t addr)
             return 0x7; //3DS/DS SPI switch
         case 0x10140FFC:
             return 0x5 | (is_n3ds << 1);
+        case 0x10141114:
+        case 0x10141116:
+            return 0;
         case 0x10141300:
             return clock_ctrl;
         case 0x10141304:
@@ -1236,6 +1241,9 @@ void Emulator::arm11_write16(int core, uint32_t addr, uint16_t value)
     {
         case 0x101401C0:
             return;
+        case 0x10141114:
+        case 0x10141116:
+            return;
         case 0x10141300:
         {
             clock_ctrl = value & ~0x8000;
@@ -1433,4 +1441,14 @@ void Emulator::set_touchscreen(uint16_t x, uint16_t y)
 void Emulator::clear_touchscreen()
 {
     spi.clear_touchscreen();
+}
+
+void Emulator::power_button()
+{
+    i2c.power_button();
+}
+
+void Emulator::home_button(bool pressed)
+{
+    i2c.home_button(pressed);
 }

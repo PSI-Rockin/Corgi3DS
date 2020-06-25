@@ -9,6 +9,37 @@
 uint64_t ARM_CPU::global_exclusive_start[4];
 uint64_t ARM_CPU::global_exclusive_end[4];
 
+void get_hos_process_info(ARM_CPU& cpu, int& pid, std::string& name)
+{
+    //This is kinda complicated. The PID and Codeset pointer are stored in different locations in KProcess
+    //depending on kernel version. There's not a good way to detect this other than trying all possible locations
+    //until we find one that doesn't data abort.
+    static int offs = 16;
+    uint32_t process_ptr = cpu.read32(0xFFFF9004);
+    if (!process_ptr)
+        return;
+    while (offs >= 0)
+    {
+        try
+        {
+            name = "";
+            pid = cpu.read32(process_ptr + 0xAC + offs);
+            uint32_t codeset_ptr = cpu.read32(process_ptr + 0xA8 + offs);
+            for (int i = 0; i < 8; i++)
+                name += (char)cpu.read8(codeset_ptr + 0x50 + i);
+            return;
+        }
+        catch (EmuException::ARMDataAbort)
+        {
+            offs -= 8;
+            if (offs < 0)
+            {
+                EmuException::die("[ARM] Unable to find process info!");
+            }
+        }
+    }
+}
+
 uint32_t PSR_Flags::get()
 {
     uint32_t reg = 0;
@@ -183,45 +214,6 @@ void ARM_CPU::jp(uint32_t addr, bool change_thumb_state)
             return;
     }*/
 
-    if (id != 9 && gpr[15] >= 0x40000000 && ((addr >= 0x00100000 && addr < 0x10000000) || (addr >= 0x14000000 && addr < 0x18000000)))
-    {
-        //can_disassemble = true;
-        uint32_t process_ptr = read32(0xFFFF9004);
-        uint32_t pid = read32(process_ptr + 0xB4 + 8);
-        uint32_t codeset_ptr = read32(process_ptr + 0xB4 + 4);
-        uint8_t procname[9];
-        int i = 0;
-        for(; i < 8; i++)
-            procname[i] = read8(codeset_ptr + 0x50 + i);
-        procname[i] = '\0';
-       
-
-        bool main_thread = read32(0xFFFF9000) == read32(process_ptr + 192);
-        printf("Jumping to PID%d[%s] (main_thread:%d, addr: $%08X)\n", pid, procname, main_thread, addr);
-        if (addr & 0xFFFFF)
-        {
-            uint32_t prev_instr = read32(addr - 4);
-            if (prev_instr == 0xEF000032)
-            {
-                uint32_t error = read32(cp15->mrc(0, 0xD, 3, 0) + 0x84);
-                if (error & (1 << 31))
-                    printf("Error: $%08X\n", error);
-            }
-            else if ((prev_instr & 0x0F000000) == 0x0F000000 && (prev_instr & 0xFF) != 0x28)
-            {
-                if (gpr[0] & (1 << 31))
-                   printf("Error: $%08X\n", gpr[0]);
-            }
-        }
-        if (pid == 7)
-        {
-            //can_disassemble = true;
-
-        }
-        else
-            can_disassemble = false;
-    }
-
     gpr[15] = addr;
     fetch_new_instr_ptr(addr);
 
@@ -316,16 +308,12 @@ void ARM_CPU::swi()
         {
             uint32_t tls = cp15->mrc(0, 0xD, 0x3, 0x0);
             uint32_t header = read32(tls + 0x80);
-            uint32_t process_ptr = read32(0xFFFF9004);
-            uint32_t pid = read32(process_ptr + 0xB4 + 8);
-            uint32_t codeset_ptr = read32(process_ptr + 0xB4 + 4);
-            uint8_t procname[9];
-            int i = 0;
-            for(; i < 8; i++)
-                procname[i] = read8(codeset_ptr + 0x50 + i);
-            procname[i] = '\0';
+
+            int pid;
+            std::string procname;
+            get_hos_process_info(*this, pid, procname);
             
-            printf("(PID%d[%s]) SendSyncRequest: $%08X\n", pid, procname, header);
+            printf("(PID%d[%s]) SendSyncRequest: $%08X\n", pid, procname.c_str(), header);
         }
     }
     if (op == 0x3C)
@@ -1254,6 +1242,38 @@ void ARM_CPU::rfe(uint32_t instr)
 
     update_reg_mode((PSR_MODE)(PSR & 0x1F));
     CPSR.set(PSR);
+
+    //If PC is less than this value, we're returning to userland
+    if (PC < 0x40000000)
+    {
+        //can_disassemble = true;
+        std::string procname;
+        int pid;
+        get_hos_process_info(*this, pid, procname);
+        printf("Jumping to PID%d[%s] (addr: $%08X)\n", pid, procname.c_str(), PC);
+        if (addr & 0xFFFFF)
+        {
+            uint32_t prev_instr = read32(addr - 4);
+            if (prev_instr == 0xEF000032)
+            {
+                uint32_t error = read32(cp15->mrc(0, 0xD, 3, 0) + 0x84);
+                if (error & (1 << 31))
+                    printf("Error: $%08X\n", error);
+            }
+            else if ((prev_instr & 0x0F000000) == 0x0F000000 && (prev_instr & 0xFF) != 0x28)
+            {
+                if (gpr[0] & (1 << 31))
+                   printf("Error: $%08X\n", gpr[0]);
+            }
+        }
+        if (pid == 7)
+        {
+            //can_disassemble = true;
+
+        }
+        else
+            can_disassemble = false;
+    }
 
     jp(PC, false);
 }

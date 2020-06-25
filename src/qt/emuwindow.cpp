@@ -1,9 +1,15 @@
+#include <QAction>
+#include <QFileDialog>
 #include <QImage>
+#include <QMenu>
+#include <QMenuBar>
 #include <QPainter>
 #include <QPalette>
 #include <QPoint>
 #include <QMatrix>
+#include <QMessageBox>
 #include "emuwindow.hpp"
+#include "settings.hpp"
 
 EmuWindow::EmuWindow()
 {
@@ -15,8 +21,43 @@ EmuWindow::EmuWindow()
     resize(400, 240 + 240);
     show();
     running = true;
-    touchscreen_pressed = false;
-    pad_state = 0;
+    frame_settings.touchscreen_pressed = false;
+    frame_settings.pad_state = 0;
+
+    settings_window = new SettingsWindow;
+
+    init_menu_bar();
+
+    connect(&emuthread, &EmuThread::boot_error, this, &EmuWindow::display_boot_error);
+    connect(&emuthread, &EmuThread::frame_complete, this, &EmuWindow::frame_complete);
+    connect(&emuthread, &EmuThread::emu_error, this, &EmuWindow::display_emu_error);
+    connect(this, &EmuWindow::pass_frame_settings, &emuthread, &EmuThread::pass_frame_settings);
+}
+
+void EmuWindow::init_menu_bar()
+{
+    auto settings_action = new QAction(tr("&Settings"), this);
+    connect(settings_action, &QAction::triggered, this, [=]() {
+        settings_window->show();
+    });
+
+    auto options_menu = menuBar()->addMenu(tr("&Options"));
+    options_menu->addAction(settings_action);
+
+    auto open_cart_action = new QAction(tr("&Open 3DS cartridge..."), this);
+    connect(open_cart_action, &QAction::triggered, this, [=]() {
+        QString file_name = QFileDialog::getOpenFileName(this, tr("Open 3DS cartridge"), "", "3DS cartridge (*.3ds)");
+        boot_emulator(file_name);
+    });
+
+    auto no_cart_boot_action = new QAction(tr("Boot without cartridge"), this);
+    connect(no_cart_boot_action, &QAction::triggered, this, [=]() {
+        boot_emulator("");
+    });
+
+    auto file_menu = menuBar()->addMenu(tr("&File"));
+    file_menu->addAction(open_cart_action);
+    file_menu->addAction(no_cart_boot_action);
 }
 
 void EmuWindow::closeEvent(QCloseEvent *event)
@@ -96,6 +137,12 @@ void EmuWindow::keyPressEvent(QKeyEvent *event)
         case Qt::Key_W:
             press_key(PAD_R);
             break;
+        case Qt::Key_P:
+            frame_settings.power_button = true;
+            break;
+        case Qt::Key_H:
+            frame_settings.home_button = true;
+            break;
         case Qt::Key_Return:
             press_key(PAD_START);
             break;
@@ -141,6 +188,9 @@ void EmuWindow::keyReleaseEvent(QKeyEvent *event)
         case Qt::Key_W:
             release_key(PAD_R);
             break;
+        case Qt::Key_H:
+            frame_settings.home_button = false;
+            break;
         case Qt::Key_Return:
             release_key(PAD_START);
             break;
@@ -156,27 +206,80 @@ void EmuWindow::mousePressEvent(QMouseEvent *event)
 
     if (event->y() >= 240 && event->x() >= 40 && event->x() < 40 + 320)
     {
-        touchscreen_pressed = true;
-        touchscreen_x = event->x() - 40;
-        touchscreen_y = event->y() - 240;
+        frame_settings.touchscreen_pressed = true;
+        frame_settings.touchscreen_x = event->x() - 40;
+        frame_settings.touchscreen_y = event->y() - 240;
     }
     else
-        touchscreen_pressed = false;
+        frame_settings.touchscreen_pressed = false;
 }
 
 void EmuWindow::mouseReleaseEvent(QMouseEvent *event)
 {
     event->accept();
 
-    touchscreen_pressed = false;
+    frame_settings.touchscreen_pressed = false;
 }
 
 void EmuWindow::press_key(HID_PAD_STATE state)
 {
-    pad_state |= 1 << state;
+    frame_settings.pad_state |= 1 << state;
 }
 
 void EmuWindow::release_key(HID_PAD_STATE state)
 {
-    pad_state &= ~(1 << state);
+    frame_settings.pad_state &= ~(1 << state);
+}
+
+void EmuWindow::boot_emulator(QString cart_path)
+{
+    if (emuthread.boot_emulator(cart_path))
+    {
+        frame_settings.power_button = false;
+        frame_settings.old_home_button = false;
+        frame_settings.home_button = false;
+        for (int i = 0; i < FRAMETIME_COUNT; i++)
+            past_frametimes[i] = 0.0;
+        frametime_index = 0;
+        emuthread.pass_frame_settings(&frame_settings);
+        emuthread.start();
+    }
+}
+
+void EmuWindow::frame_complete(uint8_t *top_screen, uint8_t *bottom_screen, float msec)
+{
+    draw(top_screen, bottom_screen);
+
+    emuthread.pass_frame_settings(&frame_settings);
+
+    past_frametimes[frametime_index] = msec;
+    frametime_index = (frametime_index + 1) % FRAMETIME_COUNT;
+
+    float avg = 0.0;
+    for (int i = 0; i < FRAMETIME_COUNT; i++)
+        avg += past_frametimes[i];
+
+    avg /= FRAMETIME_COUNT;
+
+    setWindowTitle(QString("Corgi3DS - %1 ms/f").arg(QString::number(avg, 'f', 1)));
+}
+
+void EmuWindow::display_boot_error(QString message)
+{
+    QMessageBox msgBox;
+    msgBox.setText("Error occurred during boot");
+    msgBox.setInformativeText(message);
+    msgBox.setStandardButtons(QMessageBox::Abort);
+    msgBox.setDefaultButton(QMessageBox::Abort);
+    msgBox.exec();
+}
+
+void EmuWindow::display_emu_error(QString message)
+{
+    QMessageBox msgBox;
+    msgBox.setText("Emulation has been terminated");
+    msgBox.setInformativeText(message);
+    msgBox.setStandardButtons(QMessageBox::Abort);
+    msgBox.setDefaultButton(QMessageBox::Abort);
+    msgBox.exec();
 }

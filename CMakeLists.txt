@@ -4,6 +4,10 @@ set(PROJECT Corgi3DS)
 project(${PROJECT})
 set(CMAKE_CXX_STANDARD 14)
 
+set(CMAKE_AUTOMOC ON)
+set(CMAKE_AUTORCC ON)
+set(CMAKE_AUTOUIC ON)
+
 add_compile_options(-Wall -Wextra)
 set(CMAKE_CXX_FLAGS_RELEASE "-O2 -DNDEBUG")
 
@@ -33,6 +37,9 @@ set(SOURCES
     src/core/arm9/emmc.cpp
     src/core/arm9/interrupt9.cpp
     src/qt/emuwindow.cpp
+    src/qt/emuthread.cpp
+    src/qt/settings.cpp
+    src/qt/settingswindow.cpp
     src/core/i2c.cpp
     src/core/common/exceptions.cpp
     src/core/cpu/mmu.cpp
@@ -96,8 +103,10 @@ set(HEADERS
     src/core/arm11/xtensa_interpreter.hpp
     src/core/arm11/wifi_timers.hpp
     src/core/spi.hpp
+    src/qt/emuthread.hpp
+    src/qt/settings.hpp
+    src/qt/settingswindow.hpp
 )
 
-qt5_wrap_cpp(MOC src/qt/emuwindow.hpp)
 add_executable(${PROJECT} ${SOURCES} ${HEADERS} ${MOC})
 target_link_libraries(${PROJECT} Qt5::Core Qt5::Gui Qt5::Multimedia Qt5::Widgets gmpxx gmp)
