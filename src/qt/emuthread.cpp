@@ -15,8 +15,10 @@ EmuThread::EmuThread()
 
 void EmuThread::run()
 {
+
     while (!quit)
     {
+        old_frametime = chrono::system_clock::now();
         while (!has_frame_settings);
 
         has_frame_settings = false;
@@ -35,7 +37,10 @@ void EmuThread::run()
         {
             e.reset(false);
         }
-        emit frame_complete(e.get_top_buffer(), e.get_bottom_buffer());
+        auto now = chrono::system_clock::now();
+        auto elapsed_time = now - old_frametime;
+        int milliseconds = chrono::duration_cast<chrono::milliseconds>(elapsed_time).count();
+        emit frame_complete(e.get_top_buffer(), e.get_bottom_buffer(), milliseconds);
     }
 }
 

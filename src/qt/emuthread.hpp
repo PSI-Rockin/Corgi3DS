@@ -4,6 +4,7 @@
 #include <QThread>
 
 #include <atomic>
+#include <chrono>
 
 #include "../core/emulator.hpp"
 
@@ -27,6 +28,8 @@ class EmuThread : public QThread
         bool quit;
         std::atomic<bool> has_frame_settings;
         Emulator e;
+
+        std::chrono::system_clock::time_point old_frametime;
     public:
         EmuThread();
 
@@ -35,7 +38,7 @@ class EmuThread : public QThread
         void run() override;
     signals:
         void boot_error(QString message);
-        void frame_complete(uint8_t* top_buffer, uint8_t* bottom_buffer);
+        void frame_complete(uint8_t* top_buffer, uint8_t* bottom_buffer, float msec);
         void emu_error(QString message);
     public slots:
         void pass_frame_settings(FrameSettings* f);

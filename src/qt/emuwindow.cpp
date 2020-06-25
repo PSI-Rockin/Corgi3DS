@@ -238,16 +238,30 @@ void EmuWindow::boot_emulator(QString cart_path)
         frame_settings.power_button = false;
         frame_settings.old_home_button = false;
         frame_settings.home_button = false;
+        for (int i = 0; i < FRAMETIME_COUNT; i++)
+            past_frametimes[i] = 0.0;
+        frametime_index = 0;
         emuthread.pass_frame_settings(&frame_settings);
         emuthread.start();
     }
 }
 
-void EmuWindow::frame_complete(uint8_t *top_screen, uint8_t *bottom_screen)
+void EmuWindow::frame_complete(uint8_t *top_screen, uint8_t *bottom_screen, float msec)
 {
     draw(top_screen, bottom_screen);
 
     emuthread.pass_frame_settings(&frame_settings);
+
+    past_frametimes[frametime_index] = msec;
+    frametime_index = (frametime_index + 1) % FRAMETIME_COUNT;
+
+    float avg = 0.0;
+    for (int i = 0; i < FRAMETIME_COUNT; i++)
+        avg += past_frametimes[i];
+
+    avg /= FRAMETIME_COUNT;
+
+    setWindowTitle(QString("Corgi3DS - %1 ms/f").arg(QString::number(avg, 'f', 1)));
 }
 
 void EmuWindow::display_boot_error(QString message)

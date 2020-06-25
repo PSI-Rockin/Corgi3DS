@@ -37,6 +37,11 @@ class EmuWindow : public QMainWindow
         bool running;
         QImage top_image, bottom_image;
 
+        //Used for measuring the average frametime
+        constexpr static int FRAMETIME_COUNT = 10;
+        float past_frametimes[FRAMETIME_COUNT];
+        int frametime_index;
+
         FrameSettings frame_settings;
 
         void press_key(HID_PAD_STATE state);
@@ -62,7 +67,7 @@ class EmuWindow : public QMainWindow
         void pass_frame_settings(FrameSettings* f);
     public slots:
         void display_boot_error(QString message);
-        void frame_complete(uint8_t* top_screen, uint8_t* bottom_screen);
+        void frame_complete(uint8_t* top_screen, uint8_t* bottom_screen, float msec);
         void display_emu_error(QString message);
 };
 
