@@ -44,13 +44,13 @@ void EmuWindow::init_menu_bar()
     auto options_menu = menuBar()->addMenu(tr("&Options"));
     options_menu->addAction(settings_action);
 
-    auto open_cart_action = new QAction(tr("&Open 3DS cartridge..."), this);
+    open_cart_action = new QAction(tr("&Open 3DS cartridge..."), this);
     connect(open_cart_action, &QAction::triggered, this, [=]() {
         QString file_name = QFileDialog::getOpenFileName(this, tr("Open 3DS cartridge"), "", "3DS cartridge (*.3ds)");
         boot_emulator(file_name);
     });
 
-    auto no_cart_boot_action = new QAction(tr("Boot without cartridge"), this);
+    no_cart_boot_action = new QAction(tr("Boot without cartridge"), this);
     connect(no_cart_boot_action, &QAction::triggered, this, [=]() {
         boot_emulator("");
     });
@@ -231,10 +231,18 @@ void EmuWindow::release_key(HID_PAD_STATE state)
     frame_settings.pad_state &= ~(1 << state);
 }
 
+void EmuWindow::set_boot_options_enabled(bool enabled)
+{
+    open_cart_action->setEnabled(enabled);
+    no_cart_boot_action->setEnabled(enabled);
+}
+
 void EmuWindow::boot_emulator(QString cart_path)
 {
     if (emuthread.boot_emulator(cart_path))
     {
+        set_boot_options_enabled(false);
+
         frame_settings.power_button = false;
         frame_settings.old_home_button = false;
         frame_settings.home_button = false;
@@ -266,6 +274,8 @@ void EmuWindow::frame_complete(uint8_t *top_screen, uint8_t *bottom_screen, floa
 
 void EmuWindow::display_boot_error(QString message)
 {
+    set_boot_options_enabled(true);
+
     QMessageBox msgBox;
     msgBox.setText("Error occurred during boot");
     msgBox.setInformativeText(message);
@@ -276,6 +286,8 @@ void EmuWindow::display_boot_error(QString message)
 
 void EmuWindow::display_emu_error(QString message)
 {
+    set_boot_options_enabled(true);
+
     QMessageBox msgBox;
     msgBox.setText("Emulation has been terminated");
     msgBox.setInformativeText(message);
