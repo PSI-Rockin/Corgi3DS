@@ -36,6 +36,8 @@ class EmuWindow : public QMainWindow
         SettingsWindow* settings_window;
         bool running;
         QImage top_image, bottom_image;
+        QAction* open_cart_action;
+        QAction* no_cart_boot_action;
 
         //Used for measuring the average frametime
         constexpr static int FRAMETIME_COUNT = 10;
@@ -48,6 +50,8 @@ class EmuWindow : public QMainWindow
         void release_key(HID_PAD_STATE state);
 
         void init_menu_bar();
+
+        void set_boot_options_enabled(bool enabled);
 
         void draw(uint8_t* top_screen, uint8_t* bottom_screen);
     public:

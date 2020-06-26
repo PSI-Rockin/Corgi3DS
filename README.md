@@ -42,14 +42,17 @@ make
 ```
 
 ## Usage
-Currently, Corgi3DS can only be used from the command line. The usage is as follows:
-```
-./Corgi3DS <ARM9 bootROM> <ARM11 bootROM> <NAND image> <SD image> [Encrypted 3DS cartridge image]
-```
+Required files:
+* 3DS boot ROMs (boot9/boot11)
+* Encrypted NAND image dumped from GodMode9. NAND dumps require `essential.exefs`.
 
-NAND dumps require `essential.exefs` - get dumps from the latest version of GodMode9.
+Optional files:
+* SD image
+* Encrypted 3DS cart dump (.3ds)
 
-**N3DS support is currently unimplemented in Corgi3DS. If you try to use a N3DS NAND, it will not work.**
+These files can be given through either the GUI or the CLI. Type `-h` or `--help` for a list of available commands in the command line.
+
+Due to the risk of corrupted data, make backups of all NAND and SD images used.
 
 ### Keyboard controls
 
@@ -60,6 +63,8 @@ NAND dumps require `essential.exefs` - get dumps from the latest version of GodM
 * A -> Y
 * Q -> L
 * W -> R
+* H -> HOME Menu button
+* P -> Power button
 * Enter/Return -> START
 * Spacebar -> SELECT
 
