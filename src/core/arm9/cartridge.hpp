@@ -73,6 +73,8 @@ class Cartridge
         void process_ntr_cmd();
         void process_ctr_cmd();
         void process_spicard_cmd();
+
+        void init_card1_save(std::string file_name);
     public:
         Cartridge(DMA9* dma9, Interrupt9* int9);
         ~Cartridge();

@@ -60,7 +60,7 @@ bool Cartridge::mount(std::string file_name)
 {
     if (card.is_open())
         card.close();
-    card.open(file_name, std::ios::ate | std::ios::binary | std::ios::in | std::ios::out);
+    card.open(file_name, std::ios::binary | std::ios::in | std::ios::out);
 
     cart_id = 0xFFFFFFFF;
     save_id = 0xFFFFFFFF;
@@ -70,90 +70,90 @@ bool Cartridge::mount(std::string file_name)
         if (save_data)
             delete[] save_data;
 
-        //Find the start of the extension of the card file and generate our save file name from the rest.
-        unsigned int extension_start = file_name.length() - 1;
-        while (file_name[extension_start] != '.')
-            extension_start--;
+        //Detect if this is a Card2 save card. If so, no need to load a savefile.
+        card.read((char*)data_buffer, 0x400);
+        is_card2 = *(uint32_t*)&data_buffer[0x200] != 0xFFFFFFFF;
 
-        save_file_name = file_name.substr(0, extension_start) + ".sav";
-        printf("Save name: %s\n", save_file_name.c_str());
-
-        //Attempt to load a save, if possible
-        save_data = new uint8_t[1024 * 1024 * 8];
-        memset(save_data, 0xFF, 1024 * 1024 * 8);
-
-        //Byte 0 = capacity (0x11 = 128 KB, 0x13 = 512 KB, 0x17 = 8 MB. Process9 rejects all others)
-        //Byte 1 = device type (0x22 = flash?)
-        //Byte 2 = manufacturer (0xC2 = Macronix)
-        save_id = 0x0022C2;
-        std::ifstream save_file(save_file_name, std::ios::ate | std::ios::binary);
-        if (save_file.is_open())
-        {
-            //Save found. First we check the size.
-            save_size = save_file.tellg();
-
-            if (save_size == 1024 * 128)
-                save_id |= 0x11 << 16;
-            else if (save_size == 1024 * 512)
-                save_id |= 0x13 << 16;
-            else if (save_size == 1024 * 1024 * 8)
-                save_id |= 0x17 << 16;
-            else
-                printf("[SPICARD] WARNING: Save size is not 128 KB, 512 KB, or 8 MB and thus will not be loaded");
-
-            if (save_id & 0x00FF0000)
-            {
-                save_file.seekg(0);
-                save_file.read((char*)save_data, save_size);
-            }
-
-            save_file.close();
-        }
-        else
-        {
-            //TODO: The cartridge exheader contains the save size, but it is encrypted.
-            //Until we figure out a way to decrypt it, we'll just use a hardcoded size.
-            save_size = 1024 * 128;
-            save_id = 0x1122C2;
-        }
+        if (!is_card2)
+            init_card1_save(file_name);
 
         //Note: this assumes the cartridge is a 3DS cart
         cart_id = 0x900000C2;
 
         //We must calculate the size of the cart. HOS will refuse to read from cart sectors larger than the
         //indicated size, and I don't want to risk any copy protection problems from using absurd sizes.
-        uint8_t size_byte = 0;
+        constexpr static uint8_t SIZE_BYTES[] = {0x7F, 0xFF, 0xFE, 0xFA, 0xF8, 0xF0, 0xE0, 0xE1, 0xE2};
+        uint8_t size_index = 0;
 
+        card.seekg(0, std::ios::end);
         size_t size = card.tellg();
-
-        //If the cart is less than 256 MB, the size flag is simply (size in MB - 1)
-        //Note that we round up to the nearest given unit in case people are using trimmed dumps
-        constexpr static int MEGABYTE = 1024 * 1024;
-        if (size < MEGABYTE * 256)
+        uint64_t compare_size = 1024 * 1024 * 128;
+        while (size > compare_size)
         {
-            size_byte = size / MEGABYTE;
-            if (size % MEGABYTE == 0)
-                size--;
-        }
-        else
-        {
-            //Otherwise, the size byte is (0x100 - size in 256 MB units)
-            size_byte = size / (MEGABYTE * 256);
-            if (size % (MEGABYTE * 256) != 0)
-                size_byte++;
+            compare_size <<= 1;
+            size_index++;
 
-            size_byte = 0x100 - size_byte;
-
-            //For some reason, 1 GB cartridges use 0xFA instead of 0xFC
-            //They seem to be the only carts that are the exception to the above formula
-            if (size_byte == 0xFC)
-                size_byte = 0xFA;
+            //File goes beyond the supported sizes, error out. Bad user.
+            if (size_index >= sizeof(SIZE_BYTES))
+                return false;
         }
 
-        cart_id |= size_byte << 8;
+        cart_id |= SIZE_BYTES[size_index] << 8;
+        cart_id |= is_card2 << 27;
+        printf("[Cartridge] Calculated cart ID: $%08X\n", cart_id);
         return true;
     }
     return false;
+}
+
+void Cartridge::init_card1_save(std::string file_name)
+{
+    //Find the start of the extension of the card file and generate our save file name from the rest.
+    unsigned int extension_start = file_name.length() - 1;
+    while (file_name[extension_start] != '.')
+        extension_start--;
+
+    save_file_name = file_name.substr(0, extension_start) + ".sav";
+    printf("Save name: %s\n", save_file_name.c_str());
+
+    //Attempt to load a save, if possible
+    save_data = new uint8_t[1024 * 1024 * 8];
+    memset(save_data, 0xFF, 1024 * 1024 * 8);
+
+    //Byte 0 = capacity (0x11 = 128 KB, 0x13 = 512 KB, 0x17 = 8 MB. Process9 rejects all others)
+    //Byte 1 = device type (0x22 = flash?)
+    //Byte 2 = manufacturer (0xC2 = Macronix)
+    save_id = 0x0022C2;
+    std::ifstream save_file(save_file_name, std::ios::ate | std::ios::binary);
+    if (save_file.is_open())
+    {
+        //Save found. First we check the size.
+        save_size = save_file.tellg();
+
+        if (save_size == 1024 * 128)
+            save_id |= 0x11 << 16;
+        else if (save_size == 1024 * 512)
+            save_id |= 0x13 << 16;
+        else if (save_size == 1024 * 1024 * 8)
+            save_id |= 0x17 << 16;
+        else
+            printf("[SPICARD] WARNING: Save size is not 128 KB, 512 KB, or 8 MB and thus will not be loaded");
+
+        if (save_id & 0x00FF0000)
+        {
+            save_file.seekg(0);
+            save_file.read((char*)save_data, save_size);
+        }
+
+        save_file.close();
+    }
+    else
+    {
+        //TODO: The cartridge exheader contains the save size, but it is encrypted.
+        //Until we figure out a way to decrypt it, we'll just use a hardcoded size.
+        save_size = 1024 * 128;
+        save_id = 0x1122C2;
+    }
 }
 
 bool Cartridge::card_inserted()
