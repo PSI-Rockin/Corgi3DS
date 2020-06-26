@@ -26,14 +26,15 @@ void Cartridge::reset()
 
     read_block_count = 0;
     ntr_enable = 0;
-    output_pos = 0;
-    output_bytes_left = 0;
+    data_pos = 0;
+    data_bytes_left = 0;
 
     ntr_romctrl.data_ready = false;
     ntr_romctrl.busy = false;
 
     ctr_romctrl.data_ready = false;
     ctr_romctrl.busy = false;
+    card2_active = false;
 
     spi_input_pos = 0;
     spi_output_pos = 0;
@@ -59,7 +60,7 @@ bool Cartridge::mount(std::string file_name)
 {
     if (card.is_open())
         card.close();
-    card.open(file_name, std::ios::ate | std::ios::binary);
+    card.open(file_name, std::ios::binary | std::ios::in | std::ios::out);
 
     cart_id = 0xFFFFFFFF;
     save_id = 0xFFFFFFFF;
@@ -69,90 +70,90 @@ bool Cartridge::mount(std::string file_name)
         if (save_data)
             delete[] save_data;
 
-        //Find the start of the extension of the card file and generate our save file name from the rest.
-        unsigned int extension_start = file_name.length() - 1;
-        while (file_name[extension_start] != '.')
-            extension_start--;
+        //Detect if this is a Card2 save card. If so, no need to load a savefile.
+        card.read((char*)data_buffer, 0x400);
+        is_card2 = *(uint32_t*)&data_buffer[0x200] != 0xFFFFFFFF;
 
-        save_file_name = file_name.substr(0, extension_start) + ".sav";
-        printf("Save name: %s\n", save_file_name.c_str());
-
-        //Attempt to load a save, if possible
-        save_data = new uint8_t[1024 * 1024 * 8];
-        memset(save_data, 0xFF, 1024 * 1024 * 8);
-
-        //Byte 0 = capacity (0x11 = 128 KB, 0x13 = 512 KB, 0x17 = 8 MB. Process9 rejects all others)
-        //Byte 1 = device type (0x22 = flash?)
-        //Byte 2 = manufacturer (0xC2 = Macronix)
-        save_id = 0x0022C2;
-        std::ifstream save_file(save_file_name, std::ios::ate | std::ios::binary);
-        if (save_file.is_open())
-        {
-            //Save found. First we check the size.
-            save_size = save_file.tellg();
-
-            if (save_size == 1024 * 128)
-                save_id |= 0x11 << 16;
-            else if (save_size == 1024 * 512)
-                save_id |= 0x13 << 16;
-            else if (save_size == 1024 * 1024 * 8)
-                save_id |= 0x17 << 16;
-            else
-                printf("[SPICARD] WARNING: Save size is not 128 KB, 512 KB, or 8 MB and thus will not be loaded");
-
-            if (save_id & 0x00FF0000)
-            {
-                save_file.seekg(0);
-                save_file.read((char*)save_data, save_size);
-            }
-
-            save_file.close();
-        }
-        else
-        {
-            //TODO: The cartridge exheader contains the save size, but it is encrypted.
-            //Until we figure out a way to decrypt it, we'll just use a hardcoded size.
-            save_size = 1024 * 128;
-            save_id = 0x1122C2;
-        }
+        if (!is_card2)
+            init_card1_save(file_name);
 
         //Note: this assumes the cartridge is a 3DS cart
         cart_id = 0x900000C2;
 
         //We must calculate the size of the cart. HOS will refuse to read from cart sectors larger than the
         //indicated size, and I don't want to risk any copy protection problems from using absurd sizes.
-        uint8_t size_byte = 0;
+        constexpr static uint8_t SIZE_BYTES[] = {0x7F, 0xFF, 0xFE, 0xFA, 0xF8, 0xF0, 0xE0, 0xE1, 0xE2};
+        uint8_t size_index = 0;
 
+        card.seekg(0, std::ios::end);
         size_t size = card.tellg();
-
-        //If the cart is less than 256 MB, the size flag is simply (size in MB - 1)
-        //Note that we round up to the nearest given unit in case people are using trimmed dumps
-        constexpr static int MEGABYTE = 1024 * 1024;
-        if (size < MEGABYTE * 256)
+        uint64_t compare_size = 1024 * 1024 * 128;
+        while (size > compare_size)
         {
-            size_byte = size / MEGABYTE;
-            if (size % MEGABYTE == 0)
-                size--;
-        }
-        else
-        {
-            //Otherwise, the size byte is (0x100 - size in 256 MB units)
-            size_byte = size / (MEGABYTE * 256);
-            if (size % (MEGABYTE * 256) != 0)
-                size_byte++;
+            compare_size <<= 1;
+            size_index++;
 
-            size_byte = 0x100 - size_byte;
-
-            //For some reason, 1 GB cartridges use 0xFA instead of 0xFC
-            //They seem to be the only carts that are the exception to the above formula
-            if (size_byte == 0xFC)
-                size_byte = 0xFA;
+            //File goes beyond the supported sizes, error out. Bad user.
+            if (size_index >= sizeof(SIZE_BYTES))
+                return false;
         }
 
-        cart_id |= size_byte << 8;
+        cart_id |= SIZE_BYTES[size_index] << 8;
+        cart_id |= is_card2 << 27;
+        printf("[Cartridge] Calculated cart ID: $%08X\n", cart_id);
         return true;
     }
     return false;
+}
+
+void Cartridge::init_card1_save(std::string file_name)
+{
+    //Find the start of the extension of the card file and generate our save file name from the rest.
+    unsigned int extension_start = file_name.length() - 1;
+    while (file_name[extension_start] != '.')
+        extension_start--;
+
+    save_file_name = file_name.substr(0, extension_start) + ".sav";
+    printf("Save name: %s\n", save_file_name.c_str());
+
+    //Attempt to load a save, if possible
+    save_data = new uint8_t[1024 * 1024 * 8];
+    memset(save_data, 0xFF, 1024 * 1024 * 8);
+
+    //Byte 0 = capacity (0x11 = 128 KB, 0x13 = 512 KB, 0x17 = 8 MB. Process9 rejects all others)
+    //Byte 1 = device type (0x22 = flash?)
+    //Byte 2 = manufacturer (0xC2 = Macronix)
+    save_id = 0x0022C2;
+    std::ifstream save_file(save_file_name, std::ios::ate | std::ios::binary);
+    if (save_file.is_open())
+    {
+        //Save found. First we check the size.
+        save_size = save_file.tellg();
+
+        if (save_size == 1024 * 128)
+            save_id |= 0x11 << 16;
+        else if (save_size == 1024 * 512)
+            save_id |= 0x13 << 16;
+        else if (save_size == 1024 * 1024 * 8)
+            save_id |= 0x17 << 16;
+        else
+            printf("[SPICARD] WARNING: Save size is not 128 KB, 512 KB, or 8 MB and thus will not be loaded");
+
+        if (save_id & 0x00FF0000)
+        {
+            save_file.seekg(0);
+            save_file.read((char*)save_data, save_size);
+        }
+
+        save_file.close();
+    }
+    else
+    {
+        //TODO: The cartridge exheader contains the save size, but it is encrypted.
+        //Until we figure out a way to decrypt it, we'll just use a hardcoded size.
+        save_size = 1024 * 128;
+        save_id = 0x1122C2;
+    }
 }
 
 bool Cartridge::card_inserted()
@@ -162,7 +163,7 @@ bool Cartridge::card_inserted()
 
 void Cartridge::process_ntr_cmd()
 {
-    output_pos = 0;
+    data_pos = 0;
     switch (cmd_buffer[0])
     {
         case 0x3E:
@@ -175,21 +176,21 @@ void Cartridge::process_ntr_cmd()
             break;
         case 0x90:
             ntr_romctrl.data_ready = true;
-            *(uint32_t*)&output_buffer[0] = cart_id;
-            output_bytes_left = 0x4;
+            *(uint32_t*)&data_buffer[0] = cart_id;
+            data_bytes_left = 0x4;
             break;
         case 0x9F:
             ntr_romctrl.data_ready = true;
 
             //Output is all high-Z
-            memset(output_buffer, 0xFF, 0x2000);
+            memset(data_buffer, 0xFF, 0x2000);
 
-            output_bytes_left = 0x2000;
+            data_bytes_left = 0x2000;
             break;
         case 0xA0:
             ntr_romctrl.data_ready = true;
-            memset(output_buffer, 0, 0x2000);
-            output_bytes_left = 0x4;
+            memset(data_buffer, 0, 0x2000);
+            data_bytes_left = 0x4;
             break;
         default:
             EmuException::die("[NTRCARD] Unrecognized command $%02X\n", cmd_buffer[0]);
@@ -198,7 +199,7 @@ void Cartridge::process_ntr_cmd()
 
 void Cartridge::process_ctr_cmd()
 {
-    output_pos = 0;
+    data_pos = 0;
     switch (cmd_buffer[0])
     {
         case 0x82:
@@ -206,8 +207,8 @@ void Cartridge::process_ctr_cmd()
             ctr_romctrl.data_ready = true;
 
             card.seekg(0x1000);
-            card.read((char*)output_buffer, 0x200);
-            output_bytes_left = 0x200;
+            card.read((char*)data_buffer, 0x200);
+            data_bytes_left = 0x200;
             break;
         case 0x83:
             //Seed
@@ -217,14 +218,14 @@ void Cartridge::process_ctr_cmd()
         case 0xA2:
             //Cart ID
             ctr_romctrl.data_ready = true;
-            *(uint32_t*)&output_buffer[0] = cart_id;
-            output_bytes_left = 0x4;
+            *(uint32_t*)&data_buffer[0] = cart_id;
+            data_bytes_left = 0x4;
             break;
         case 0xA3:
             //Unknown
             ctr_romctrl.data_ready = true;
-            memset(output_buffer, 0, 0x2000);
-            output_bytes_left = 0x4;
+            memset(data_buffer, 0, 0x2000);
+            data_bytes_left = 0x4;
             break;
         case 0xBF:
             //Read
@@ -232,12 +233,28 @@ void Cartridge::process_ctr_cmd()
             printf("[CTRCARD] Reading from $%08X\n", read_addr);
             ctr_romctrl.data_ready = true;
             card.seekg(read_addr);
-            output_bytes_left = read_block_count * 0x200;
+            data_bytes_left = read_block_count * 0x200;
 
-            if (output_bytes_left >= 0x1000)
-                card.read((char*)output_buffer, 0x1000);
+            if (data_bytes_left >= 0x1000)
+                card.read((char*)data_buffer, 0x1000);
             else
-                card.read((char*)output_buffer, output_bytes_left);
+                card.read((char*)data_buffer, data_bytes_left);
+            break;
+        case 0xC3:
+            //Card2: Set write address
+            card2_write_addr = bswp32(*(uint32_t*)&cmd_buffer[4]);
+            data_pos = 0;
+            ctr_romctrl.data_ready = true;
+            data_bytes_left = bswp32(*(uint32_t*)&cmd_buffer[12]) * 0x200;
+            ctr_romctrl.busy = false;
+            card2_active = true;
+            card.seekg(card2_write_addr);
+            printf("[CTRCARD] Card2 start write (addr: $%llX, bytes: $%08X)\n", card2_write_addr, data_bytes_left);
+            break;
+        case 0xC4:
+            //Card2: Unknown
+            ctr_romctrl.data_ready = true;
+            ctr_romctrl.busy = false;
             break;
         case 0xC5:
             //Unknown
@@ -246,9 +263,19 @@ void Cartridge::process_ctr_cmd()
             break;
         case 0xC6:
             //Read unique ID - dunno what to put here
-            memset(output_buffer, 0, 0x40);
-            output_bytes_left = 0x40;
+            memset(data_buffer, 0, 0x40);
+            data_bytes_left = 0x40;
             ctr_romctrl.data_ready = true;
+            break;
+        case 0xC7:
+            //Card2: Get write status? Sent after 0x200 bytes have been transferred for 0xC3
+            printf("[CTRCARD] Card2 flush\n");
+            data_pos = 0;
+            data_bytes_left += 4;
+            data_buffer[0] = card2_active;
+            ctr_romctrl.busy = false;
+            ctr_romctrl.data_ready = true;
+            card.flush();
             break;
         default:
             EmuException::die("[CTRCARD] Unrecognized command $%02X\n", cmd_buffer[0]);
@@ -353,10 +380,10 @@ uint32_t Cartridge::read32_ntr(uint32_t addr)
             reg |= ntr_romctrl.busy << 31;
             break;
         case 0x1016401C:
-            reg = *(uint32_t*)&output_buffer[output_pos];
-            output_bytes_left -= 4;
-            output_pos += 4;
-            if (!output_bytes_left)
+            reg = *(uint32_t*)&data_buffer[data_pos];
+            data_bytes_left -= 4;
+            data_pos += 4;
+            if (!data_bytes_left)
             {
                 //TODO: Signal some interrupt?
                 ntr_romctrl.busy = false;
@@ -386,12 +413,12 @@ uint32_t Cartridge::read32_ctr(uint32_t addr)
             printf("[CTRCARD] Read32 SECCTRL: $%08X\n", reg);
             break;
         case 0x10004030:
-            reg = *(uint32_t*)&output_buffer[output_pos];
-            output_bytes_left -= 4;
-            output_pos += 4;
-            if (output_pos == 0x20)
+            reg = *(uint32_t*)&data_buffer[data_pos];
+            data_bytes_left -= 4;
+            data_pos += 4;
+            if (data_pos == 0x20)
                 dma9->set_ndma_req(NDMA_CTRCARD0);
-            if (!output_bytes_left)
+            if (!data_bytes_left)
             {
                 ctr_romctrl.busy = false;
                 ctr_romctrl.data_ready = false;
@@ -400,10 +427,10 @@ uint32_t Cartridge::read32_ctr(uint32_t addr)
                 if (ctr_romctrl.irq_enable)
                     int9->assert_irq(23);
             }
-            else if (output_pos == 0x1000)
+            else if (data_pos == 0x1000)
             {
-                output_pos = 0;
-                card.read((char*)output_buffer, 0x1000);
+                data_pos = 0;
+                card.read((char*)data_buffer, 0x1000);
                 dma9->clear_ndma_req(NDMA_CTRCARD0);
             }
             //printf("[CTRCARD] Read32 output FIFO: $%08X\n", reg);
@@ -543,6 +570,22 @@ void Cartridge::write32_ctr(uint32_t addr, uint32_t value)
             break;
         case 0x10004008:
             ctr_secctrl = value;
+            break;
+        case 0x10004030:
+            printf("[CTRCARD] Write Card2: $%08X\n", value);
+            if (card2_active)
+            {
+                *(uint32_t*)&data_buffer[data_pos] = value;
+                data_pos += 4;
+                data_bytes_left -= 4;
+                if (data_pos == 0x200)
+                {
+                    card.write((char*)data_buffer, 0x200);
+                    data_pos = 0;
+                }
+                if (data_bytes_left <= 0)
+                    card2_active = false;
+            }
             break;
         default:
             printf("[CTRCARD] Unrecognized write32 $%08X: $%08X\n", addr, value);
