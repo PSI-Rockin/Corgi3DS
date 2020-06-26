@@ -26,14 +26,15 @@ void Cartridge::reset()
 
     read_block_count = 0;
     ntr_enable = 0;
-    output_pos = 0;
-    output_bytes_left = 0;
+    data_pos = 0;
+    data_bytes_left = 0;
 
     ntr_romctrl.data_ready = false;
     ntr_romctrl.busy = false;
 
     ctr_romctrl.data_ready = false;
     ctr_romctrl.busy = false;
+    card2_active = false;
 
     spi_input_pos = 0;
     spi_output_pos = 0;
@@ -59,7 +60,7 @@ bool Cartridge::mount(std::string file_name)
 {
     if (card.is_open())
         card.close();
-    card.open(file_name, std::ios::ate | std::ios::binary);
+    card.open(file_name, std::ios::ate | std::ios::binary | std::ios::in | std::ios::out);
 
     cart_id = 0xFFFFFFFF;
     save_id = 0xFFFFFFFF;
@@ -162,7 +163,7 @@ bool Cartridge::card_inserted()
 
 void Cartridge::process_ntr_cmd()
 {
-    output_pos = 0;
+    data_pos = 0;
     switch (cmd_buffer[0])
     {
         case 0x3E:
@@ -175,21 +176,21 @@ void Cartridge::process_ntr_cmd()
             break;
         case 0x90:
             ntr_romctrl.data_ready = true;
-            *(uint32_t*)&output_buffer[0] = cart_id;
-            output_bytes_left = 0x4;
+            *(uint32_t*)&data_buffer[0] = cart_id;
+            data_bytes_left = 0x4;
             break;
         case 0x9F:
             ntr_romctrl.data_ready = true;
 
             //Output is all high-Z
-            memset(output_buffer, 0xFF, 0x2000);
+            memset(data_buffer, 0xFF, 0x2000);
 
-            output_bytes_left = 0x2000;
+            data_bytes_left = 0x2000;
             break;
         case 0xA0:
             ntr_romctrl.data_ready = true;
-            memset(output_buffer, 0, 0x2000);
-            output_bytes_left = 0x4;
+            memset(data_buffer, 0, 0x2000);
+            data_bytes_left = 0x4;
             break;
         default:
             EmuException::die("[NTRCARD] Unrecognized command $%02X\n", cmd_buffer[0]);
@@ -198,7 +199,7 @@ void Cartridge::process_ntr_cmd()
 
 void Cartridge::process_ctr_cmd()
 {
-    output_pos = 0;
+    data_pos = 0;
     switch (cmd_buffer[0])
     {
         case 0x82:
@@ -206,8 +207,8 @@ void Cartridge::process_ctr_cmd()
             ctr_romctrl.data_ready = true;
 
             card.seekg(0x1000);
-            card.read((char*)output_buffer, 0x200);
-            output_bytes_left = 0x200;
+            card.read((char*)data_buffer, 0x200);
+            data_bytes_left = 0x200;
             break;
         case 0x83:
             //Seed
@@ -217,14 +218,14 @@ void Cartridge::process_ctr_cmd()
         case 0xA2:
             //Cart ID
             ctr_romctrl.data_ready = true;
-            *(uint32_t*)&output_buffer[0] = cart_id;
-            output_bytes_left = 0x4;
+            *(uint32_t*)&data_buffer[0] = cart_id;
+            data_bytes_left = 0x4;
             break;
         case 0xA3:
             //Unknown
             ctr_romctrl.data_ready = true;
-            memset(output_buffer, 0, 0x2000);
-            output_bytes_left = 0x4;
+            memset(data_buffer, 0, 0x2000);
+            data_bytes_left = 0x4;
             break;
         case 0xBF:
             //Read
@@ -232,12 +233,28 @@ void Cartridge::process_ctr_cmd()
             printf("[CTRCARD] Reading from $%08X\n", read_addr);
             ctr_romctrl.data_ready = true;
             card.seekg(read_addr);
-            output_bytes_left = read_block_count * 0x200;
+            data_bytes_left = read_block_count * 0x200;
 
-            if (output_bytes_left >= 0x1000)
-                card.read((char*)output_buffer, 0x1000);
+            if (data_bytes_left >= 0x1000)
+                card.read((char*)data_buffer, 0x1000);
             else
-                card.read((char*)output_buffer, output_bytes_left);
+                card.read((char*)data_buffer, data_bytes_left);
+            break;
+        case 0xC3:
+            //Card2: Set write address
+            card2_write_addr = bswp32(*(uint32_t*)&cmd_buffer[4]);
+            data_pos = 0;
+            ctr_romctrl.data_ready = true;
+            data_bytes_left = bswp32(*(uint32_t*)&cmd_buffer[12]) * 0x200;
+            ctr_romctrl.busy = false;
+            card2_active = true;
+            card.seekg(card2_write_addr);
+            printf("[CTRCARD] Card2 start write (addr: $%llX, bytes: $%08X)\n", card2_write_addr, data_bytes_left);
+            break;
+        case 0xC4:
+            //Card2: Unknown
+            ctr_romctrl.data_ready = true;
+            ctr_romctrl.busy = false;
             break;
         case 0xC5:
             //Unknown
@@ -246,9 +263,19 @@ void Cartridge::process_ctr_cmd()
             break;
         case 0xC6:
             //Read unique ID - dunno what to put here
-            memset(output_buffer, 0, 0x40);
-            output_bytes_left = 0x40;
+            memset(data_buffer, 0, 0x40);
+            data_bytes_left = 0x40;
             ctr_romctrl.data_ready = true;
+            break;
+        case 0xC7:
+            //Card2: Get write status? Sent after 0x200 bytes have been transferred for 0xC3
+            printf("[CTRCARD] Card2 flush\n");
+            data_pos = 0;
+            data_bytes_left += 4;
+            data_buffer[0] = card2_active;
+            ctr_romctrl.busy = false;
+            ctr_romctrl.data_ready = true;
+            card.flush();
             break;
         default:
             EmuException::die("[CTRCARD] Unrecognized command $%02X\n", cmd_buffer[0]);
@@ -353,10 +380,10 @@ uint32_t Cartridge::read32_ntr(uint32_t addr)
             reg |= ntr_romctrl.busy << 31;
             break;
         case 0x1016401C:
-            reg = *(uint32_t*)&output_buffer[output_pos];
-            output_bytes_left -= 4;
-            output_pos += 4;
-            if (!output_bytes_left)
+            reg = *(uint32_t*)&data_buffer[data_pos];
+            data_bytes_left -= 4;
+            data_pos += 4;
+            if (!data_bytes_left)
             {
                 //TODO: Signal some interrupt?
                 ntr_romctrl.busy = false;
@@ -386,12 +413,12 @@ uint32_t Cartridge::read32_ctr(uint32_t addr)
             printf("[CTRCARD] Read32 SECCTRL: $%08X\n", reg);
             break;
         case 0x10004030:
-            reg = *(uint32_t*)&output_buffer[output_pos];
-            output_bytes_left -= 4;
-            output_pos += 4;
-            if (output_pos == 0x20)
+            reg = *(uint32_t*)&data_buffer[data_pos];
+            data_bytes_left -= 4;
+            data_pos += 4;
+            if (data_pos == 0x20)
                 dma9->set_ndma_req(NDMA_CTRCARD0);
-            if (!output_bytes_left)
+            if (!data_bytes_left)
             {
                 ctr_romctrl.busy = false;
                 ctr_romctrl.data_ready = false;
@@ -400,10 +427,10 @@ uint32_t Cartridge::read32_ctr(uint32_t addr)
                 if (ctr_romctrl.irq_enable)
                     int9->assert_irq(23);
             }
-            else if (output_pos == 0x1000)
+            else if (data_pos == 0x1000)
             {
-                output_pos = 0;
-                card.read((char*)output_buffer, 0x1000);
+                data_pos = 0;
+                card.read((char*)data_buffer, 0x1000);
                 dma9->clear_ndma_req(NDMA_CTRCARD0);
             }
             //printf("[CTRCARD] Read32 output FIFO: $%08X\n", reg);
@@ -543,6 +570,22 @@ void Cartridge::write32_ctr(uint32_t addr, uint32_t value)
             break;
         case 0x10004008:
             ctr_secctrl = value;
+            break;
+        case 0x10004030:
+            printf("[CTRCARD] Write Card2: $%08X\n", value);
+            if (card2_active)
+            {
+                *(uint32_t*)&data_buffer[data_pos] = value;
+                data_pos += 4;
+                data_bytes_left -= 4;
+                if (data_pos == 0x200)
+                {
+                    card.write((char*)data_buffer, 0x200);
+                    data_pos = 0;
+                }
+                if (data_bytes_left <= 0)
+                    card2_active = false;
+            }
             break;
         default:
             printf("[CTRCARD] Unrecognized write32 $%08X: $%08X\n", addr, value);

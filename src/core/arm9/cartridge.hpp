@@ -35,7 +35,7 @@ class Cartridge
         DMA9* dma9;
         Interrupt9* int9;
         std::string save_file_name;
-        std::ifstream card;
+        std::fstream card;
 
         uint16_t ntr_enable;
         NTR_ROMCTRL ntr_romctrl;
@@ -47,9 +47,13 @@ class Cartridge
         uint32_t save_id;
         uint8_t cmd_buffer[16];
 
-        uint8_t output_buffer[0x2000];
-        int output_pos;
-        int output_bytes_left;
+        uint64_t card2_write_addr;
+        bool card2_active;
+        bool is_card2;
+
+        uint8_t data_buffer[0x2000];
+        int data_pos;
+        int data_bytes_left;
 
         uint32_t read_addr;
         uint32_t read_block_count;
