@@ -28,6 +28,8 @@ void EmuThread::run()
         }
         catch (EmuException::FatalError& error)
         {
+            printf("[EmuThread] Error occurred, stopping emulation...\n");
+            printf("%s\n", error.what());
             e.print_state();
             emit emu_error(error.what());
             quit = true;
