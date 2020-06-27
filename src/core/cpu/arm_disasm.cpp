@@ -116,6 +116,12 @@ ARM_INSTR decode_arm(uint32_t instr)
         if ((instr & 0x0FF00FF0) == 0x06500F90)
             return ARM_UADD8;
 
+        if ((instr & 0x0FF00FF0) == 0x06700F90)
+            return ARM_UHADD8;
+
+        if ((instr & 0x0FF00FF0) == 0x06500FF0)
+            return ARM_USUB8;
+
         if ((instr & 0x0FF00FF0) == 0x06200FF0)
             return ARM_QSUB8;
 
@@ -123,6 +129,8 @@ ARM_INSTR decode_arm(uint32_t instr)
         {
             switch (instr & 0xF0)
             {
+                case 0x90:
+                    return ARM_UQADD8;
                 case 0xF0:
                     return ARM_UQSUB8;
                 default:

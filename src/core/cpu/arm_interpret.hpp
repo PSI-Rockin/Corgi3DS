@@ -31,7 +31,10 @@ namespace ARM_Interpreter
     void arm_signed_halfword_multiply(ARM_CPU& cpu, uint32_t instr);
     void arm_sel(ARM_CPU &cpu, uint32_t instr);
     void arm_uadd8(ARM_CPU &cpu, uint32_t instr);
+    void arm_uhadd8(ARM_CPU &cpu, uint32_t instr);
+    void arm_usub8(ARM_CPU &cpu, uint32_t instr);
     void arm_qsub8(ARM_CPU &cpu, uint32_t instr);
+    void arm_uqadd8(ARM_CPU& cpu, uint32_t instr);
     void arm_uqsub8(ARM_CPU& cpu, uint32_t instr);
     void arm_mul(ARM_CPU& cpu, uint32_t instr);
     void arm_mul_long(ARM_CPU& cpu, uint32_t instr);

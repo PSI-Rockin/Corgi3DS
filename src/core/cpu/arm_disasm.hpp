@@ -48,6 +48,9 @@ enum ARM_INSTR
 
     ARM_SEL,
     ARM_UADD8,
+    ARM_UHADD8,
+    ARM_USUB8,
+    ARM_UQADD8,
     ARM_UQSUB8,
     ARM_QSUB8,
 
