@@ -272,6 +272,8 @@ struct GPU_Context
     uint32_t fixed_attr_buffer[3];
     int fixed_attr_count;
 
+    CommandEngine cmd_engine[2];
+
     uint8_t vsh_inputs;
     uint8_t vsh_input_counter;
 
@@ -318,7 +320,10 @@ class GPU
         MemoryFill memfill[2];
 
         TransferEngine dma;
-        CommandEngine cmd_engine;
+
+        uint32_t cur_cmdlist_ptr;
+        uint32_t cur_cmdlist_size;
+        bool cmd_engine_busy;
 
         GPU_Context ctx;
 
@@ -331,6 +336,8 @@ class GPU
         void do_transfer_engine_dma(uint64_t param);
         void do_command_engine_dma(uint64_t param);
         void do_memfill(int index);
+
+        void start_command_engine_dma(int index);
 
         void write_cmd_register(int reg, uint32_t param, uint8_t mask);
         void input_float_uniform(ShaderUnit& sh, uint32_t param);
