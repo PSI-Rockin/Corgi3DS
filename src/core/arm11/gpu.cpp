@@ -2712,6 +2712,11 @@ void GPU::do_alpha_blending(RGBA_Color &source, RGBA_Color &frame)
             frame.g *= dest.a;
             frame.b *= dest.a;
             break;
+        case 0xB:
+            frame.r *= 255 - ctx.blend_color.r;
+            frame.g *= 255 - ctx.blend_color.g;
+            frame.b *= 255 - ctx.blend_color.b;
+            break;
         case 0xC:
             frame.r *= ctx.blend_color.a;
             frame.g *= ctx.blend_color.a;
