@@ -95,7 +95,9 @@ void GPU::reset(uint8_t* vram)
     dma.busy = false;
     dma.finished = false;
 
-    cmd_engine.busy = false;
+    cur_cmdlist_ptr = 0;
+    cur_cmdlist_size = 0;
+    cmd_engine_busy = false;
 
     memset(&framebuffers, 0, sizeof(framebuffers));
     memset(memfill, 0, sizeof(memfill));
@@ -408,17 +410,29 @@ void GPU::do_transfer_engine_dma(uint64_t param)
     dma.finished = true;
 }
 
-void GPU::do_command_engine_dma(uint64_t unused)
+void GPU::start_command_engine_dma(int index)
 {
+    cmd_engine_busy = true;
+    scheduler->add_event([this](uint64_t param) { this->do_command_engine_dma(param);},
+        ctx.cmd_engine[index].size, ARM11_CLOCKRATE, index);
+}
+
+void GPU::do_command_engine_dma(uint64_t index)
+{
+    cur_cmdlist_ptr = ctx.cmd_engine[index].input_addr;
+    cur_cmdlist_size = ctx.cmd_engine[index].size;
+
+    //Set busy to false here, because the command list may trigger another command list DMA.
+    cmd_engine_busy = false;
     printf("[GPU] Doing command engine DMA\n");
-    printf("[GPU] Addr: $%08X Words: $%08X\n", cmd_engine.input_addr, cmd_engine.size);
+    printf("[GPU] Addr: $%08X Words: $%08X\n", cur_cmdlist_ptr, cur_cmdlist_size);
     //NOTE: Here, size is in units of words
-    while (cmd_engine.size)
+    while (cur_cmdlist_size)
     {
-        uint32_t param = e->arm11_read32(0, cmd_engine.input_addr);
-        uint32_t cmd_header = e->arm11_read32(0, cmd_engine.input_addr + 4);
-        cmd_engine.input_addr += 8;
-        cmd_engine.size -= 2;
+        uint32_t param = e->arm11_read32(0, cur_cmdlist_ptr);
+        uint32_t cmd_header = e->arm11_read32(0, cur_cmdlist_ptr + 4);
+        cur_cmdlist_ptr += 8;
+        cur_cmdlist_size -= 2;
 
         uint16_t cmd_id = cmd_header & 0xFFFF;
         uint8_t param_mask = (cmd_header >> 16) & 0xF;
@@ -429,16 +443,16 @@ void GPU::do_command_engine_dma(uint64_t unused)
 
         for (unsigned int i = 0; i < extra_param_count; i++)
         {
-            extra_params[i] = e->arm11_read32(0, cmd_engine.input_addr);
-            cmd_engine.input_addr += 4;
-            cmd_engine.size--;
+            extra_params[i] = e->arm11_read32(0, cur_cmdlist_ptr);
+            cur_cmdlist_ptr += 4;
+            cur_cmdlist_size--;
         }
 
         //Keep the command buffer 8-byte aligned
         if (extra_param_count & 0x1)
         {
-            cmd_engine.input_addr += 4;
-            cmd_engine.size--;
+            cur_cmdlist_ptr += 4;
+            cur_cmdlist_size--;
         }
 
         write_cmd_register(cmd_id, param, param_mask);
@@ -451,8 +465,6 @@ void GPU::do_command_engine_dma(uint64_t unused)
             write_cmd_register(cmd_id, extra_params[i], param_mask);
         }
     }
-
-    cmd_engine.busy = false;
 }
 
 void GPU::do_memfill(int index)
@@ -895,6 +907,18 @@ void GPU::write_cmd_register(int reg, uint32_t param, uint8_t mask)
             ctx.fixed_attr_index = param & 0xF;
             ctx.fixed_attr_count = 0;
             ctx.vsh_input_counter = 0;
+            break;
+        case 0x238:
+        case 0x239:
+            ctx.cmd_engine[reg - 0x238].size = param << 1;
+            break;
+        case 0x23A:
+        case 0x23B:
+            ctx.cmd_engine[reg - 0x23A].input_addr = param << 3;
+            break;
+        case 0x23C:
+        case 0x23D:
+            start_command_engine_dma(reg - 0x23C);
             break;
         case 0x242:
             ctx.vsh_inputs = (param & 0xF) + 1;
@@ -3890,11 +3914,11 @@ uint32_t GPU::read32(uint32_t addr)
     switch (addr)
     {
         case 0x0034:
-            return (cmd_engine.busy << 31) | (memfill[0].busy << 27) | (memfill[1].busy << 26);
+            return (cmd_engine_busy << 31) | (memfill[0].busy << 27) | (memfill[1].busy << 26);
         case 0x0C18:
             return dma.busy | (dma.finished << 8);
         case 0x18F0:
-            return cmd_engine.busy;
+            return cmd_engine_busy;
     }
     printf("[GPU] Unrecognized read32 $%08X\n", addr);
     return 0;
@@ -3996,20 +4020,16 @@ void GPU::write32(uint32_t addr, uint32_t value)
             break;
         case 0x18E0:
             //Here, size is in units of words
-            cmd_engine.size = value << 1;
+            ctx.cmd_engine[0].size = value << 1;
             break;
         case 0x18E8:
             //Addr is in bytes, however
-            cmd_engine.input_addr = value << 3;
+            ctx.cmd_engine[0].input_addr = value << 3;
             break;
         case 0x18F0:
             //P3D IRQ
             if (value & 0x1)
-            {
-                cmd_engine.busy = true;
-                scheduler->add_event([this](uint64_t param) { this->do_command_engine_dma(param);},
-                    cmd_engine.size, ARM11_CLOCKRATE);
-            }
+                start_command_engine_dma(0);
             break;
         default:
             printf("[GPU] Unrecognized write32 $%08X: $%08X\n", addr, value);
