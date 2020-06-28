@@ -25,6 +25,7 @@ enum ARM_INSTR
     ARM_REV,
     ARM_REV16,
     ARM_PKHBT,
+    ARM_PKHTB,
     ARM_USAT,
     ARM_SSAT,
     ARM_DATA_PROCESSING,

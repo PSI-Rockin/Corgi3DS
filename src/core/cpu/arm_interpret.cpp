@@ -88,6 +88,9 @@ void interpret_arm(ARM_CPU &cpu, uint32_t instr)
         case ARM_PKHBT:
             arm_pkhbt(cpu, instr);
             break;
+        case ARM_PKHTB:
+            arm_pkhtb(cpu, instr);
+            break;
         case ARM_USAT:
             arm_usat(cpu, instr);
             break;
@@ -470,6 +473,22 @@ void arm_pkhbt(ARM_CPU &cpu, uint32_t instr)
 
     uint32_t source1 = cpu.get_register(reg1) & 0xFFFF;
     uint32_t source2 = (cpu.get_register(reg2) << shift) & 0xFFFF0000;
+
+    cpu.set_register(dest, source1 | source2);
+}
+
+void arm_pkhtb(ARM_CPU &cpu, uint32_t instr)
+{
+    int dest = (instr >> 12) & 0xF;
+    int reg1 = (instr >> 16) & 0xF;
+    int reg2 = instr & 0xF;
+    int shift = (instr >> 7) & 0x1F;
+
+    if (!shift)
+        shift = 32;
+
+    uint32_t source1 = cpu.get_register(reg1) & 0xFFFF0000;
+    uint32_t source2 = (int16_t)(cpu.get_register(reg2) & 0xFFFF) >> shift;
 
     cpu.set_register(dest, source1 | source2);
 }

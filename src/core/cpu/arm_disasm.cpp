@@ -104,6 +104,9 @@ ARM_INSTR decode_arm(uint32_t instr)
         if ((instr & 0x0FF00070) == 0x06800010)
             return ARM_PKHBT;
 
+        if ((instr & 0x0FF00070) == 0x06800050)
+            return ARM_PKHTB;
+
         if ((instr & 0x0FE00030) == 0x06E00010)
             return ARM_USAT;
 
