@@ -204,9 +204,12 @@ void Emulator::run()
     bool frame_ended = false;
 
     //VBLANK start and end interrupts
-    scheduler.add_event([this](uint64_t param) {mpcore_pmr.assert_hw_irq(0x2A); gpu.render_frame();},
-        4000000, ARM11_CLOCKRATE);
-    scheduler.add_event([this, &frame_ended](uint64_t param) {mpcore_pmr.assert_hw_irq(0x2B); frame_ended = true;},
+    scheduler.add_event([this](uint64_t param) {
+        mpcore_pmr.assert_hw_irq(0x2A);
+        mpcore_pmr.assert_hw_irq(0x2B);
+        gpu.render_frame();
+    }, 4000000, ARM11_CLOCKRATE);
+    scheduler.add_event([this, &frame_ended](uint64_t param) {frame_ended = true;},
         4400000, ARM11_CLOCKRATE);
     cartridge.save_check();
     while (!frame_ended)

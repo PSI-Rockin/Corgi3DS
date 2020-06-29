@@ -15,6 +15,9 @@ struct FrameBuffer
     uint32_t right_addr_a, right_addr_b;
     uint32_t stride;
 
+    uint16_t total_scanlines, scanlines;
+    int scanline_timing;
+
     uint8_t color_format;
     bool buffer_select;
 
@@ -402,6 +405,7 @@ class GPU
         void shader_mad(ShaderUnit& sh, uint32_t instr);
 
         void render_fb_pixel(uint8_t* screen, int fb_index, int x, int y);
+        void scanline_event(int index);
     public:
         GPU(Emulator* e, Scheduler* scheduler, MPCore_PMR* pmr);
         ~GPU();

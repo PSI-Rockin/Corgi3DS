@@ -109,6 +109,16 @@ void GPU::reset(uint8_t* vram)
     framebuffers[0].left_addr_a = 0x18000000;
     framebuffers[1].left_addr_a = 0x18000000;
 
+    framebuffers[0].total_scanlines = 413;
+    framebuffers[1].total_scanlines = 413;
+    framebuffers[1].scanline_timing = 10000;
+
+    //Kickstart scanline events
+    //N3DS GSP has a strange VBLANK routine where it waits for the scanline counter to reach a certain value
+    //so emulating the scanline counter is required.
+    scanline_event(0);
+    scanline_event(1);
+
     memset(ctx.texcomb_rgb_buffer_update, 0, sizeof(ctx.texcomb_rgb_buffer_update));
     memset(ctx.texcomb_alpha_buffer_update, 0, sizeof(ctx.texcomb_alpha_buffer_update));
 }
@@ -188,6 +198,14 @@ void GPU::render_fb_pixel(uint8_t *screen, int fb_index, int x, int y)
             EmuException::die("[GPU] Unrecognized framebuffer color format %d\n", screen_fb->color_format);
     }
     *(uint32_t*)&screen[screen_pos] = color;
+}
+
+void GPU::scanline_event(int index)
+{
+    framebuffers[index].scanlines++;
+    framebuffers[index].scanlines %= framebuffers[index].total_scanlines;
+    scheduler->add_event([=](uint64_t param) { scanline_event(index); },
+        framebuffers[index].scanline_timing, ARM11_CLOCKRATE, index);
 }
 
 uint32_t GPU::get_4bit_swizzled_addr(uint32_t base, uint32_t width, uint32_t x, uint32_t y)
@@ -4042,6 +4060,10 @@ uint32_t GPU::read32_fb(int index, uint32_t addr)
     addr &= 0xFF;
     switch (addr)
     {
+        case 0x24:
+            return fb->total_scanlines;
+        case 0x54:
+            return fb->scanlines;
         case 0x68:
             return fb->left_addr_a;
         case 0x6C:
@@ -4068,6 +4090,10 @@ void GPU::write32_fb(int index, uint32_t addr, uint32_t value)
     addr &= 0xFF;
     switch (addr)
     {
+        case 0x24:
+            printf("[GPU] Write fb%d vtotal: $%08X\n", index, value);
+            fb->total_scanlines = value & 0xFFFF;
+            return;
         case 0x68:
             printf("[GPU] Write fb%d left addr A: $%08X\n", index, value);
             fb->left_addr_a = value;
