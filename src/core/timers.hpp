@@ -42,6 +42,7 @@ class Timers
         void set_counter(int index, uint16_t value);
         void set_control(int index, uint16_t value);
 
+        void overflow_check11(int index);
         void handle_overflow(int index);
     public:
         Timers(Interrupt9* int9, MPCore_PMR* pmr, Emulator* e);

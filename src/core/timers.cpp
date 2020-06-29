@@ -44,19 +44,7 @@ void Timers::run(int cycles11, int cycles9)
             {
                 arm11_timers[i].counter--;
                 arm11_timers[i].clocks -= arm11_timers[i].prescalar;
-                if (arm11_timers[i].counter == 0)
-                {
-                    if (arm11_timers[i].auto_reload)
-                        arm11_timers[i].counter = arm11_timers[i].load;
-                    else
-                        arm11_timers[i].enabled = false;
-
-                    arm11_timers[i].int_flag = true;
-                    if (arm11_timers[i].int_enabled)
-                    {
-                        pmr->set_pending_irq(i & 0x3, 29 + (i / 4));
-                    }
-                }
+                overflow_check11(i);
             }
         }
     }
@@ -78,6 +66,23 @@ void Timers::handle_overflow(int index)
             arm9_timers[index + 1].counter++;
             if (arm9_timers[index + 1].counter >= 0x10000)
                 handle_overflow(index + 1);
+        }
+    }
+}
+
+void Timers::overflow_check11(int index)
+{
+    if (arm11_timers[index].counter == 0)
+    {
+        if (arm11_timers[index].auto_reload)
+            arm11_timers[index].counter = arm11_timers[index].load;
+        else
+            arm11_timers[index].enabled = false;
+
+        arm11_timers[index].int_flag = true;
+        if (arm11_timers[index].int_enabled)
+        {
+            pmr->set_pending_irq(index & 0x3, 29 + (index / 4));
         }
     }
 }
@@ -200,6 +205,12 @@ uint32_t Timers::arm11_get_counter(int id, int delta)
 
     if (arm11_timers[id].enabled)
         counter -= delta / arm11_timers[id].prescalar;
+
+    //Decrementing the counter is necessary due to a "bug" in the 3DS kernel.
+    //The kernel does two counter reads to get the current time. If both reads are the same, the kernel thinks
+    //an incredibly high amount of time has passed, causing anything relying on timing to freeze.
+    arm11_timers[id].counter--;
+    overflow_check11(id);
     //printf("[Timers] Read ARM11 timer%d counter: $%08X (%d)\n", id, counter, delta);
     return counter;
 }
