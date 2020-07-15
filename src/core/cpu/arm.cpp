@@ -15,7 +15,15 @@ void get_hos_process_info(ARM_CPU& cpu, int& pid, std::string& name)
     //depending on kernel version. There's not a good way to detect this other than trying all possible locations
     //until we find one that doesn't data abort.
     static int offs = 16;
-    uint32_t process_ptr = cpu.read32(0xFFFF9004);
+    uint32_t process_ptr;
+    try
+    {
+        process_ptr = cpu.read32(0xFFFF9004);
+    }
+    catch (EmuException::ARMDataAbort)
+    {
+        process_ptr = 0;
+    }
     if (!process_ptr)
         return;
     while (offs >= 0)
