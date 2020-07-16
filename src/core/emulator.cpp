@@ -4,13 +4,13 @@
 #include "emulator.hpp"
 
 Emulator::Emulator() :
-    arm9(this, 9, &arm9_cp15, nullptr),
+    arm9(this, &scheduler, 9, &arm9_cp15, nullptr),
     arm11
 {
-    ARM_CPU(this, 11, &arm11_cp15[0], &vfp[0]),
-    ARM_CPU(this, 12, &arm11_cp15[1], &vfp[1]),
-    ARM_CPU(this, 13, &arm11_cp15[2], &vfp[2]),
-    ARM_CPU(this, 14, &arm11_cp15[3], &vfp[3]),
+    ARM_CPU(this, &scheduler, 11, &arm11_cp15[0], &vfp[0]),
+    ARM_CPU(this, &scheduler, 12, &arm11_cp15[1], &vfp[1]),
+    ARM_CPU(this, &scheduler, 13, &arm11_cp15[2], &vfp[2]),
+    ARM_CPU(this, &scheduler, 14, &arm11_cp15[3], &vfp[3]),
 },
     arm9_cp15(9, &arm9, &arm9_pu),
     arm11_cp15
@@ -88,6 +88,13 @@ void Emulator::reset(bool cold_boot)
         dsp_mem = new uint8_t[1024 * 512];
     if (!vram)
         vram = new uint8_t[1024 * 1024 * 6];
+
+    //Scheduler should be reset first so that other components can register scheduler stuff in their reset function
+    scheduler.reset();
+    scheduler.set_quantum_rate(ARM11_CLOCKRATE * 3);
+    scheduler.set_clockrate_9(ARM9_CLOCKRATE);
+    scheduler.set_clockrate_11(ARM11_CLOCKRATE);
+    scheduler.set_clockrate_xtensa(XTENSA_CLOCKRATE);
 
     mpcore_pmr.reset(core_count);
     timers.reset();
@@ -188,12 +195,6 @@ void Emulator::reset(bool cold_boot)
         arm11_cp15[i].reset(false);
         arm11[i].reset();
     }
-
-    scheduler.reset();
-    scheduler.set_quantum_rate(ARM11_CLOCKRATE * 3);
-    scheduler.set_clockrate_9(ARM9_CLOCKRATE);
-    scheduler.set_clockrate_11(ARM11_CLOCKRATE);
-    scheduler.set_clockrate_xtensa(XTENSA_CLOCKRATE);
 }
 
 void Emulator::run()
@@ -214,19 +215,6 @@ void Emulator::run()
         scheduler.calculate_cycles_to_run();
         int cycles11 = scheduler.get_cycles11_to_run();
         int cycles9 = scheduler.get_cycles9_to_run();
-
-        arm11[0].run(cycles11);
-        arm11[1].run(cycles11);
-
-        //TODO: Is it faster to always run the additional cores in Old3DS mode?
-        //Probably not, because the branch predictor should have an easy time with this
-        if (is_n3ds)
-        {
-            arm11[2].run(cycles11);
-            arm11[3].run(cycles11);
-        }
-
-        arm9.run(cycles9);
         timers.run(cycles11, cycles9);
         dsp.run(cycles9);
         dma9.process_ndma_reqs();
@@ -235,6 +223,7 @@ void Emulator::run()
 
         int xtensa_cycles = scheduler.get_xtensa_cycles_to_run();
         wifi.run(xtensa_cycles);
+        scheduler.run_cpus();
         scheduler.process_events();
     }
     frames++;

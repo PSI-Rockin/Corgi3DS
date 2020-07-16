@@ -44,11 +44,13 @@ struct PSR_Flags
 
 class Emulator;
 class VFP;
+class Scheduler;
 
 class ARM_CPU
 {
     private:
         Emulator* e;
+        Scheduler* scheduler;
         int id;
         uint32_t gpr[16];
         bool prefetch_abort_occurred;
@@ -57,7 +59,11 @@ class ARM_CPU
         bool can_disassemble;
         bool int_pending;
         bool event_pending;
+
+        int registered_sched_id;
+
         int cycles_ran;
+        int64_t cur_timestamp;
         uint64_t local_exclusive_start, local_exclusive_end;
 
         CP15* cp15;
@@ -75,7 +81,7 @@ class ARM_CPU
         void fetch_new_instr_ptr(uint32_t addr);
     public:
         static uint64_t global_exclusive_start[4], global_exclusive_end[4];
-        ARM_CPU(Emulator* e, int id, CP15* cp15, VFP* vfp);
+        ARM_CPU(Emulator* e, Scheduler* scheduler, int id, CP15* cp15, VFP* vfp);
 
         static std::string get_reg_name(int id);
 

@@ -3,6 +3,7 @@
 #include <cstdint>
 #include <functional>
 #include <list>
+#include <vector>
 
 //List of different frequencies
 constexpr static uint64_t ARM11_CLOCKRATE = 268111856; //268 MHz
@@ -24,12 +25,27 @@ struct SchedulerEvent
     std::function<void(uint64_t)> func;
 };
 
+struct SchedulerCPU
+{
+    int64_t* cur_timestamp;
+    uint64_t clockrate;
+    bool active;
+
+    std::function<void(int64_t)> run_func;
+};
+
 class Scheduler
 {
     private:
         std::list<SchedulerEvent> events;
 
+        std::vector<SchedulerCPU> cpus;
+        std::list<SchedulerCPU*> active_cpus;
+
         int64_t closest_event_time;
+        int64_t next_cpu_time;
+
+        int next_cpu_id;
 
         CycleCount quantum;
         CycleCount cycles11;
@@ -41,7 +57,16 @@ class Scheduler
         int64_t cycles9_to_run;
         int64_t xtensa_cycles_to_run;
     public:
+        constexpr static uint64_t ARM11_CLOCKRATE = 268111856;
+        constexpr static uint64_t ARM9_CLOCKRATE = ARM11_CLOCKRATE / 2;
+
         Scheduler();
+
+        int register_cpu(std::function<void(int64_t)> func,
+                         int64_t* cur_timestamp, uint64_t clockrate);
+        void stop_cpu(int id);
+        void activate_cpu(int id);
+        void run_cpus();
 
         void calculate_cycles_to_run();
         int64_t get_cycles11_to_run();
