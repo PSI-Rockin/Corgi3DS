@@ -2,6 +2,7 @@
 #define ARM_DISASM_HPP
 
 #include <string>
+#include <cstdint>
 
 enum ARM_INSTR
 {
